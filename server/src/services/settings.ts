@@ -28,11 +28,13 @@ const DEFAULT_MODES: { providers: ModelProvider[] } = {
   providers: [
     {
       name: 'openai',
-      apiKey: process.env.OPENAI_API_KEY || ''
+      apiKey: '',
+      baseUrl: 'https://api.openai.com/v1'
     },
     {
       name: 'anthropic',
-      apiKey: process.env.ANTHROPIC_API_KEY || ''
+      apiKey: '',
+      baseUrl: 'https://api.anthropic.com/v1'
     }
   ]
 };
