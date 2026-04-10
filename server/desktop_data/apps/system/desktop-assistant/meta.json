@@ -1,0 +1,27 @@
+{
+  "id": "desktop-assistant",
+  "name": "桌面助手",
+  "description": "内置桌面助手，提供基础对话和系统操作功能",
+  "source": "system",
+  "type": "desktop",
+  "icon": "/public_icons/assistant.svg",
+  "models": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "priority": 1,
+      "maxTokens": 128000,
+      "supports": ["text", "image"],
+      "params": {
+        "temperature": 0.7,
+        "top_p": 0.9
+      }
+    }
+  ],
+  "supportedInputs": ["text", "image", "audio"],
+  "inputDescription": "支持文本、图片、语音输入",
+  "outputDescription": "返回文本、图片、语音回复",
+  "visibleApps": ["file-manager", "settings", "app-builder"],
+  "visibleServices": ["clipboard", "notification"],
+  "tools": ["mcp.filesystem", "mcp.window", "mcp.settings"]
+}

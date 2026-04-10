@@ -1,0 +1,21 @@
+{
+  "theme": "light",
+  "wallpaper": "/wallpapers/default.jpg",
+  "dock": {
+    "position": "bottom",
+    "magnification": true,
+    "autoHide": false
+  },
+  "window": {
+    "defaultSize": { "width": 800, "height": 600 },
+    "minSize": { "width": 400, "height": 300 },
+    "maximized": false
+  },
+  "menuBar": {
+    "autoHide": false
+  },
+  "startMenu": {
+    "width": 700,
+    "height": 500
+  }
+}

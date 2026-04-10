@@ -1,0 +1,15 @@
+{
+  "id": "trash",
+  "name": "回收站",
+  "description": "查看和管理已删除的文件和应用",
+  "source": "system",
+  "type": "desktop",
+  "icon": "/public_icons/trash.svg",
+  "models": [],
+  "supportedInputs": ["text"],
+  "inputDescription": "支持文件操作命令",
+  "outputDescription": "显示回收站内容",
+  "visibleApps": [],
+  "visibleServices": [],
+  "tools": ["mcp.filesystem"]
+}

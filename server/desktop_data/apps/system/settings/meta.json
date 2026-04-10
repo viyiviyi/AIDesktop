@@ -1,0 +1,15 @@
+{
+  "id": "settings",
+  "name": "系统设置",
+  "description": "配置桌面系统的主题、壁纸、Dock等设置",
+  "source": "system",
+  "type": "desktop",
+  "icon": "/public_icons/settings.svg",
+  "models": [],
+  "supportedInputs": ["text"],
+  "inputDescription": "支持设置项选择",
+  "outputDescription": "显示设置表单",
+  "visibleApps": [],
+  "visibleServices": [],
+  "tools": ["mcp.settings"]
+}
