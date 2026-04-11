@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
-import type { WindowState, Message } from '../types';
+import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo } from '../types';
 import * as api from '../services/api';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -16,12 +16,16 @@ interface WindowProps {
 }
 
 export function Window({ windowState, children }: WindowProps) {
-  const { state, focusWindow, updateWindow } = useDesktop();
+  const { state, focusWindow, updateWindow, closeWindow, minimizeWindow, maximizeWindow } = useDesktop();
   const windowRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [resizeDirection, setResizeDirection] = useState('');
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const resizeDirectionRef = useRef('');
+  const windowStateRef = useRef(windowState);
+
+  // Keep windowStateRef in sync with latest windowState
+  windowStateRef.current = windowState;
 
   const isFocused = state.focusedWindowId === windowState.id;
 
@@ -44,10 +48,10 @@ export function Window({ windowState, children }: WindowProps) {
     }
     e.preventDefault();
     setIsDragging(true);
-    setDragOffset({
+    dragOffsetRef.current = {
       x: e.clientX - windowState.position.x,
       y: e.clientY - windowState.position.y,
-    });
+    };
     focusWindow(windowState.id);
   };
 
@@ -55,40 +59,43 @@ export function Window({ windowState, children }: WindowProps) {
     e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
-    setResizeDirection(direction);
+    resizeDirectionRef.current = direction;
     focusWindow(windowState.id);
   };
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
+      const currentWindowState = windowStateRef.current;
+
       if (isDragging) {
-        updateWindow(windowState.id, {
+        updateWindow(currentWindowState.id, {
           position: {
-            x: e.clientX - dragOffset.x,
-            y: e.clientY - dragOffset.y,
+            x: e.clientX - dragOffsetRef.current.x,
+            y: e.clientY - dragOffsetRef.current.y,
           },
         });
       }
-      if (isResizing && resizeDirection) {
-        const deltaX = e.clientX - (windowState.position.x + windowState.size.width);
-        const deltaY = e.clientY - (windowState.position.y + windowState.size.height);
+      if (isResizing && resizeDirectionRef.current) {
+        const deltaX = e.clientX - (currentWindowState.position.x + currentWindowState.size.width);
+        const deltaY = e.clientY - (currentWindowState.position.y + currentWindowState.size.height);
 
-        let newWidth = windowState.size.width;
-        let newHeight = windowState.size.height;
+        let newWidth = currentWindowState.size.width;
+        let newHeight = currentWindowState.size.height;
+        const dir = resizeDirectionRef.current;
 
-        if (resizeDirection.includes('e')) newWidth += deltaX;
-        if (resizeDirection.includes('s')) newHeight += deltaY;
-        if (resizeDirection.includes('w')) {
+        if (dir.includes('e')) newWidth += deltaX;
+        if (dir.includes('s')) newHeight += deltaY;
+        if (dir.includes('w')) {
           newWidth -= deltaX;
         }
-        if (resizeDirection.includes('n')) {
+        if (dir.includes('n')) {
           newHeight -= deltaY;
         }
 
         newWidth = Math.max(state.settings.window.minSize.width, newWidth);
         newHeight = Math.max(state.settings.window.minSize.height, newHeight);
 
-        updateWindow(windowState.id, {
+        updateWindow(currentWindowState.id, {
           size: { width: newWidth, height: newHeight },
         });
       }
@@ -97,7 +104,6 @@ export function Window({ windowState, children }: WindowProps) {
     const handleMouseUp = () => {
       setIsDragging(false);
       setIsResizing(false);
-      setResizeDirection('');
     };
 
     if (isDragging || isResizing) {
@@ -109,7 +115,7 @@ export function Window({ windowState, children }: WindowProps) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isResizing, dragOffset, resizeDirection, windowState, updateWindow, state.settings.window.minSize]);
+  }, [isDragging, isResizing, updateWindow, state.settings.window.minSize]);
 
   return (
     <div
@@ -126,16 +132,16 @@ export function Window({ windowState, children }: WindowProps) {
       onMouseDown={handleMouseDown}
     >
       <div className="window-header" onMouseDown={handleHeaderMouseDown}>
-        <div className="window-controls">
-          <div className="window-control close" onClick={() => useDesktop().closeWindow(windowState.id)} />
-          <div className="window-control minimize" onClick={() => useDesktop().minimizeWindow(windowState.id)} />
-          <div className="window-control maximize" onClick={() => useDesktop().maximizeWindow(windowState.id)} />
-        </div>
+        <div style={{ width: 52 }} />
         <div className="window-title">
           <img src={windowState.icon || DEFAULT_ICON} alt="" className="window-title-icon" />
           {windowState.title}
         </div>
-        <div style={{ width: 52 }} />
+        <div className="window-controls">
+          <div className="window-control minimize" onClick={() => minimizeWindow(windowState.id)} />
+          <div className="window-control maximize" onClick={() => maximizeWindow(windowState.id)} />
+          <div className="window-control close" onClick={() => closeWindow(windowState.id)} />
+        </div>
       </div>
       <div className="window-content">
         {children}
@@ -358,62 +364,411 @@ interface SettingsAppProps {
   appId?: string;
 }
 
+type SettingsTab = 'desktop' | 'model' | 'app' | 'mcp' | 'skill';
+
 export function SettingsApp(_props: SettingsAppProps) {
   const { state, updateSettings } = useDesktop();
+  const [activeTab, setActiveTab] = useState<SettingsTab>('desktop');
   const [localSettings, setLocalSettings] = useState(state.settings);
+  const [modes, setModes] = useState<{ providers: ModelProvider[] }>({ providers: [] });
+  const [mcpConnections, setMcpConnections] = useState<{ connections: MCPConnection[] }>({ connections: [] });
+  const [skills, setSkills] = useState<{ skills: Skill[]; globalEnabled: boolean }>({ skills: [], globalEnabled: true });
+  const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
 
   useEffect(() => {
     setLocalSettings(state.settings);
   }, [state.settings]);
+
+  useEffect(() => {
+    loadModes();
+    loadMcpSettings();
+    loadSkillSettings();
+    loadInstalledApps();
+  }, []);
+
+  const loadModes = async () => {
+    try {
+      const data = await api.getModes();
+      setModes(data);
+    } catch (error) {
+      console.error('Failed to load modes:', error);
+    }
+  };
+
+  const loadMcpSettings = async () => {
+    try {
+      const data = await api.getMcpSettings();
+      setMcpConnections(data);
+    } catch (error) {
+      console.error('Failed to load MCP settings:', error);
+    }
+  };
+
+  const loadSkillSettings = async () => {
+    try {
+      const data = await api.getSkillSettings();
+      setSkills(data);
+    } catch (error) {
+      console.error('Failed to load skill settings:', error);
+    }
+  };
+
+  const loadInstalledApps = async () => {
+    try {
+      const apps = await api.getApps();
+      setInstalledApps(apps);
+    } catch (error) {
+      console.error('Failed to load apps:', error);
+    }
+  };
 
   const handleThemeChange = async (theme: 'light' | 'dark' | 'auto') => {
     setLocalSettings({ ...localSettings, theme });
     await updateSettings({ theme });
   };
 
+  const handleModesUpdate = async (newModes: typeof modes) => {
+    try {
+      const updated = await api.updateModes(newModes);
+      setModes(updated);
+    } catch (error) {
+      console.error('Failed to update modes:', error);
+    }
+  };
+
+  const handleMcpUpdate = async (newMcp: typeof mcpConnections) => {
+    try {
+      const updated = await api.updateMcpSettings(newMcp);
+      setMcpConnections(updated);
+    } catch (error) {
+      console.error('Failed to update MCP settings:', error);
+    }
+  };
+
+  const handleSkillUpdate = async (newSkills: typeof skills) => {
+    try {
+      const updated = await api.updateSkillSettings(newSkills);
+      setSkills(updated);
+    } catch (error) {
+      console.error('Failed to update skill settings:', error);
+    }
+  };
+
+  const tabs: { id: SettingsTab; label: string }[] = [
+    { id: 'desktop', label: '桌面' },
+    { id: 'model', label: '模型' },
+    { id: 'app', label: '应用' },
+    { id: 'mcp', label: 'MCP' },
+    { id: 'skill', label: '技能' },
+  ];
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'desktop':
+        return (
+          <>
+            <div className="settings-section">
+              <h3>外观</h3>
+              <div className="settings-item">
+                <label>主题</label>
+                <select
+                  value={localSettings.theme}
+                  onChange={(e) => handleThemeChange(e.target.value as 'light' | 'dark' | 'auto')}
+                  style={{
+                    padding: '6px 12px',
+                    background: 'rgba(255,255,255,0.1)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: 'white',
+                  }}
+                >
+                  <option value="light">浅色</option>
+                  <option value="dark">深色</option>
+                  <option value="auto">自动</option>
+                </select>
+              </div>
+              <div className="settings-item">
+                <label>壁纸</label>
+                <input
+                  type="text"
+                  value={localSettings.wallpaper}
+                  onChange={(e) => setLocalSettings({ ...localSettings, wallpaper: e.target.value })}
+                  onBlur={() => updateSettings({ wallpaper: localSettings.wallpaper })}
+                  style={{
+                    padding: '6px 12px',
+                    background: 'rgba(255,255,255,0.1)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: 'white',
+                    width: 200,
+                  }}
+                />
+              </div>
+            </div>
+            <div className="settings-section">
+              <h3>Dock</h3>
+              <div className="settings-item">
+                <label>位置</label>
+                <select
+                  value={localSettings.dock.position}
+                  onChange={(e) => {
+                    const newDock = { ...localSettings.dock, position: e.target.value as 'bottom' | 'left' | 'right' };
+                    setLocalSettings({ ...localSettings, dock: newDock });
+                    updateSettings({ dock: newDock });
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    background: 'rgba(255,255,255,0.1)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: 'white',
+                  }}
+                >
+                  <option value="bottom">底部</option>
+                  <option value="left">左侧</option>
+                  <option value="right">右侧</option>
+                </select>
+              </div>
+              <div className="settings-item">
+                <label>放大效果</label>
+                <input
+                  type="checkbox"
+                  checked={localSettings.dock.magnification}
+                  onChange={(e) => {
+                    const newDock = { ...localSettings.dock, magnification: e.target.checked };
+                    setLocalSettings({ ...localSettings, dock: newDock });
+                    updateSettings({ dock: newDock });
+                  }}
+                />
+              </div>
+              <div className="settings-item">
+                <label>自动隐藏</label>
+                <input
+                  type="checkbox"
+                  checked={localSettings.dock.autoHide}
+                  onChange={(e) => {
+                    const newDock = { ...localSettings.dock, autoHide: e.target.checked };
+                    setLocalSettings({ ...localSettings, dock: newDock });
+                    updateSettings({ dock: newDock });
+                  }}
+                />
+              </div>
+            </div>
+            <div className="settings-section">
+              <h3>窗口</h3>
+              <div className="settings-item">
+                <label>默认大小</label>
+                <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                  {state.settings.window.defaultSize.width} x {state.settings.window.defaultSize.height}
+                </span>
+              </div>
+            </div>
+            <div className="settings-section">
+              <h3>菜单栏</h3>
+              <div className="settings-item">
+                <label>自动隐藏</label>
+                <input
+                  type="checkbox"
+                  checked={localSettings.menuBar.autoHide}
+                  onChange={(e) => {
+                    const newMenuBar = { ...localSettings.menuBar, autoHide: e.target.checked };
+                    setLocalSettings({ ...localSettings, menuBar: newMenuBar });
+                    updateSettings({ menuBar: newMenuBar });
+                  }}
+                />
+              </div>
+            </div>
+          </>
+        );
+
+      case 'model':
+        return (
+          <div className="settings-section">
+            <h3>模型提供商</h3>
+            {modes.providers.map((provider, index) => (
+              <div key={provider.name} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <label>提供商</label>
+                  <span style={{ color: 'var(--text-secondary)' }}>{provider.name}</span>
+                </div>
+                <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <label>API Key</label>
+                  <input
+                    type="password"
+                    value={provider.apiKey || ''}
+                    onChange={(e) => {
+                      const newProviders = [...modes.providers];
+                      newProviders[index] = { ...provider, apiKey: e.target.value };
+                      setModes({ providers: newProviders });
+                    }}
+                    onBlur={() => handleModesUpdate(modes)}
+                    placeholder="输入 API Key"
+                    style={{
+                      padding: '6px 12px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: 'none',
+                      borderRadius: 6,
+                      color: 'white',
+                      width: 200,
+                    }}
+                  />
+                </div>
+                <div className="settings-item">
+                  <label>Base URL</label>
+                  <input
+                    type="text"
+                    value={provider.baseUrl || ''}
+                    onChange={(e) => {
+                      const newProviders = [...modes.providers];
+                      newProviders[index] = { ...provider, baseUrl: e.target.value };
+                      setModes({ providers: newProviders });
+                    }}
+                    onBlur={() => handleModesUpdate(modes)}
+                    placeholder="https://api.openai.com/v1"
+                    style={{
+                      padding: '6px 12px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: 'none',
+                      borderRadius: 6,
+                      color: 'white',
+                      width: 250,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+
+      case 'app':
+        return (
+          <div className="settings-section">
+            <h3>已安装应用</h3>
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {installedApps.map((app) => (
+                <div key={app.id} className="settings-item">
+                  <div>
+                    <span style={{ color: 'var(--text-primary)' }}>{app.name}</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 11, marginLeft: 8 }}>
+                      {app.source} • {app.type}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
+      case 'mcp':
+        return (
+          <div className="settings-section">
+            <h3>MCP 服务连接</h3>
+            {mcpConnections.connections.length === 0 ? (
+              <div style={{ color: 'var(--text-secondary)', padding: 20, textAlign: 'center' }}>
+                暂无 MCP 服务连接
+              </div>
+            ) : (
+              mcpConnections.connections.map((conn) => (
+                <div key={conn.id} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                  <div className="settings-item" style={{ marginBottom: 8 }}>
+                    <label>名称</label>
+                    <span style={{ color: 'var(--text-primary)' }}>{conn.name}</span>
+                  </div>
+                  <div className="settings-item" style={{ marginBottom: 8 }}>
+                    <label>命令</label>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{conn.command}</span>
+                  </div>
+                  <div className="settings-item">
+                    <label>启用</label>
+                    <input
+                      type="checkbox"
+                      checked={conn.enabled}
+                      onChange={(e) => {
+                        const newConnections = mcpConnections.connections.map(c =>
+                          c.id === conn.id ? { ...c, enabled: e.target.checked } : c
+                        );
+                        handleMcpUpdate({ connections: newConnections });
+                      }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        );
+
+      case 'skill':
+        return (
+          <div className="settings-section">
+            <h3>技能设置</h3>
+            <div className="settings-item" style={{ marginBottom: 16 }}>
+              <label>全局启用</label>
+              <input
+                type="checkbox"
+                checked={skills.globalEnabled}
+                onChange={(e) => handleSkillUpdate({ ...skills, globalEnabled: e.target.checked })}
+              />
+            </div>
+            {skills.skills.length === 0 ? (
+              <div style={{ color: 'var(--text-secondary)', padding: 20, textAlign: 'center' }}>
+                暂无技能配置
+              </div>
+            ) : (
+              skills.skills.map((skill) => (
+                <div key={skill.id} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                  <div className="settings-item" style={{ marginBottom: 8 }}>
+                    <label>名称</label>
+                    <span style={{ color: 'var(--text-primary)' }}>{skill.name}</span>
+                  </div>
+                  <div className="settings-item" style={{ marginBottom: 8 }}>
+                    <label>描述</label>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{skill.description}</span>
+                  </div>
+                  <div className="settings-item">
+                    <label>启用</label>
+                    <input
+                      type="checkbox"
+                      checked={skill.enabled}
+                      onChange={(e) => {
+                        const newSkills = skills.skills.map(s =>
+                          s.id === skill.id ? { ...s, enabled: e.target.checked } : s
+                        );
+                        handleSkillUpdate({ ...skills, skills: newSkills });
+                      }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        );
+    }
+  };
+
   return (
-    <div className="settings-app">
-      <div className="settings-section">
-        <h3>外观</h3>
-        <div className="settings-item">
-          <label>主题</label>
-          <select
-            value={localSettings.theme}
-            onChange={(e) => handleThemeChange(e.target.value as 'light' | 'dark' | 'auto')}
+    <div className="settings-app" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '6px 12px',
-              background: 'rgba(255,255,255,0.1)',
+              padding: '6px 16px',
+              background: activeTab === tab.id ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)',
               border: 'none',
               borderRadius: 6,
               color: 'white',
+              cursor: 'pointer',
+              fontSize: 13,
+              transition: 'background 0.15s',
             }}
           >
-            <option value="light">浅色</option>
-            <option value="dark">深色</option>
-            <option value="auto">自动</option>
-          </select>
-        </div>
-        <div className="settings-item">
-          <label>Dock 放大效果</label>
-          <input
-            type="checkbox"
-            checked={localSettings.dock.magnification}
-            onChange={(e) => {
-              const newDock = { ...localSettings.dock, magnification: e.target.checked };
-              setLocalSettings({ ...localSettings, dock: newDock });
-              updateSettings({ dock: newDock });
-            }}
-          />
-        </div>
+            {tab.label}
+          </button>
+        ))}
       </div>
-      <div className="settings-section">
-        <h3>窗口</h3>
-        <div className="settings-item">
-          <label>默认大小</label>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-            {state.settings.window.defaultSize.width} x {state.settings.window.defaultSize.height}
-          </span>
-        </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        {renderTabContent()}
       </div>
     </div>
   );

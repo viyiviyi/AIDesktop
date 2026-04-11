@@ -1,4 +1,4 @@
-import type { App, AppInfo, Conversation, DesktopSettings, Message, Content } from '../types';
+import type { App, AppInfo, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill } from '../types';
 
 const API_BASE = '/api';
 
@@ -137,6 +137,55 @@ export async function updateSettings(settings: Partial<DesktopSettings>): Promis
   return fetchJson<DesktopSettings>('/settings', {
     method: 'PUT',
     body: JSON.stringify(settings),
+  });
+}
+
+// Model Settings
+export async function getModes(): Promise<{ providers: ModelProvider[] }> {
+  return fetchJson<{ providers: ModelProvider[] }>('/settings/modes');
+}
+
+export async function updateModes(modes: { providers: ModelProvider[] }): Promise<{ providers: ModelProvider[] }> {
+  return fetchJson<{ providers: ModelProvider[] }>('/settings/modes', {
+    method: 'PUT',
+    body: JSON.stringify(modes),
+  });
+}
+
+// MCP Settings
+export async function getMcpSettings(): Promise<{ connections: MCPConnection[] }> {
+  return fetchJson<{ connections: MCPConnection[] }>('/settings/mcp');
+}
+
+export async function updateMcpSettings(mcp: { connections: MCPConnection[] }): Promise<{ connections: MCPConnection[] }> {
+  return fetchJson<{ connections: MCPConnection[] }>('/settings/mcp', {
+    method: 'PUT',
+    body: JSON.stringify(mcp),
+  });
+}
+
+export async function connectMcp(connection: Omit<MCPConnection, 'id'>): Promise<{ connections: MCPConnection[] }> {
+  return fetchJson<{ connections: MCPConnection[] }>('/settings/mcp/connect', {
+    method: 'POST',
+    body: JSON.stringify(connection),
+  });
+}
+
+export async function disconnectMcp(connectionId: string): Promise<{ connections: MCPConnection[] }> {
+  return fetchJson<{ connections: MCPConnection[] }>(`/settings/mcp/${connectionId}`, {
+    method: 'DELETE',
+  });
+}
+
+// Skill Settings
+export async function getSkillSettings(): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
+  return fetchJson<{ skills: Skill[]; globalEnabled: boolean }>('/settings/skills');
+}
+
+export async function updateSkillSettings(skills: { skills: Skill[]; globalEnabled: boolean }): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
+  return fetchJson<{ skills: Skill[]; globalEnabled: boolean }>('/settings/skills', {
+    method: 'PUT',
+    body: JSON.stringify(skills),
   });
 }
 

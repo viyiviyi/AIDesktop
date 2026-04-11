@@ -168,8 +168,9 @@ desktop_data/
 │
 └── configs/                           # 配置文件
     ├── setting.json                   # 桌面设置
-    ├── mcp.json                       # 全局MCP配置
-    └── modes.json                     # 模型配置
+    ├── modes.json                     # 模型配置
+    ├── mcp.json                       # MCP服务配置
+    └── skills.json                    # 技能配置
 ```
 
 **应用来源分类**：
@@ -279,6 +280,49 @@ desktop_data/
     "width": 600,
     "height": 500
   }
+}
+```
+
+#### 3.2.4 MCP配置 (configs/mcp.json)
+
+```json
+{
+  "connections": [
+    {
+      "id": "conn-uuid",
+      "name": "文件系统服务",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./data"],
+      "enabled": true,
+      "services": [
+        {
+          "name": "mcp.filesystem",
+          "description": "File system service",
+          "methods": ["read", "write", "list", "mkdir", "delete"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### 3.2.5 技能配置 (configs/skills.json)
+
+```json
+{
+  "skills": [
+    {
+      "id": "skill-uuid",
+      "name": "web-search",
+      "description": "网络搜索技能",
+      "enabled": true,
+      "config": {
+        "apiKey": "",
+        "maxResults": 5
+      }
+    }
+  ],
+  "globalEnabled": true
 }
 ```
 
@@ -479,6 +523,31 @@ interface Window {
 |------|------|------|
 | GET | /api/settings | 获取桌面设置 |
 | PUT | /api/settings | 更新桌面设置 |
+
+#### 5.1.6 模型设置
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | /api/settings/modes | 获取模型提供商配置 |
+| PUT | /api/settings/modes | 更新模型提供商配置 |
+
+#### 5.1.7 MCP设置
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | /api/settings/mcp | 获取MCP服务配置 |
+| PUT | /api/settings/mcp | 更新MCP服务配置 |
+| POST | /api/settings/mcp/connect | 连接新的MCP服务 |
+| DELETE | /api/settings/mcp/:connectionId | 断开MCP服务连接 |
+
+#### 5.1.8 Skill设置
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | /api/settings/skills | 获取技能配置 |
+| PUT | /api/settings/skills | 更新技能配置 |
+| POST | /api/settings/skills | 添加新技能 |
+| DELETE | /api/settings/skills/:skillId | 删除技能 |
 
 ### 5.2 请求/响应示例
 
@@ -700,12 +769,40 @@ interface ChatStreamEvent {
 
 **类型**: 桌面应用
 
-**功能**:
+**功能**: 系统设置分为5个模块：
+
+#### 7.3.1 桌面设置
 - 主题切换（浅色/深色/自动）
 - 壁纸设置
-- Dock配置
-- 模型配置
-- MCP服务管理
+- Dock配置（位置、放大效果、自动隐藏）
+- 窗口配置（默认大小、最小大小）
+- 菜单栏配置（自动隐藏）
+- 开始菜单配置（宽度、高度）
+
+#### 7.3.2 模型设置
+- 模型提供商列表（OpenAI、Anthropic等）
+- API Key配置
+- Base URL配置
+- 默认模型选择
+
+#### 7.3.3 应用设置
+- 查看已安装应用列表
+- 应用启用/禁用
+- 应用权限管理
+- 应用排序
+
+#### 7.3.4 MCP设置
+- 查看已连接MCP服务
+- 添加新MCP服务连接
+- 移除MCP服务连接
+- MCP服务状态监控
+
+#### 7.3.5 Skill设置
+- 查看可用技能列表
+- 添加新技能
+- 编辑技能配置
+- 删除技能
+- 技能授权管理
 
 ### 7.4 剪贴板服务 (clipboard)
 

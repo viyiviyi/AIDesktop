@@ -127,6 +127,38 @@ export interface DesktopSettings {
   startMenu: StartMenuSettings;
 }
 
+// Model Provider
+export interface ModelProvider {
+  name: string;
+  apiKey?: string;
+  baseUrl?: string;
+}
+
+// MCP
+export interface MCPService {
+  name: string;
+  description: string;
+  methods: string[];
+}
+
+export interface MCPConnection {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+  services: MCPService[];
+}
+
+// Skill
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+}
+
 // Window State
 export interface WindowState {
   id: string;

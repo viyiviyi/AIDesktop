@@ -133,7 +133,26 @@ export interface MCPConnection {
   name: string;
   command: string;
   args: string[];
+  enabled: boolean;
   services: MCPService[];
+}
+
+export interface MCPConfig {
+  connections: MCPConnection[];
+}
+
+// Skill
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+}
+
+export interface SkillConfig {
+  skills: Skill[];
+  globalEnabled: boolean;
 }
 
 // Settings
