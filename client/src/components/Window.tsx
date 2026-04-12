@@ -389,6 +389,8 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [fetchedModels, setFetchedModels] = useState<ProviderModel[]>([]);
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [defaultModel, setDefaultModel] = useState<{ providerId: string; modelId: string } | null>(null);
+  const [showManualAddModel, setShowManualAddModel] = useState(false);
+  const [manualModel, setManualModel] = useState<{ id: string; name: string; maxTokens: number; supportsText: boolean; supportsImage: boolean }>({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
 
   // Edit provider state
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
@@ -400,6 +402,8 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [editFetchedModels, setEditFetchedModels] = useState<ProviderModel[]>([]);
   const [editSelectedModels, setEditSelectedModels] = useState<Set<string>>(new Set());
   const [editFetching, setEditFetching] = useState(false);
+  const [editShowManualAddModel, setEditShowManualAddModel] = useState(false);
+  const [editManualModel, setEditManualModel] = useState<{ id: string; name: string; maxTokens: number; supportsText: boolean; supportsImage: boolean }>({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
 
   useEffect(() => {
     setLocalSettings(state.settings);
@@ -453,13 +457,30 @@ export function SettingsApp(_props: SettingsAppProps) {
     setSelectedModels(newSelected);
   };
 
+  const handleAddManualModel = () => {
+    if (!manualModel.id || !manualModel.name) {
+      alert('请填写模型ID和名称');
+      return;
+    }
+    const supports: ('text' | 'image')[] = [];
+    if (manualModel.supportsText) supports.push('text');
+    if (manualModel.supportsImage) supports.push('image');
+    const newModel: ProviderModel = {
+      id: manualModel.id,
+      name: manualModel.name,
+      maxTokens: manualModel.maxTokens,
+      supports,
+      params: { temperature: 0.7, top_p: 0.9 }
+    };
+    setFetchedModels([...fetchedModels, newModel]);
+    setSelectedModels(new Set([...selectedModels, newModel.id]));
+    setManualModel({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
+    setShowManualAddModel(false);
+  };
+
   const handleAddProvider = async () => {
     if (!newProvider.id || !newProvider.name) {
       alert('请填写提供商ID和名称');
-      return;
-    }
-    if (!newProvider.apiKey || !newProvider.baseUrl) {
-      alert('请填写API Key和Base URL');
       return;
     }
 
@@ -467,8 +488,8 @@ export function SettingsApp(_props: SettingsAppProps) {
       id: newProvider.id,
       name: newProvider.name,
       apiType: newProvider.apiType,
-      apiKey: newProvider.apiKey,
-      baseUrl: newProvider.baseUrl,
+      apiKey: newProvider.apiKey || '',
+      baseUrl: newProvider.baseUrl || '',
       enabled: true,
       models: fetchedModels.filter(m => selectedModels.has(m.id))
     };
@@ -554,6 +575,27 @@ export function SettingsApp(_props: SettingsAppProps) {
       newSelected.add(modelId);
     }
     setEditSelectedModels(newSelected);
+  };
+
+  const handleEditAddManualModel = () => {
+    if (!editManualModel.id || !editManualModel.name) {
+      alert('请填写模型ID和名称');
+      return;
+    }
+    const supports: ('text' | 'image')[] = [];
+    if (editManualModel.supportsText) supports.push('text');
+    if (editManualModel.supportsImage) supports.push('image');
+    const newModel: ProviderModel = {
+      id: editManualModel.id,
+      name: editManualModel.name,
+      maxTokens: editManualModel.maxTokens,
+      supports,
+      params: { temperature: 0.7, top_p: 0.9 }
+    };
+    setEditFetchedModels([...editFetchedModels, newModel]);
+    setEditSelectedModels(new Set([...editSelectedModels, newModel.id]));
+    setEditManualModel({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
+    setEditShowManualAddModel(false);
   };
 
   const handleSaveEditProvider = async () => {
@@ -987,6 +1029,125 @@ export function SettingsApp(_props: SettingsAppProps) {
                   </div>
                 )}
 
+                {/* Manual Model Addition */}
+                <div style={{ marginTop: 12, borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: 12 }}>
+                  {!showManualAddModel ? (
+                    <button
+                      onClick={() => setShowManualAddModel(true)}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px dashed rgba(255,255,255,0.2)',
+                        borderRadius: 6,
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                      }}
+                    >
+                      + 手动添加模型
+                    </button>
+                  ) : (
+                    <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>手动添加模型</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: 8, marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          value={manualModel.id}
+                          onChange={(e) => setManualModel({ ...manualModel, id: e.target.value })}
+                          placeholder="模型ID (如 gpt-4)"
+                          style={{
+                            padding: '6px 10px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: 4,
+                            color: 'white',
+                            fontSize: 12,
+                          }}
+                        />
+                        <input
+                          type="text"
+                          value={manualModel.name}
+                          onChange={(e) => setManualModel({ ...manualModel, name: e.target.value })}
+                          placeholder="显示名称"
+                          style={{
+                            padding: '6px 10px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: 4,
+                            color: 'white',
+                            fontSize: 12,
+                          }}
+                        />
+                        <input
+                          type="number"
+                          value={manualModel.maxTokens}
+                          onChange={(e) => setManualModel({ ...manualModel, maxTokens: parseInt(e.target.value) || 128000 })}
+                          placeholder="最大Token"
+                          style={{
+                            padding: '6px 10px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: 4,
+                            color: 'white',
+                            fontSize: 12,
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={manualModel.supportsText}
+                            onChange={(e) => setManualModel({ ...manualModel, supportsText: e.target.checked })}
+                          />
+                          文本
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={manualModel.supportsImage}
+                            onChange={(e) => setManualModel({ ...manualModel, supportsImage: e.target.checked })}
+                          />
+                          图像
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={handleAddManualModel}
+                          style={{
+                            padding: '6px 12px',
+                            background: 'var(--accent-color)',
+                            border: 'none',
+                            borderRadius: 4,
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontSize: 12,
+                          }}
+                        >
+                          添加
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowManualAddModel(false);
+                            setManualModel({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: 'none',
+                            borderRadius: 4,
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontSize: 12,
+                          }}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                   <button
                     onClick={() => {
@@ -1008,18 +1169,18 @@ export function SettingsApp(_props: SettingsAppProps) {
                   </button>
                   <button
                     onClick={handleAddProvider}
-                    disabled={!newProvider.id || !newProvider.name || selectedModels.size === 0}
+                    disabled={!newProvider.id || !newProvider.name}
                     style={{
                       padding: '8px 16px',
-                      background: selectedModels.size > 0 ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)',
+                      background: newProvider.id && newProvider.name ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)',
                       border: 'none',
                       borderRadius: 6,
                       color: 'white',
-                      cursor: selectedModels.size > 0 ? 'pointer' : 'not-allowed',
+                      cursor: newProvider.id && newProvider.name ? 'pointer' : 'not-allowed',
                       fontSize: 13,
                     }}
                   >
-                    添加
+                    {selectedModels.size === 0 ? '添加（稍后配置模型）' : '添加'}
                   </button>
                 </div>
               </div>
@@ -1173,6 +1334,125 @@ export function SettingsApp(_props: SettingsAppProps) {
                         </div>
                       </div>
                     )}
+
+                    {/* Manual Model Addition for Edit */}
+                    <div style={{ marginTop: 12, borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: 12 }}>
+                      {!editShowManualAddModel ? (
+                        <button
+                          onClick={() => setEditShowManualAddModel(true)}
+                          style={{
+                            padding: '6px 12px',
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px dashed rgba(255,255,255,0.2)',
+                            borderRadius: 6,
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            fontSize: 12,
+                          }}
+                        >
+                          + 手动添加模型
+                        </button>
+                      ) : (
+                        <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>手动添加模型</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: 8, marginBottom: 8 }}>
+                            <input
+                              type="text"
+                              value={editManualModel.id}
+                              onChange={(e) => setEditManualModel({ ...editManualModel, id: e.target.value })}
+                              placeholder="模型ID (如 gpt-4)"
+                              style={{
+                                padding: '6px 10px',
+                                background: 'rgba(255,255,255,0.1)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                borderRadius: 4,
+                                color: 'white',
+                                fontSize: 12,
+                              }}
+                            />
+                            <input
+                              type="text"
+                              value={editManualModel.name}
+                              onChange={(e) => setEditManualModel({ ...editManualModel, name: e.target.value })}
+                              placeholder="显示名称"
+                              style={{
+                                padding: '6px 10px',
+                                background: 'rgba(255,255,255,0.1)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                borderRadius: 4,
+                                color: 'white',
+                                fontSize: 12,
+                              }}
+                            />
+                            <input
+                              type="number"
+                              value={editManualModel.maxTokens}
+                              onChange={(e) => setEditManualModel({ ...editManualModel, maxTokens: parseInt(e.target.value) || 128000 })}
+                              placeholder="最大Token"
+                              style={{
+                                padding: '6px 10px',
+                                background: 'rgba(255,255,255,0.1)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                borderRadius: 4,
+                                color: 'white',
+                                fontSize: 12,
+                              }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={editManualModel.supportsText}
+                                onChange={(e) => setEditManualModel({ ...editManualModel, supportsText: e.target.checked })}
+                              />
+                              文本
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={editManualModel.supportsImage}
+                                onChange={(e) => setEditManualModel({ ...editManualModel, supportsImage: e.target.checked })}
+                              />
+                              图像
+                            </label>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              onClick={handleEditAddManualModel}
+                              style={{
+                                padding: '6px 12px',
+                                background: 'var(--accent-color)',
+                                border: 'none',
+                                borderRadius: 4,
+                                color: 'white',
+                                cursor: 'pointer',
+                                fontSize: 12,
+                              }}
+                            >
+                              添加
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditShowManualAddModel(false);
+                                setEditManualModel({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                background: 'rgba(255,255,255,0.1)',
+                                border: 'none',
+                                borderRadius: 4,
+                                color: 'white',
+                                cursor: 'pointer',
+                                fontSize: 12,
+                              }}
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   // View Mode

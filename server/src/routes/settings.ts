@@ -85,11 +85,15 @@ router.post('/modes/fetch-models', async (req: Request, res: Response) => {
       return;
     }
 
-    // Only OpenAI-compatible APIs are supported for now
+    // Try to fetch models for OpenAI-compatible and custom APIs
+    // Custom APIs are usually OpenAI-compatible but self-hosted
     if (apiType !== 'openai' && apiType !== 'custom') {
       res.json({ models: [] });
       return;
     }
+
+    // For custom APIs, still try OpenAI adapter since most custom APIs are OpenAI-compatible
+    // The distinction is that custom APIs might need different endpoints
 
     const adapter = new OpenAIAdapter(apiKey, baseUrl);
     const models = await adapter.listModels();
