@@ -179,6 +179,18 @@ export async function fetchModels(apiKey: string, baseUrl: string, apiType: stri
   });
 }
 
+// Default Model Config
+export async function getDefaultModel(): Promise<{ providerId: string; modelId: string }> {
+  return fetchJson<{ providerId: string; modelId: string }>('/settings/default-model');
+}
+
+export async function updateDefaultModel(config: { providerId: string; modelId: string }): Promise<{ providerId: string; modelId: string }> {
+  return fetchJson<{ providerId: string; modelId: string }>('/settings/default-model', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+}
+
 // MCP Settings
 export async function getMcpSettings(): Promise<{ connections: MCPConnection[] }> {
   return fetchJson<{ connections: MCPConnection[] }>('/settings/mcp');

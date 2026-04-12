@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
-import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel } from '../types';
+import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel, ContentType } from '../types';
 import * as api from '../services/api';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -418,15 +418,23 @@ export function SettingsApp(_props: SettingsAppProps) {
 
   const loadModes = async () => {
     try {
-      const data = await api.getModes();
+      const [data, defaultModelConfig] = await Promise.all([
+        api.getModes(),
+        api.getDefaultModel()
+      ]);
       setModes(data);
-      // Set default model from first enabled provider
-      const firstEnabled = data.providers.find(p => p.enabled && p.models.length > 0);
-      if (firstEnabled && firstEnabled.models.length > 0) {
-        setDefaultModel({ providerId: firstEnabled.id, modelId: firstEnabled.models[0].id });
-      }
+      setDefaultModel(defaultModelConfig);
     } catch (error) {
       console.error('Failed to load modes:', error);
+    }
+  };
+
+  const handleSetDefaultModel = async (providerId: string, modelId: string) => {
+    try {
+      const updated = await api.updateDefaultModel({ providerId, modelId });
+      setDefaultModel(updated);
+    } catch (error) {
+      console.error('Failed to set default model:', error);
     }
   };
 
@@ -675,16 +683,29 @@ export function SettingsApp(_props: SettingsAppProps) {
     if (!app) return;
 
     const provider = modes.providers.find(p => p.id === providerId);
-    const model = provider?.models?.find(m => m.id === modelId);
-    if (!model) return;
+    if (!provider) return;
+
+    // If modelId is provided, get model details
+    let maxTokens = 128000;
+    let supports: ContentType[] = ['text'];
+    let params: { temperature?: number; top_p?: number } = { temperature: 0.7, top_p: 0.9 };
+
+    if (modelId) {
+      const model = provider.models.find(m => m.id === modelId);
+      if (model) {
+        maxTokens = model.maxTokens;
+        supports = model.supports;
+        params = model.params || { temperature: 0.7, top_p: 0.9 };
+      }
+    }
 
     const newModelConfig = {
       provider: providerId,
       model: modelId,
       priority: 1,
-      maxTokens: model.maxTokens,
-      supports: model.supports,
-      params: model.params || {}
+      maxTokens,
+      supports,
+      params
     };
 
     try {
@@ -850,6 +871,79 @@ export function SettingsApp(_props: SettingsAppProps) {
       case 'model':
         return (
           <div className="settings-section">
+            {/* Default Model Configuration */}
+            <div style={{ marginBottom: 20, padding: 16, background: 'rgba(255,255,255,0.08)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-primary)' }}>默认模型</h4>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 12, margin: '0 0 12px 0' }}>
+                设置系统默认使用的模型，可被应用设置中的模型配置覆盖
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>提供商</label>
+                  <select
+                    value={defaultModel?.providerId || ''}
+                    onChange={(e) => {
+                      const providerId = e.target.value;
+                      const provider = modes.providers.find(p => p.id === providerId);
+                      if (provider && provider.models.length > 0) {
+                        handleSetDefaultModel(providerId, provider.models[0].id);
+                      } else {
+                        handleSetDefaultModel(providerId, '');
+                      }
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: 6,
+                      color: 'white',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <option value="">选择提供商...</option>
+                    {modes.providers.filter(p => p.enabled && p.models.length > 0).map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>模型</label>
+                  <select
+                    value={defaultModel?.modelId || ''}
+                    onChange={(e) => {
+                      if (defaultModel?.providerId) {
+                        handleSetDefaultModel(defaultModel.providerId, e.target.value);
+                      }
+                    }}
+                    disabled={!defaultModel?.providerId}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: 6,
+                      color: 'white',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      opacity: defaultModel?.providerId ? 1 : 0.5,
+                    }}
+                  >
+                    <option value="">选择模型...</option>
+                    {defaultModel?.providerId && (
+                      modes.providers.find(p => p.id === defaultModel.providerId)?.models.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
+              {defaultModel?.providerId && defaultModel?.modelId && (
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                  当前默认: {modes.providers.find(p => p.id === defaultModel.providerId)?.name} / {modes.providers.find(p => p.id === defaultModel.providerId)?.models.find(m => m.id === defaultModel.modelId)?.name}
+                </div>
+              )}
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <h3 style={{ margin: 0 }}>模型提供商</h3>
@@ -1474,11 +1568,6 @@ export function SettingsApp(_props: SettingsAppProps) {
                               已禁用
                             </span>
                           )}
-                          {defaultModel?.providerId === provider.id && (
-                            <span style={{ background: 'var(--accent-color)', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
-                              默认
-                            </span>
-                          )}
                         </div>
                         <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{provider.baseUrl}</span>
                       </div>
@@ -1496,22 +1585,6 @@ export function SettingsApp(_props: SettingsAppProps) {
                           }}
                         >
                           编辑
-                        </button>
-                        <button
-                          onClick={() => setDefaultModel({ providerId: provider.id, modelId: provider.models[0]?.id || '' })}
-                          disabled={!provider.enabled || provider.models.length === 0}
-                          style={{
-                            padding: '4px 10px',
-                            background: 'rgba(255,255,255,0.1)',
-                            border: 'none',
-                            borderRadius: 4,
-                            color: 'white',
-                            cursor: provider.enabled && provider.models.length > 0 ? 'pointer' : 'not-allowed',
-                            fontSize: 11,
-                            opacity: provider.enabled && provider.models.length > 0 ? 1 : 0.5,
-                          }}
-                        >
-                          设为默认
                         </button>
                         <button
                           onClick={() => handleDeleteProvider(provider.id)}
@@ -1552,14 +1625,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                               key={model.id}
                               style={{
                                 padding: '4px 10px',
-                                background: defaultModel?.providerId === provider.id && defaultModel?.modelId === model.id
-                                  ? 'var(--accent-color)'
-                                  : 'rgba(255,255,255,0.08)',
+                                background: 'rgba(255,255,255,0.08)',
                                 borderRadius: 4,
                                 fontSize: 12,
-                                color: defaultModel?.providerId === provider.id && defaultModel?.modelId === model.id
-                                  ? 'white'
-                                  : 'var(--text-secondary)',
+                                color: 'var(--text-secondary)',
                               }}
                             >
                               {model.name}

@@ -64,11 +64,23 @@ const DEFAULT_SKILLS: { skills: Skill[]; globalEnabled: boolean } = {
   globalEnabled: true
 };
 
+// Default model configuration
+interface DefaultModelConfig {
+  providerId: string;
+  modelId: string;
+}
+
+const DEFAULT_MODEL_CONFIG: DefaultModelConfig = {
+  providerId: '',
+  modelId: ''
+};
+
 class SettingsService {
   private settings: DesktopSettings | null = null;
   private modes: { providers: ModelProvider[] } | null = null;
   private mcp: { connections: MCPConnection[] } | null = null;
   private skills: { skills: Skill[]; globalEnabled: boolean } | null = null;
+  private modelConfig: DefaultModelConfig | null = null;
 
   async getSettings(): Promise<DesktopSettings> {
     if (!this.settings) {
@@ -233,6 +245,27 @@ class SettingsService {
     this.skills!.skills = this.skills!.skills.filter(s => s.id !== skillId);
     await writeJsonFile(path.join(CONFIGS_DIR, 'skills.json'), this.skills);
     return { skills: this.skills!.skills, globalEnabled: this.skills!.globalEnabled };
+  }
+
+  // Default Model Config
+  async getDefaultModel(): Promise<DefaultModelConfig> {
+    if (!this.modelConfig) {
+      await this.loadModelConfig();
+    }
+    return { ...this.modelConfig! };
+  }
+
+  private async loadModelConfig(): Promise<void> {
+    await ensureDir(CONFIGS_DIR);
+    const config = await readJsonFile<DefaultModelConfig>(path.join(CONFIGS_DIR, 'models.json'));
+    this.modelConfig = config || { ...DEFAULT_MODEL_CONFIG };
+  }
+
+  async updateDefaultModel(config: DefaultModelConfig): Promise<DefaultModelConfig> {
+    await ensureDir(CONFIGS_DIR);
+    this.modelConfig = { ...config };
+    await writeJsonFile(path.join(CONFIGS_DIR, 'models.json'), this.modelConfig);
+    return { ...this.modelConfig };
   }
 }
 

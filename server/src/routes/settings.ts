@@ -184,4 +184,24 @@ router.delete('/skills/:skillId', async (req: Request, res: Response) => {
   }
 });
 
+// Get default model config
+router.get('/default-model', async (req: Request, res: Response) => {
+  try {
+    const config = await settingsService.getDefaultModel();
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Update default model config
+router.put('/default-model', async (req: Request, res: Response) => {
+  try {
+    const config = await settingsService.updateDefaultModel(req.body);
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 export default router;
