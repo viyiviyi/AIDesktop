@@ -293,15 +293,15 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
   return (
     <div className="app-chat">
-      <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+      <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border-primary)' }}>
         <button
           onClick={createNewConversation}
           style={{
             padding: '4px 12px',
-            background: 'rgba(255,255,255,0.1)',
+            background: 'var(--bg-primary)',
             border: 'none',
             borderRadius: 4,
-            color: 'white',
+            color: 'var(--text-primary)',
             cursor: 'pointer',
             fontSize: 12,
           }}
@@ -314,10 +314,10 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
           style={{
             flex: 1,
             padding: '4px 8px',
-            background: 'rgba(255,255,255,0.1)',
+            background: 'var(--bg-primary)',
             border: 'none',
             borderRadius: 4,
-            color: 'white',
+            color: 'var(--text-primary)',
             fontSize: 12,
           }}
         >
@@ -763,10 +763,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                   onChange={(e) => handleThemeChange(e.target.value as 'light' | 'dark' | 'auto')}
                   style={{
                     padding: '6px 12px',
-                    background: 'rgba(255,255,255,0.1)',
+                    background: 'var(--bg-primary)',
                     border: 'none',
                     borderRadius: 6,
-                    color: 'white',
+                    color: 'var(--text-primary)',
                   }}
                 >
                   <option value="light">浅色</option>
@@ -783,10 +783,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                   onBlur={() => updateSettings({ wallpaper: localSettings.wallpaper })}
                   style={{
                     padding: '6px 12px',
-                    background: 'rgba(255,255,255,0.1)',
+                    background: 'var(--bg-primary)',
                     border: 'none',
                     borderRadius: 6,
-                    color: 'white',
+                    color: 'var(--text-primary)',
                     width: 200,
                   }}
                 />
@@ -805,10 +805,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                   }}
                   style={{
                     padding: '6px 12px',
-                    background: 'rgba(255,255,255,0.1)',
+                    background: 'var(--bg-primary)',
                     border: 'none',
                     borderRadius: 6,
-                    color: 'white',
+                    color: 'var(--text-primary)',
                   }}
                 >
                   <option value="bottom">底部</option>
@@ -872,7 +872,7 @@ export function SettingsApp(_props: SettingsAppProps) {
         return (
           <div className="settings-section">
             {/* Default Model Configuration */}
-            <div style={{ marginBottom: 20, padding: 16, background: 'rgba(255,255,255,0.08)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ marginBottom: 20, padding: 16, background: 'var(--bg-tertiary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
               <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-primary)' }}>默认模型</h4>
               <p style={{ color: 'var(--text-secondary)', fontSize: 12, margin: '0 0 12px 0' }}>
                 设置系统默认使用的模型，可被应用设置中的模型配置覆盖
@@ -893,10 +893,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                     }}
                     style={{
                       padding: '8px 12px',
-                      background: 'rgba(255,255,255,0.1)',
-                      border: '1px solid rgba(255,255,255,0.2)',
+                      background: 'var(--bg-primary)',
+                      border: '1px solid var(--border-secondary)',
                       borderRadius: 6,
-                      color: 'white',
+                      color: 'var(--text-primary)',
                       width: '100%',
                       boxSizing: 'border-box',
                     }}
@@ -919,10 +919,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                     disabled={!defaultModel?.providerId}
                     style={{
                       padding: '8px 12px',
-                      background: 'rgba(255,255,255,0.1)',
-                      border: '1px solid rgba(255,255,255,0.2)',
+                      background: 'var(--bg-primary)',
+                      border: '1px solid var(--border-secondary)',
                       borderRadius: 6,
-                      color: 'white',
+                      color: 'var(--text-primary)',
                       width: '100%',
                       boxSizing: 'border-box',
                       opacity: defaultModel?.providerId ? 1 : 0.5,
@@ -958,7 +958,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                   background: 'var(--accent-color)',
                   border: 'none',
                   borderRadius: 6,
-                  color: 'white',
+                  color: 'var(--text-primary)',
                   cursor: 'pointer',
                   fontSize: 13,
                 }}
@@ -969,7 +969,7 @@ export function SettingsApp(_props: SettingsAppProps) {
 
             {/* Add Provider Form */}
             {showAddProvider && (
-              <div style={{ marginBottom: 20, padding: 16, background: 'rgba(255,255,255,0.08)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ marginBottom: 20, padding: 16, background: 'var(--bg-tertiary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
                 <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-primary)' }}>添加新提供商</h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                   <div>
@@ -981,10 +981,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                       placeholder="e.g., my-provider"
                       style={{
                         padding: '8px 12px',
-                        background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid rgba(255,255,255,0.2)',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border-secondary)',
                         borderRadius: 6,
-                        color: 'white',
+                        color: 'var(--text-primary)',
                         width: '100%',
                         boxSizing: 'border-box',
                       }}
@@ -999,10 +999,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                       placeholder="e.g., 我的API"
                       style={{
                         padding: '8px 12px',
-                        background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid rgba(255,255,255,0.2)',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border-secondary)',
                         borderRadius: 6,
-                        color: 'white',
+                        color: 'var(--text-primary)',
                         width: '100%',
                         boxSizing: 'border-box',
                       }}
@@ -1017,10 +1017,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                       onChange={(e) => setNewProvider({ ...newProvider, apiType: e.target.value as 'openai' | 'anthropic' | 'custom' })}
                       style={{
                         padding: '8px 12px',
-                        background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid rgba(255,255,255,0.2)',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border-secondary)',
                         borderRadius: 6,
-                        color: 'white',
+                        color: 'var(--text-primary)',
                         width: '100%',
                         boxSizing: 'border-box',
                       }}
@@ -1039,10 +1039,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                       placeholder="sk-..."
                       style={{
                         padding: '8px 12px',
-                        background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid rgba(255,255,255,0.2)',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border-secondary)',
                         borderRadius: 6,
-                        color: 'white',
+                        color: 'var(--text-primary)',
                         width: '100%',
                         boxSizing: 'border-box',
                       }}
@@ -1057,10 +1057,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                       placeholder="https://api.example.com/v1"
                       style={{
                         padding: '8px 12px',
-                        background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid rgba(255,255,255,0.2)',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border-secondary)',
                         borderRadius: 6,
-                        color: 'white',
+                        color: 'var(--text-primary)',
                         width: '100%',
                         boxSizing: 'border-box',
                       }}
@@ -1074,10 +1074,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                     disabled={fetchingModels || !newProvider.apiKey || !newProvider.baseUrl}
                     style={{
                       padding: '8px 16px',
-                      background: fetchingModels ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
+                      background: fetchingModels ? 'var(--bg-secondary)' : 'var(--bg-primary)',
                       border: 'none',
                       borderRadius: 6,
-                      color: 'white',
+                      color: 'var(--text-primary)',
                       cursor: fetchingModels ? 'not-allowed' : 'pointer',
                       fontSize: 13,
                     }}
@@ -1103,11 +1103,11 @@ export function SettingsApp(_props: SettingsAppProps) {
                             alignItems: 'center',
                             gap: 6,
                             padding: '6px 12px',
-                            background: selectedModels.has(model.id) ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.05)',
+                            background: selectedModels.has(model.id) ? 'var(--success-bg)' : 'var(--bg-secondary)',
                             borderRadius: 4,
                             cursor: 'pointer',
                             fontSize: 12,
-                            color: selectedModels.has(model.id) ? '#22c55e' : 'var(--text-secondary)',
+                            color: selectedModels.has(model.id) ? 'var(--success-color)' : 'var(--text-secondary)',
                           }}
                         >
                           <input
@@ -1124,14 +1124,14 @@ export function SettingsApp(_props: SettingsAppProps) {
                 )}
 
                 {/* Manual Model Addition */}
-                <div style={{ marginTop: 12, borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: 12 }}>
+                <div style={{ marginTop: 12, borderTop: '1px dashed var(--border-primary)', paddingTop: 12 }}>
                   {!showManualAddModel ? (
                     <button
                       onClick={() => setShowManualAddModel(true)}
                       style={{
                         padding: '6px 12px',
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px dashed rgba(255,255,255,0.2)',
+                        background: 'var(--bg-secondary)',
+                        border: '1px dashed var(--border-secondary)',
                         borderRadius: 6,
                         color: 'var(--text-secondary)',
                         cursor: 'pointer',
@@ -1141,7 +1141,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                       + 手动添加模型
                     </button>
                   ) : (
-                    <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+                    <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6 }}>
                       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>手动添加模型</div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: 8, marginBottom: 8 }}>
                         <input
@@ -1151,10 +1151,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           placeholder="模型ID (如 gpt-4)"
                           style={{
                             padding: '6px 10px',
-                            background: 'rgba(255,255,255,0.1)',
-                            border: '1px solid rgba(255,255,255,0.2)',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-secondary)',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             fontSize: 12,
                           }}
                         />
@@ -1165,10 +1165,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           placeholder="显示名称"
                           style={{
                             padding: '6px 10px',
-                            background: 'rgba(255,255,255,0.1)',
-                            border: '1px solid rgba(255,255,255,0.2)',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-secondary)',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             fontSize: 12,
                           }}
                         />
@@ -1179,10 +1179,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           placeholder="最大Token"
                           style={{
                             padding: '6px 10px',
-                            background: 'rgba(255,255,255,0.1)',
-                            border: '1px solid rgba(255,255,255,0.2)',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-secondary)',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             fontSize: 12,
                           }}
                         />
@@ -1213,7 +1213,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                             background: 'var(--accent-color)',
                             border: 'none',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             cursor: 'pointer',
                             fontSize: 12,
                           }}
@@ -1227,10 +1227,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           }}
                           style={{
                             padding: '6px 12px',
-                            background: 'rgba(255,255,255,0.1)',
+                            background: 'var(--bg-primary)',
                             border: 'none',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             cursor: 'pointer',
                             fontSize: 12,
                           }}
@@ -1251,10 +1251,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                     }}
                     style={{
                       padding: '8px 16px',
-                      background: 'rgba(255,255,255,0.1)',
+                      background: 'var(--bg-primary)',
                       border: 'none',
                       borderRadius: 6,
-                      color: 'white',
+                      color: 'var(--text-primary)',
                       cursor: 'pointer',
                       fontSize: 13,
                     }}
@@ -1266,10 +1266,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                     disabled={!newProvider.id || !newProvider.name}
                     style={{
                       padding: '8px 16px',
-                      background: newProvider.id && newProvider.name ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)',
+                      background: newProvider.id && newProvider.name ? 'var(--accent-color)' : 'var(--bg-primary)',
                       border: 'none',
                       borderRadius: 6,
-                      color: 'white',
+                      color: 'var(--text-primary)',
                       cursor: newProvider.id && newProvider.name ? 'pointer' : 'not-allowed',
                       fontSize: 13,
                     }}
@@ -1282,7 +1282,7 @@ export function SettingsApp(_props: SettingsAppProps) {
 
             {/* Provider List */}
             {modes.providers.map((provider) => (
-              <div key={provider.id} style={{ marginBottom: 20, padding: 16, background: editingProvider === provider.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', borderRadius: 8, border: editingProvider === provider.id ? '1px solid var(--accent-color)' : '1px solid transparent' }}>
+              <div key={provider.id} style={{ marginBottom: 20, padding: 16, background: editingProvider === provider.id ? 'var(--bg-primary)' : 'var(--bg-secondary)', borderRadius: 8, border: editingProvider === provider.id ? '1px solid var(--accent-color)' : '1px solid transparent' }}>
                 {editingProvider === provider.id ? (
                   // Edit Mode
                   <div>
@@ -1295,10 +1295,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           onClick={handleCancelEditProvider}
                           style={{
                             padding: '6px 12px',
-                            background: 'rgba(255,255,255,0.1)',
+                            background: 'var(--bg-primary)',
                             border: 'none',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             cursor: 'pointer',
                             fontSize: 12,
                           }}
@@ -1312,7 +1312,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                             background: 'var(--accent-color)',
                             border: 'none',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             cursor: 'pointer',
                             fontSize: 12,
                           }}
@@ -1343,10 +1343,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           placeholder="sk-..."
                           style={{
                             padding: '8px 12px',
-                            background: 'rgba(255,255,255,0.1)',
-                            border: '1px solid rgba(255,255,255,0.2)',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-secondary)',
                             borderRadius: 6,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             width: '100%',
                             boxSizing: 'border-box',
                           }}
@@ -1361,10 +1361,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           placeholder="https://api.openai.com/v1"
                           style={{
                             padding: '8px 12px',
-                            background: 'rgba(255,255,255,0.1)',
-                            border: '1px solid rgba(255,255,255,0.2)',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-secondary)',
                             borderRadius: 6,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             width: '100%',
                             boxSizing: 'border-box',
                           }}
@@ -1378,10 +1378,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                         disabled={editFetching || !editForm.apiKey || !editForm.baseUrl}
                         style={{
                           padding: '8px 16px',
-                          background: editFetching ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
+                          background: editFetching ? 'var(--bg-secondary)' : 'var(--bg-primary)',
                           border: 'none',
                           borderRadius: 6,
-                          color: 'white',
+                          color: 'var(--text-primary)',
                           cursor: editFetching ? 'not-allowed' : 'pointer',
                           fontSize: 12,
                         }}
@@ -1409,11 +1409,11 @@ export function SettingsApp(_props: SettingsAppProps) {
                                 alignItems: 'center',
                                 gap: 6,
                                 padding: '6px 12px',
-                                background: editSelectedModels.has(model.id) ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.05)',
+                                background: editSelectedModels.has(model.id) ? 'var(--success-bg)' : 'var(--bg-secondary)',
                                 borderRadius: 4,
                                 cursor: 'pointer',
                                 fontSize: 12,
-                                color: editSelectedModels.has(model.id) ? '#22c55e' : 'var(--text-secondary)',
+                                color: editSelectedModels.has(model.id) ? 'var(--success-color)' : 'var(--text-secondary)',
                               }}
                             >
                               <input
@@ -1430,14 +1430,14 @@ export function SettingsApp(_props: SettingsAppProps) {
                     )}
 
                     {/* Manual Model Addition for Edit */}
-                    <div style={{ marginTop: 12, borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: 12 }}>
+                    <div style={{ marginTop: 12, borderTop: '1px dashed var(--border-primary)', paddingTop: 12 }}>
                       {!editShowManualAddModel ? (
                         <button
                           onClick={() => setEditShowManualAddModel(true)}
                           style={{
                             padding: '6px 12px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px dashed rgba(255,255,255,0.2)',
+                            background: 'var(--bg-secondary)',
+                            border: '1px dashed var(--border-secondary)',
                             borderRadius: 6,
                             color: 'var(--text-secondary)',
                             cursor: 'pointer',
@@ -1447,7 +1447,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                           + 手动添加模型
                         </button>
                       ) : (
-                        <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+                        <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6 }}>
                           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>手动添加模型</div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: 8, marginBottom: 8 }}>
                             <input
@@ -1457,10 +1457,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                               placeholder="模型ID (如 gpt-4)"
                               style={{
                                 padding: '6px 10px',
-                                background: 'rgba(255,255,255,0.1)',
-                                border: '1px solid rgba(255,255,255,0.2)',
+                                background: 'var(--bg-primary)',
+                                border: '1px solid var(--border-secondary)',
                                 borderRadius: 4,
-                                color: 'white',
+                                color: 'var(--text-primary)',
                                 fontSize: 12,
                               }}
                             />
@@ -1471,10 +1471,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                               placeholder="显示名称"
                               style={{
                                 padding: '6px 10px',
-                                background: 'rgba(255,255,255,0.1)',
-                                border: '1px solid rgba(255,255,255,0.2)',
+                                background: 'var(--bg-primary)',
+                                border: '1px solid var(--border-secondary)',
                                 borderRadius: 4,
-                                color: 'white',
+                                color: 'var(--text-primary)',
                                 fontSize: 12,
                               }}
                             />
@@ -1485,10 +1485,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                               placeholder="最大Token"
                               style={{
                                 padding: '6px 10px',
-                                background: 'rgba(255,255,255,0.1)',
-                                border: '1px solid rgba(255,255,255,0.2)',
+                                background: 'var(--bg-primary)',
+                                border: '1px solid var(--border-secondary)',
                                 borderRadius: 4,
-                                color: 'white',
+                                color: 'var(--text-primary)',
                                 fontSize: 12,
                               }}
                             />
@@ -1519,7 +1519,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                                 background: 'var(--accent-color)',
                                 border: 'none',
                                 borderRadius: 4,
-                                color: 'white',
+                                color: 'var(--text-primary)',
                                 cursor: 'pointer',
                                 fontSize: 12,
                               }}
@@ -1533,10 +1533,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                               }}
                               style={{
                                 padding: '6px 12px',
-                                background: 'rgba(255,255,255,0.1)',
+                                background: 'var(--bg-primary)',
                                 border: 'none',
                                 borderRadius: 4,
-                                color: 'white',
+                                color: 'var(--text-primary)',
                                 cursor: 'pointer',
                                 fontSize: 12,
                               }}
@@ -1555,16 +1555,16 @@ export function SettingsApp(_props: SettingsAppProps) {
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 15 }}>{provider.name}</span>
-                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: 4 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: 4 }}>
                             {provider.apiType}
                           </span>
                           {provider.apiKey && (
-                            <span style={{ background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
+                            <span style={{ background: 'var(--success-color)', color: 'var(--text-primary)', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
                               已配置
                             </span>
                           )}
                           {!provider.enabled && (
-                            <span style={{ background: 'rgba(255,255,255,0.2)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
+                            <span style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
                               已禁用
                             </span>
                           )}
@@ -1576,10 +1576,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           onClick={() => handleStartEditProvider(provider)}
                           style={{
                             padding: '4px 10px',
-                            background: 'rgba(255,255,255,0.1)',
+                            background: 'var(--bg-primary)',
                             border: 'none',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             cursor: 'pointer',
                             fontSize: 11,
                           }}
@@ -1590,10 +1590,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           onClick={() => handleDeleteProvider(provider.id)}
                           style={{
                             padding: '4px 10px',
-                            background: 'rgba(239, 68, 68, 0.2)',
+                            background: 'var(--error-bg)',
                             border: 'none',
                             borderRadius: 4,
-                            color: '#ef4444',
+                            color: 'var(--error-color)',
                             cursor: 'pointer',
                             fontSize: 11,
                           }}
@@ -1625,7 +1625,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                               key={model.id}
                               style={{
                                 padding: '4px 10px',
-                                background: 'rgba(255,255,255,0.08)',
+                                background: 'var(--bg-tertiary)',
                                 borderRadius: 4,
                                 fontSize: 12,
                                 color: 'var(--text-secondary)',
@@ -1654,7 +1654,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                     background: 'var(--accent-color)',
                     border: 'none',
                     borderRadius: 6,
-                    color: 'white',
+                    color: 'var(--text-primary)',
                     cursor: 'pointer',
                     fontSize: 13,
                   }}
@@ -1681,7 +1681,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                 const enabledProviders = modes.providers.filter(p => p.enabled && p.apiKey && p.models.length > 0);
 
                 return (
-                  <div key={app.id} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                  <div key={app.id} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                       <div>
                         <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{app.name}</span>
@@ -1703,10 +1703,10 @@ export function SettingsApp(_props: SettingsAppProps) {
                           }}
                           style={{
                             padding: '6px 10px',
-                            background: 'rgba(255,255,255,0.1)',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-primary)',
                             borderRadius: 4,
-                            color: 'white',
+                            color: 'var(--text-primary)',
                             width: '100%',
                             boxSizing: 'border-box',
                           }}
@@ -1730,8 +1730,8 @@ export function SettingsApp(_props: SettingsAppProps) {
                           disabled={!currentProvider || !currentProvider.models?.length}
                           style={{
                             padding: '6px 10px',
-                            background: 'rgba(255,255,255,0.1)',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-primary)',
                             borderRadius: 4,
                             color: currentModel?.model ? 'white' : 'var(--text-secondary)',
                             width: '100%',
@@ -1747,7 +1747,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                     </div>
 
                     {!currentModel && enabledProviders.length === 0 && (
-                      <div style={{ marginTop: 8, fontSize: 11, color: '#f59e0b' }}>
+                      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warning-color)' }}>
                         请先在"模型"标签页配置并启用一个提供商
                       </div>
                     )}
@@ -1774,7 +1774,7 @@ export function SettingsApp(_props: SettingsAppProps) {
               </div>
             ) : (
               mcpConnections.connections.map((conn) => (
-                <div key={conn.id} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                <div key={conn.id} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
                   <div className="settings-item" style={{ marginBottom: 8 }}>
                     <label>名称</label>
                     <span style={{ color: 'var(--text-primary)' }}>{conn.name}</span>
@@ -1820,7 +1820,7 @@ export function SettingsApp(_props: SettingsAppProps) {
               </div>
             ) : (
               skills.skills.map((skill) => (
-                <div key={skill.id} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                <div key={skill.id} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
                   <div className="settings-item" style={{ marginBottom: 8 }}>
                     <label>名称</label>
                     <span style={{ color: 'var(--text-primary)' }}>{skill.name}</span>
@@ -1852,17 +1852,17 @@ export function SettingsApp(_props: SettingsAppProps) {
 
   return (
     <div className="settings-app" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+      <div style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: '1px solid var(--border-primary)' }}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
               padding: '6px 16px',
-              background: activeTab === tab.id ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)',
+              background: activeTab === tab.id ? 'var(--accent-color)' : 'var(--bg-primary)',
               border: 'none',
               borderRadius: 6,
-              color: 'white',
+              color: 'var(--text-primary)',
               cursor: 'pointer',
               fontSize: 13,
               transition: 'background 0.15s',

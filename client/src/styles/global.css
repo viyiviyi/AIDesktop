@@ -1,4 +1,5 @@
-:root {
+/* Dark Theme (default) */
+.theme-dark, :root {
   --desktop-bg: #1e1e2e;
   --menu-bar-bg: rgba(30, 30, 46, 0.85);
   --dock-bg: rgba(255, 255, 255, 0.15);
@@ -11,6 +12,72 @@
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
   --dock-height: 64px;
   --menu-bar-height: 28px;
+
+  /* Form elements */
+  --input-bg: rgba(255, 255, 255, 0.1);
+  --input-border: rgba(255, 255, 255, 0.2);
+  --input-text: var(--text-primary);
+  --input-placeholder: var(--text-secondary);
+  --select-bg: rgba(255, 255, 255, 0.1);
+  --select-text: var(--text-primary);
+
+  /* Component backgrounds */
+  --bg-primary: rgba(255, 255, 255, 0.1);
+  --bg-secondary: rgba(255, 255, 255, 0.05);
+  --bg-tertiary: rgba(255, 255, 255, 0.08);
+
+  /* Borders */
+  --border-primary: rgba(255, 255, 255, 0.1);
+  --border-secondary: rgba(255, 255, 255, 0.2);
+
+  /* Status colors */
+  --success-color: #22c55e;
+  --success-bg: rgba(34, 197, 94, 0.2);
+  --error-color: #ef4444;
+  --error-bg: rgba(239, 68, 68, 0.2);
+  --warning-color: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.2);
+}
+
+/* Light Theme */
+.theme-light {
+  --desktop-bg: #e5e7eb;
+  --menu-bar-bg: rgba(255, 255, 255, 0.85);
+  --dock-bg: rgba(0, 0, 0, 0.1);
+  --window-bg: rgba(255, 255, 255, 0.95);
+  --window-title-bg: rgba(255, 255, 255, 1);
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --accent-color: #0078d4;
+  --border-radius: 10px;
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  --dock-height: 64px;
+  --menu-bar-height: 28px;
+
+  /* Form elements */
+  --input-bg: rgba(0, 0, 0, 0.05);
+  --input-border: rgba(0, 0, 0, 0.15);
+  --input-text: var(--text-primary);
+  --input-placeholder: var(--text-secondary);
+  --select-bg: rgba(255, 255, 255, 0.95);
+  --select-text: var(--text-primary);
+
+  /* Component backgrounds */
+  --bg-primary: rgba(0, 0, 0, 0.1);
+  --bg-secondary: rgba(0, 0, 0, 0.05);
+  --bg-tertiary: rgba(0, 0, 0, 0.15);
+
+  /* Borders */
+  --border-primary: rgba(0, 0, 0, 0.15);
+  --border-secondary: rgba(0, 0, 0, 0.25);
+
+  /* Status colors */
+  --success-color: #16a34a;
+  --success-bg: rgba(22, 163, 74, 0.15);
+  --error-color: #dc2626;
+  --error-bg: rgba(220, 38, 38, 0.15);
+  --warning-color: #d97706;
+  --warning-bg: rgba(217, 119, 6, 0.15);
 }
 
 * {
@@ -515,11 +582,11 @@ body {
 }
 
 .desktop-icon:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-primary);
 }
 
 .desktop-icon.selected {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg-tertiary);
 }
 
 .desktop-icon img {
@@ -561,7 +628,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .settings-item label {
@@ -585,4 +652,50 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* Form Elements */
+input, textarea, select {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--input-text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent-color);
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23b0b0b0' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+.theme-light select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Scrollbar for both themes */
+.theme-light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
 }

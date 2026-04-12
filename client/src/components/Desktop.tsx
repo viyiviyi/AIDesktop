@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import { Window, ChatApp, SettingsApp } from './Window';
 import type { AppInfo } from '../types';
@@ -13,6 +13,19 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
 export function Desktop() {
   const { state, openApp, closeStartMenu } = useDesktop();
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
+  const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  );
+
+  // Listen for system theme changes when using auto mode
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      setSystemTheme(e.matches ? 'dark' : 'light');
+    };
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   const desktopApps = state.installedApps.filter((app) => app.type === 'desktop');
 
@@ -47,8 +60,16 @@ export function Desktop() {
     ? { backgroundImage: `url(${state.settings.wallpaper})` }
     : { background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' };
 
+  const getThemeClass = () => {
+    if (state.settings.theme === 'light') return 'theme-light';
+    if (state.settings.theme === 'dark') return 'theme-dark';
+    // auto: follow system preference
+    return systemTheme === 'dark' ? 'theme-dark' : 'theme-light';
+  };
+  const themeClass = getThemeClass();
+
   return (
-    <div className="desktop" style={wallpaperStyle} onClick={handleDesktopClick}>
+    <div className={`desktop ${themeClass}`} style={wallpaperStyle} onClick={handleDesktopClick}>
       <div className="desktop-area">
         <div className="desktop-icons">
           {desktopApps.map((app) => (
