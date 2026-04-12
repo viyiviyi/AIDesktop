@@ -390,6 +390,17 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [defaultModel, setDefaultModel] = useState<{ providerId: string; modelId: string } | null>(null);
 
+  // Edit provider state
+  const [editingProvider, setEditingProvider] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{
+    apiKey: string;
+    baseUrl: string;
+    enabled: boolean;
+  }>({ apiKey: '', baseUrl: '', enabled: true });
+  const [editFetchedModels, setEditFetchedModels] = useState<ProviderModel[]>([]);
+  const [editSelectedModels, setEditSelectedModels] = useState<Set<string>>(new Set());
+  const [editFetching, setEditFetching] = useState(false);
+
   useEffect(() => {
     setLocalSettings(state.settings);
   }, [state.settings]);
@@ -494,6 +505,77 @@ export function SettingsApp(_props: SettingsAppProps) {
       setModes(result);
     } catch (error) {
       console.error('Failed to delete provider:', error);
+    }
+  };
+
+  const handleStartEditProvider = (provider: ModelProvider) => {
+    setEditingProvider(provider.id);
+    setEditForm({
+      apiKey: provider.apiKey || '',
+      baseUrl: provider.baseUrl || '',
+      enabled: provider.enabled
+    });
+    setEditFetchedModels(provider.models);
+    setEditSelectedModels(new Set(provider.models.map(m => m.id)));
+  };
+
+  const handleCancelEditProvider = () => {
+    setEditingProvider(null);
+    setEditForm({ apiKey: '', baseUrl: '', enabled: true });
+    setEditFetchedModels([]);
+    setEditSelectedModels(new Set());
+  };
+
+  const handleFetchEditModels = async () => {
+    if (!editForm.apiKey || !editForm.baseUrl) {
+      alert('请先填写API Key和Base URL');
+      return;
+    }
+    const provider = modes.providers.find(p => p.id === editingProvider);
+    if (!provider) return;
+
+    setEditFetching(true);
+    try {
+      const result = await api.fetchModels(editForm.apiKey, editForm.baseUrl, provider.apiType);
+      setEditFetchedModels(result.models);
+    } catch (error) {
+      console.error('Failed to fetch models:', error);
+      alert('获取模型列表失败，请检查API配置');
+    } finally {
+      setEditFetching(false);
+    }
+  };
+
+  const handleToggleEditModel = (modelId: string) => {
+    const newSelected = new Set(editSelectedModels);
+    if (newSelected.has(modelId)) {
+      newSelected.delete(modelId);
+    } else {
+      newSelected.add(modelId);
+    }
+    setEditSelectedModels(newSelected);
+  };
+
+  const handleSaveEditProvider = async () => {
+    if (!editingProvider) return;
+    const provider = modes.providers.find(p => p.id === editingProvider);
+    if (!provider) return;
+
+    const updatedProvider: ModelProvider = {
+      ...provider,
+      apiKey: editForm.apiKey,
+      baseUrl: editForm.baseUrl,
+      enabled: editForm.enabled,
+      models: editFetchedModels.filter(m => editSelectedModels.has(m.id))
+    };
+
+    try {
+      const result = await api.updateProvider(editingProvider, updatedProvider);
+      setModes(result);
+      handleCancelEditProvider();
+    } catch (error) {
+      console.error('Failed to update provider:', error);
+      alert('更新提供商失败');
     }
   };
 
@@ -945,120 +1027,271 @@ export function SettingsApp(_props: SettingsAppProps) {
 
             {/* Provider List */}
             {modes.providers.map((provider) => (
-              <div key={provider.id} style={{ marginBottom: 20, padding: 16, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <div key={provider.id} style={{ marginBottom: 20, padding: 16, background: editingProvider === provider.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', borderRadius: 8, border: editingProvider === provider.id ? '1px solid var(--accent-color)' : '1px solid transparent' }}>
+                {editingProvider === provider.id ? (
+                  // Edit Mode
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 15 }}>{provider.name}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: 4 }}>
-                        {provider.apiType}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 15 }}>
+                        编辑: {provider.name}
                       </span>
-                      {provider.apiKey && (
-                        <span style={{ background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
-                          已配置
-                        </span>
-                      )}
-                      {defaultModel?.providerId === provider.id && (
-                        <span style={{ background: 'var(--accent-color)', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
-                          默认
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{provider.baseUrl}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => setDefaultModel({ providerId: provider.id, modelId: provider.models[0]?.id || '' })}
-                      disabled={!provider.enabled || provider.models.length === 0}
-                      style={{
-                        padding: '4px 10px',
-                        background: 'rgba(255,255,255,0.1)',
-                        border: 'none',
-                        borderRadius: 4,
-                        color: 'white',
-                        cursor: provider.enabled && provider.models.length > 0 ? 'pointer' : 'not-allowed',
-                        fontSize: 11,
-                        opacity: provider.enabled && provider.models.length > 0 ? 1 : 0.5,
-                      }}
-                    >
-                      设为默认
-                    </button>
-                    <button
-                      onClick={() => handleDeleteProvider(provider.id)}
-                      style={{
-                        padding: '4px 10px',
-                        background: 'rgba(239, 68, 68, 0.2)',
-                        border: 'none',
-                        borderRadius: 4,
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                      }}
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span>API Key</span>
-                    <input
-                      type="checkbox"
-                      checked={provider.enabled}
-                      onChange={(e) => handleUpdateProvider(provider.id, { enabled: e.target.checked })}
-                      style={{ marginLeft: 4 }}
-                    />
-                    <span style={{ fontSize: 10 }}>启用</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={provider.apiKey || ''}
-                    onChange={(e) => handleUpdateProvider(provider.id, { apiKey: e.target.value })}
-                    onBlur={() => {}}
-                    placeholder="sk-..."
-                    style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255,255,255,0.1)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: 6,
-                      color: 'white',
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      fontSize: 13,
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }}>
-                    已启用模型 ({provider.models?.length || 0})
-                  </label>
-                  {provider.models?.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {provider.models.map((model) => (
-                        <span
-                          key={model.id}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={handleCancelEditProvider}
                           style={{
-                            padding: '4px 10px',
-                            background: defaultModel?.providerId === provider.id && defaultModel?.modelId === model.id
-                              ? 'var(--accent-color)'
-                              : 'rgba(255,255,255,0.08)',
+                            padding: '6px 12px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: 'none',
                             borderRadius: 4,
+                            color: 'white',
+                            cursor: 'pointer',
                             fontSize: 12,
-                            color: defaultModel?.providerId === provider.id && defaultModel?.modelId === model.id
-                              ? 'white'
-                              : 'var(--text-secondary)',
                           }}
                         >
-                          {model.name}
-                        </span>
-                      ))}
+                          取消
+                        </button>
+                        <button
+                          onClick={handleSaveEditProvider}
+                          style={{
+                            padding: '6px 12px',
+                            background: 'var(--accent-color)',
+                            border: 'none',
+                            borderRadius: 4,
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontSize: 12,
+                          }}
+                        >
+                          保存
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>暂无可用模型，请配置API Key后获取</span>
-                  )}
-                </div>
+
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={editForm.enabled}
+                          onChange={(e) => setEditForm({ ...editForm, enabled: e.target.checked })}
+                        />
+                        <span>启用此提供商</span>
+                      </label>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                      <div>
+                        <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>API Key</label>
+                        <input
+                          type="password"
+                          value={editForm.apiKey}
+                          onChange={(e) => setEditForm({ ...editForm, apiKey: e.target.value })}
+                          placeholder="sk-..."
+                          style={{
+                            padding: '8px 12px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: 6,
+                            color: 'white',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Base URL</label>
+                        <input
+                          type="text"
+                          value={editForm.baseUrl}
+                          onChange={(e) => setEditForm({ ...editForm, baseUrl: e.target.value })}
+                          placeholder="https://api.openai.com/v1"
+                          style={{
+                            padding: '8px 12px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: 6,
+                            color: 'white',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+                      <button
+                        onClick={handleFetchEditModels}
+                        disabled={editFetching || !editForm.apiKey || !editForm.baseUrl}
+                        style={{
+                          padding: '8px 16px',
+                          background: editFetching ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
+                          border: 'none',
+                          borderRadius: 6,
+                          color: 'white',
+                          cursor: editFetching ? 'not-allowed' : 'pointer',
+                          fontSize: 12,
+                        }}
+                      >
+                        {editFetching ? '获取中...' : '重新获取模型列表'}
+                      </button>
+                      {editFetchedModels.length > 0 && (
+                        <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                          已获取 {editFetchedModels.length} 个模型，请勾选要启用的
+                        </span>
+                      )}
+                    </div>
+
+                    {editFetchedModels.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }}>
+                          选择要启用的模型：
+                        </label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 150, overflowY: 'auto' }}>
+                          {editFetchedModels.map((model) => (
+                            <label
+                              key={model.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                padding: '6px 12px',
+                                background: editSelectedModels.has(model.id) ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.05)',
+                                borderRadius: 4,
+                                cursor: 'pointer',
+                                fontSize: 12,
+                                color: editSelectedModels.has(model.id) ? '#22c55e' : 'var(--text-secondary)',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={editSelectedModels.has(model.id)}
+                                onChange={() => handleToggleEditModel(model.id)}
+                                style={{ display: 'none' }}
+                              />
+                              {model.name}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // View Mode
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 15 }}>{provider.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: 4 }}>
+                            {provider.apiType}
+                          </span>
+                          {provider.apiKey && (
+                            <span style={{ background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
+                              已配置
+                            </span>
+                          )}
+                          {!provider.enabled && (
+                            <span style={{ background: 'rgba(255,255,255,0.2)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
+                              已禁用
+                            </span>
+                          )}
+                          {defaultModel?.providerId === provider.id && (
+                            <span style={{ background: 'var(--accent-color)', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
+                              默认
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{provider.baseUrl}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => handleStartEditProvider(provider)}
+                          style={{
+                            padding: '4px 10px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: 'none',
+                            borderRadius: 4,
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontSize: 11,
+                          }}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          onClick={() => setDefaultModel({ providerId: provider.id, modelId: provider.models[0]?.id || '' })}
+                          disabled={!provider.enabled || provider.models.length === 0}
+                          style={{
+                            padding: '4px 10px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: 'none',
+                            borderRadius: 4,
+                            color: 'white',
+                            cursor: provider.enabled && provider.models.length > 0 ? 'pointer' : 'not-allowed',
+                            fontSize: 11,
+                            opacity: provider.enabled && provider.models.length > 0 ? 1 : 0.5,
+                          }}
+                        >
+                          设为默认
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProvider(provider.id)}
+                          style={{
+                            padding: '4px 10px',
+                            background: 'rgba(239, 68, 68, 0.2)',
+                            border: 'none',
+                            borderRadius: 4,
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            fontSize: 11,
+                          }}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>启用状态</span>
+                        <input
+                          type="checkbox"
+                          checked={provider.enabled}
+                          onChange={(e) => handleUpdateProvider(provider.id, { enabled: e.target.checked })}
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }}>
+                        已启用模型 ({provider.models?.length || 0})
+                      </label>
+                      {provider.models?.length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {provider.models.map((model) => (
+                            <span
+                              key={model.id}
+                              style={{
+                                padding: '4px 10px',
+                                background: defaultModel?.providerId === provider.id && defaultModel?.modelId === model.id
+                                  ? 'var(--accent-color)'
+                                  : 'rgba(255,255,255,0.08)',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                color: defaultModel?.providerId === provider.id && defaultModel?.modelId === model.id
+                                  ? 'white'
+                                  : 'var(--text-secondary)',
+                              }}
+                            >
+                              {model.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>暂无可用模型，点击编辑重新获取</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
 
