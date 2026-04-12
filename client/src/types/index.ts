@@ -127,11 +127,24 @@ export interface DesktopSettings {
   startMenu: StartMenuSettings;
 }
 
+// Model
+export interface ProviderModel {
+  id: string;
+  name: string;
+  maxTokens: number;
+  supports: ContentType[];
+  params: {
+    temperature?: number;
+    top_p?: number;
+  };
+}
+
 // Model Provider
 export interface ModelProvider {
   name: string;
   apiKey?: string;
   baseUrl?: string;
+  models: ProviderModel[];
 }
 
 // MCP

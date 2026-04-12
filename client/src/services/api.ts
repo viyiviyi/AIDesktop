@@ -152,6 +152,26 @@ export async function updateModes(modes: { providers: ModelProvider[] }): Promis
   });
 }
 
+export async function updateProvider(providerName: string, provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
+  return fetchJson<{ providers: ModelProvider[] }>(`/settings/modes/providers/${providerName}`, {
+    method: 'PUT',
+    body: JSON.stringify(provider),
+  });
+}
+
+export async function addProvider(provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
+  return fetchJson<{ providers: ModelProvider[] }>('/settings/modes/providers', {
+    method: 'POST',
+    body: JSON.stringify(provider),
+  });
+}
+
+export async function deleteProvider(providerName: string): Promise<{ providers: ModelProvider[] }> {
+  return fetchJson<{ providers: ModelProvider[] }>(`/settings/modes/providers/${providerName}`, {
+    method: 'DELETE',
+  });
+}
+
 // MCP Settings
 export async function getMcpSettings(): Promise<{ connections: MCPConnection[] }> {
   return fetchJson<{ connections: MCPConnection[] }>('/settings/mcp');

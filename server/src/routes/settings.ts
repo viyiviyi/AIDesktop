@@ -43,6 +43,36 @@ router.put('/modes', async (req: Request, res: Response) => {
   }
 });
 
+// Update single provider
+router.put('/modes/providers/:providerName', async (req: Request, res: Response) => {
+  try {
+    const modes = await settingsService.updateProvider(req.params.providerName, req.body);
+    res.json(modes);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Add new provider
+router.post('/modes/providers', async (req: Request, res: Response) => {
+  try {
+    const modes = await settingsService.addProvider(req.body);
+    res.json(modes);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Delete provider
+router.delete('/modes/providers/:providerName', async (req: Request, res: Response) => {
+  try {
+    const modes = await settingsService.deleteProvider(req.params.providerName);
+    res.json(modes);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // Get MCP settings
 router.get('/mcp', async (req: Request, res: Response) => {
   try {

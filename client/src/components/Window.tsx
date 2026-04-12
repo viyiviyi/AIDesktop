@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
-import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo } from '../types';
+import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App } from '../types';
 import * as api from '../services/api';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -374,6 +374,7 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [mcpConnections, setMcpConnections] = useState<{ connections: MCPConnection[] }>({ connections: [] });
   const [skills, setSkills] = useState<{ skills: Skill[]; globalEnabled: boolean }>({ skills: [], globalEnabled: true });
   const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
+  const [appConfigs, setAppConfigs] = useState<Record<string, App>>({});
 
   useEffect(() => {
     setLocalSettings(state.settings);
@@ -417,8 +418,57 @@ export function SettingsApp(_props: SettingsAppProps) {
     try {
       const apps = await api.getApps();
       setInstalledApps(apps);
+
+      // Load full config for each app to get model settings
+      const configs: Record<string, App> = {};
+      for (const app of apps) {
+        try {
+          const fullApp = await api.getApp(app.id);
+          configs[app.id] = fullApp;
+        } catch {
+          // Create a minimal App object if getApp fails
+          configs[app.id] = {
+            ...app,
+            models: [],
+            supportedInputs: ['text'],
+            inputDescription: '',
+            outputDescription: '',
+            visibleApps: [],
+            visibleServices: [],
+            tools: []
+          };
+        }
+      }
+      setAppConfigs(configs);
     } catch (error) {
       console.error('Failed to load apps:', error);
+    }
+  };
+
+  const handleAppModelUpdate = async (appId: string, providerName: string, modelId: string) => {
+    const app = appConfigs[appId];
+    if (!app) return;
+
+    const provider = modes.providers.find(p => p.name === providerName);
+    const model = provider?.models?.find(m => m.id === modelId);
+    if (!model) return;
+
+    const newModelConfig = {
+      provider: providerName,
+      model: modelId,
+      priority: 1,
+      maxTokens: model.maxTokens,
+      supports: model.supports,
+      params: model.params || {}
+    };
+
+    try {
+      const updated = await api.updateApp(appId, {
+        models: [newModelConfig]
+      });
+      setAppConfigs({ ...appConfigs, [appId]: updated });
+    } catch (error) {
+      console.error('Failed to update app model:', error);
     }
   };
 
@@ -584,56 +634,92 @@ export function SettingsApp(_props: SettingsAppProps) {
       case 'model':
         return (
           <div className="settings-section">
-            <h3>模型提供商</h3>
+            <h3>模型提供商配置</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16 }}>
+              配置API Key和查看可用模型。模型将在应用设置中被选用。
+            </p>
             {modes.providers.map((provider, index) => (
-              <div key={provider.name} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                <div className="settings-item" style={{ marginBottom: 8 }}>
-                  <label>提供商</label>
-                  <span style={{ color: 'var(--text-secondary)' }}>{provider.name}</span>
+              <div key={provider.name} style={{ marginBottom: 20, padding: 16, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 15 }}>{provider.name}</span>
+                    {provider.apiKey && (
+                      <span style={{ background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
+                        已配置
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="settings-item" style={{ marginBottom: 8 }}>
-                  <label>API Key</label>
-                  <input
-                    type="password"
-                    value={provider.apiKey || ''}
-                    onChange={(e) => {
-                      const newProviders = [...modes.providers];
-                      newProviders[index] = { ...provider, apiKey: e.target.value };
-                      setModes({ providers: newProviders });
-                    }}
-                    onBlur={() => handleModesUpdate(modes)}
-                    placeholder="输入 API Key"
-                    style={{
-                      padding: '6px 12px',
-                      background: 'rgba(255,255,255,0.1)',
-                      border: 'none',
-                      borderRadius: 6,
-                      color: 'white',
-                      width: 200,
-                    }}
-                  />
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="settings-item" style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>API Key</label>
+                    <input
+                      type="password"
+                      value={provider.apiKey || ''}
+                      onChange={(e) => {
+                        const newProviders = [...modes.providers];
+                        newProviders[index] = { ...provider, apiKey: e.target.value };
+                        setModes({ providers: newProviders });
+                      }}
+                      onBlur={() => handleModesUpdate(modes)}
+                      placeholder="sk-..."
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6,
+                        color: 'white',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  <div className="settings-item" style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Base URL</label>
+                    <input
+                      type="text"
+                      value={provider.baseUrl || ''}
+                      onChange={(e) => {
+                        const newProviders = [...modes.providers];
+                        newProviders[index] = { ...provider, baseUrl: e.target.value };
+                        setModes({ providers: newProviders });
+                      }}
+                      onBlur={() => handleModesUpdate(modes)}
+                      placeholder="https://api.openai.com/v1"
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6,
+                        color: 'white',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="settings-item">
-                  <label>Base URL</label>
-                  <input
-                    type="text"
-                    value={provider.baseUrl || ''}
-                    onChange={(e) => {
-                      const newProviders = [...modes.providers];
-                      newProviders[index] = { ...provider, baseUrl: e.target.value };
-                      setModes({ providers: newProviders });
-                    }}
-                    onBlur={() => handleModesUpdate(modes)}
-                    placeholder="https://api.openai.com/v1"
-                    style={{
-                      padding: '6px 12px',
-                      background: 'rgba(255,255,255,0.1)',
-                      border: 'none',
-                      borderRadius: 6,
-                      color: 'white',
-                      width: 250,
-                    }}
-                  />
+
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }}>
+                    可用模型 ({provider.models?.length || 0})
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {provider.models?.map((model) => (
+                      <span
+                        key={model.id}
+                        style={{
+                          padding: '4px 10px',
+                          background: 'rgba(255,255,255,0.08)',
+                          borderRadius: 4,
+                          fontSize: 12,
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        {model.name}
+                      </span>
+                    )) || <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>暂无可用模型</span>}
+                  </div>
                 </div>
               </div>
             ))}
@@ -643,18 +729,90 @@ export function SettingsApp(_props: SettingsAppProps) {
       case 'app':
         return (
           <div className="settings-section">
-            <h3>已安装应用</h3>
+            <h3>应用配置</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16 }}>
+              为每个应用选择使用的AI模型。模型需要在"模型"标签页中配置API Key。
+            </p>
             <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-              {installedApps.map((app) => (
-                <div key={app.id} className="settings-item">
-                  <div>
-                    <span style={{ color: 'var(--text-primary)' }}>{app.name}</span>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: 11, marginLeft: 8 }}>
-                      {app.source} • {app.type}
-                    </span>
+              {installedApps.map((app) => {
+                const appConfig = appConfigs[app.id];
+                const currentModel = appConfig?.models?.[0];
+                const currentProvider = currentModel ? modes.providers.find(p => p.name === currentModel.provider) : null;
+
+                return (
+                  <div key={app.id} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div>
+                        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{app.name}</span>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: 11, marginLeft: 8 }}>
+                          {app.source} • {app.type}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>提供商</label>
+                        <select
+                          value={currentModel?.provider || ''}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAppModelUpdate(app.id, e.target.value, '');
+                            }
+                          }}
+                          style={{
+                            padding: '6px 10px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: 4,
+                            color: 'white',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          <option value="">选择提供商...</option>
+                          {modes.providers.filter(p => p.apiKey).map((p) => (
+                            <option key={p.name} value={p.name}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>模型</label>
+                        <select
+                          value={currentModel?.model || ''}
+                          onChange={(e) => {
+                            if (e.target.value && currentModel?.provider) {
+                              handleAppModelUpdate(app.id, currentModel.provider, e.target.value);
+                            }
+                          }}
+                          disabled={!currentProvider || !currentProvider.models?.length}
+                          style={{
+                            padding: '6px 10px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: 4,
+                            color: currentModel?.model ? 'white' : 'var(--text-secondary)',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          <option value="">{currentProvider ? '选择模型...' : '先选择提供商'}</option>
+                          {currentProvider?.models?.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {currentModel && (
+                      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
+                        当前: {currentProvider?.name} / {currentProvider?.models?.find(m => m.id === currentModel.model)?.name || currentModel.model}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );

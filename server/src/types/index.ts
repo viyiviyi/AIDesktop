@@ -187,10 +187,22 @@ export interface DesktopSettings {
 }
 
 // Model Provider
+export interface ProviderModel {
+  id: string;
+  name: string;
+  maxTokens: number;
+  supports: ContentType[];
+  params: {
+    temperature?: number;
+    top_p?: number;
+  };
+}
+
 export interface ModelProvider {
   name: string;
   apiKey?: string;
   baseUrl?: string;
+  models: ProviderModel[];
 }
 
 // Chat
