@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
-import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App } from '../types';
+import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel } from '../types';
 import * as api from '../services/api';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -376,6 +376,20 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
   const [appConfigs, setAppConfigs] = useState<Record<string, App>>({});
 
+  // Model provider management
+  const [showAddProvider, setShowAddProvider] = useState(false);
+  const [newProvider, setNewProvider] = useState<{
+    id: string;
+    name: string;
+    apiType: 'openai' | 'anthropic' | 'custom';
+    apiKey: string;
+    baseUrl: string;
+  }>({ id: '', name: '', apiType: 'openai', apiKey: '', baseUrl: '' });
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchedModels, setFetchedModels] = useState<ProviderModel[]>([]);
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [defaultModel, setDefaultModel] = useState<{ providerId: string; modelId: string } | null>(null);
+
   useEffect(() => {
     setLocalSettings(state.settings);
   }, [state.settings]);
@@ -391,8 +405,95 @@ export function SettingsApp(_props: SettingsAppProps) {
     try {
       const data = await api.getModes();
       setModes(data);
+      // Set default model from first enabled provider
+      const firstEnabled = data.providers.find(p => p.enabled && p.models.length > 0);
+      if (firstEnabled && firstEnabled.models.length > 0) {
+        setDefaultModel({ providerId: firstEnabled.id, modelId: firstEnabled.models[0].id });
+      }
     } catch (error) {
       console.error('Failed to load modes:', error);
+    }
+  };
+
+  const handleFetchModels = async () => {
+    if (!newProvider.apiKey || !newProvider.baseUrl) {
+      alert('请先填写API Key和Base URL');
+      return;
+    }
+    setFetchingModels(true);
+    try {
+      const result = await api.fetchModels(newProvider.apiKey, newProvider.baseUrl, newProvider.apiType);
+      setFetchedModels(result.models);
+    } catch (error) {
+      console.error('Failed to fetch models:', error);
+      alert('获取模型列表失败，请检查API配置');
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleToggleModel = (modelId: string) => {
+    const newSelected = new Set(selectedModels);
+    if (newSelected.has(modelId)) {
+      newSelected.delete(modelId);
+    } else {
+      newSelected.add(modelId);
+    }
+    setSelectedModels(newSelected);
+  };
+
+  const handleAddProvider = async () => {
+    if (!newProvider.id || !newProvider.name) {
+      alert('请填写提供商ID和名称');
+      return;
+    }
+    if (!newProvider.apiKey || !newProvider.baseUrl) {
+      alert('请填写API Key和Base URL');
+      return;
+    }
+
+    const provider: ModelProvider = {
+      id: newProvider.id,
+      name: newProvider.name,
+      apiType: newProvider.apiType,
+      apiKey: newProvider.apiKey,
+      baseUrl: newProvider.baseUrl,
+      enabled: true,
+      models: fetchedModels.filter(m => selectedModels.has(m.id))
+    };
+
+    try {
+      const updated = await api.addProvider(provider);
+      setModes(updated);
+      setShowAddProvider(false);
+      setNewProvider({ id: '', name: '', apiType: 'openai', apiKey: '', baseUrl: '' });
+      setFetchedModels([]);
+      setSelectedModels(new Set());
+    } catch (error) {
+      console.error('Failed to add provider:', error);
+      alert('添加提供商失败');
+    }
+  };
+
+  const handleUpdateProvider = async (providerId: string, updates: Partial<ModelProvider>) => {
+    const provider = modes.providers.find(p => p.id === providerId);
+    if (!provider) return;
+    const updated = { ...provider, ...updates };
+    try {
+      const result = await api.updateProvider(providerId, updated);
+      setModes(result);
+    } catch (error) {
+      console.error('Failed to update provider:', error);
+    }
+  };
+
+  const handleDeleteProvider = async (providerId: string) => {
+    if (!confirm('确定要删除这个提供商吗？')) return;
+    try {
+      const result = await api.deleteProvider(providerId);
+      setModes(result);
+    } catch (error) {
+      console.error('Failed to delete provider:', error);
     }
   };
 
@@ -445,16 +546,16 @@ export function SettingsApp(_props: SettingsAppProps) {
     }
   };
 
-  const handleAppModelUpdate = async (appId: string, providerName: string, modelId: string) => {
+  const handleAppModelUpdate = async (appId: string, providerId: string, modelId: string) => {
     const app = appConfigs[appId];
     if (!app) return;
 
-    const provider = modes.providers.find(p => p.name === providerName);
+    const provider = modes.providers.find(p => p.id === providerId);
     const model = provider?.models?.find(m => m.id === modelId);
     if (!model) return;
 
     const newModelConfig = {
-      provider: providerName,
+      provider: providerId,
       model: modelId,
       priority: 1,
       maxTokens: model.maxTokens,
@@ -475,15 +576,6 @@ export function SettingsApp(_props: SettingsAppProps) {
   const handleThemeChange = async (theme: 'light' | 'dark' | 'auto') => {
     setLocalSettings({ ...localSettings, theme });
     await updateSettings({ theme });
-  };
-
-  const handleModesUpdate = async (newModes: typeof modes) => {
-    try {
-      const updated = await api.updateModes(newModes);
-      setModes(updated);
-    } catch (error) {
-      console.error('Failed to update modes:', error);
-    }
   };
 
   const handleMcpUpdate = async (newMcp: typeof mcpConnections) => {
@@ -634,40 +726,103 @@ export function SettingsApp(_props: SettingsAppProps) {
       case 'model':
         return (
           <div className="settings-section">
-            <h3>模型提供商配置</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16 }}>
-              配置API Key和查看可用模型。模型将在应用设置中被选用。
-            </p>
-            {modes.providers.map((provider, index) => (
-              <div key={provider.name} style={{ marginBottom: 20, padding: 16, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 15 }}>{provider.name}</span>
-                    {provider.apiKey && (
-                      <span style={{ background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
-                        已配置
-                      </span>
-                    )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: 0 }}>模型提供商</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 12, margin: '4px 0 0 0' }}>
+                  添加API兼容的模型服务商，配置API Key后获取可用模型
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAddProvider(!showAddProvider)}
+                style={{
+                  padding: '8px 16px',
+                  background: 'var(--accent-color)',
+                  border: 'none',
+                  borderRadius: 6,
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                }}
+              >
+                {showAddProvider ? '取消添加' : '+ 添加提供商'}
+              </button>
+            </div>
+
+            {/* Add Provider Form */}
+            {showAddProvider && (
+              <div style={{ marginBottom: 20, padding: 16, background: 'rgba(255,255,255,0.08)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-primary)' }}>添加新提供商</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>ID (英文唯一标识)</label>
+                    <input
+                      type="text"
+                      value={newProvider.id}
+                      onChange={(e) => setNewProvider({ ...newProvider, id: e.target.value.toLowerCase().replace(/\s/g, '-') })}
+                      placeholder="e.g., my-provider"
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: 6,
+                        color: 'white',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>名称 (显示名)</label>
+                    <input
+                      type="text"
+                      value={newProvider.name}
+                      onChange={(e) => setNewProvider({ ...newProvider, name: e.target.value })}
+                      placeholder="e.g., 我的API"
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: 6,
+                        color: 'white',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                      }}
+                    />
                   </div>
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="settings-item" style={{ marginBottom: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>API类型</label>
+                    <select
+                      value={newProvider.apiType}
+                      onChange={(e) => setNewProvider({ ...newProvider, apiType: e.target.value as 'openai' | 'anthropic' | 'custom' })}
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: 6,
+                        color: 'white',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <option value="openai">OpenAI兼容</option>
+                      <option value="anthropic">Anthropic兼容</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </div>
+                  <div>
                     <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>API Key</label>
                     <input
                       type="password"
-                      value={provider.apiKey || ''}
-                      onChange={(e) => {
-                        const newProviders = [...modes.providers];
-                        newProviders[index] = { ...provider, apiKey: e.target.value };
-                        setModes({ providers: newProviders });
-                      }}
-                      onBlur={() => handleModesUpdate(modes)}
+                      value={newProvider.apiKey}
+                      onChange={(e) => setNewProvider({ ...newProvider, apiKey: e.target.value })}
                       placeholder="sk-..."
                       style={{
                         padding: '8px 12px',
                         background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
                         borderRadius: 6,
                         color: 'white',
                         width: '100%',
@@ -675,22 +830,17 @@ export function SettingsApp(_props: SettingsAppProps) {
                       }}
                     />
                   </div>
-                  <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <div>
                     <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Base URL</label>
                     <input
                       type="text"
-                      value={provider.baseUrl || ''}
-                      onChange={(e) => {
-                        const newProviders = [...modes.providers];
-                        newProviders[index] = { ...provider, baseUrl: e.target.value };
-                        setModes({ providers: newProviders });
-                      }}
-                      onBlur={() => handleModesUpdate(modes)}
-                      placeholder="https://api.openai.com/v1"
+                      value={newProvider.baseUrl}
+                      onChange={(e) => setNewProvider({ ...newProvider, baseUrl: e.target.value })}
+                      placeholder="https://api.example.com/v1"
                       style={{
                         padding: '8px 12px',
                         background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
                         borderRadius: 6,
                         color: 'white',
                         width: '100%',
@@ -700,29 +850,237 @@ export function SettingsApp(_props: SettingsAppProps) {
                   </div>
                 </div>
 
-                <div style={{ marginTop: 12 }}>
-                  <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }}>
-                    可用模型 ({provider.models?.length || 0})
-                  </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {provider.models?.map((model) => (
-                      <span
-                        key={model.id}
-                        style={{
-                          padding: '4px 10px',
-                          background: 'rgba(255,255,255,0.08)',
-                          borderRadius: 4,
-                          fontSize: 12,
-                          color: 'var(--text-secondary)',
-                        }}
-                      >
-                        {model.name}
-                      </span>
-                    )) || <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>暂无可用模型</span>}
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <button
+                    onClick={handleFetchModels}
+                    disabled={fetchingModels || !newProvider.apiKey || !newProvider.baseUrl}
+                    style={{
+                      padding: '8px 16px',
+                      background: fetchingModels ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
+                      border: 'none',
+                      borderRadius: 6,
+                      color: 'white',
+                      cursor: fetchingModels ? 'not-allowed' : 'pointer',
+                      fontSize: 13,
+                    }}
+                  >
+                    {fetchingModels ? '获取中...' : '获取可用模型'}
+                  </button>
+                  {fetchedModels.length > 0 && (
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                      获取到 {fetchedModels.length} 个模型，请勾选要启用的模型
+                    </span>
+                  )}
+                </div>
+
+                {fetchedModels.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }}>选择要启用的模型：</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 150, overflowY: 'auto' }}>
+                      {fetchedModels.map((model) => (
+                        <label
+                          key={model.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 12px',
+                            background: selectedModels.has(model.id) ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.05)',
+                            borderRadius: 4,
+                            cursor: 'pointer',
+                            fontSize: 12,
+                            color: selectedModels.has(model.id) ? '#22c55e' : 'var(--text-secondary)',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedModels.has(model.id)}
+                            onChange={() => handleToggleModel(model.id)}
+                            style={{ display: 'none' }}
+                          />
+                          {model.name}
+                        </label>
+                      ))}
+                    </div>
                   </div>
+                )}
+
+                <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      setShowAddProvider(false);
+                      setFetchedModels([]);
+                      setSelectedModels(new Set());
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: 'none',
+                      borderRadius: 6,
+                      color: 'white',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                    }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleAddProvider}
+                    disabled={!newProvider.id || !newProvider.name || selectedModels.size === 0}
+                    style={{
+                      padding: '8px 16px',
+                      background: selectedModels.size > 0 ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)',
+                      border: 'none',
+                      borderRadius: 6,
+                      color: 'white',
+                      cursor: selectedModels.size > 0 ? 'pointer' : 'not-allowed',
+                      fontSize: 13,
+                    }}
+                  >
+                    添加
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Provider List */}
+            {modes.providers.map((provider) => (
+              <div key={provider.id} style={{ marginBottom: 20, padding: 16, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: 15 }}>{provider.name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: 4 }}>
+                        {provider.apiType}
+                      </span>
+                      {provider.apiKey && (
+                        <span style={{ background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
+                          已配置
+                        </span>
+                      )}
+                      {defaultModel?.providerId === provider.id && (
+                        <span style={{ background: 'var(--accent-color)', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11 }}>
+                          默认
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{provider.baseUrl}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => setDefaultModel({ providerId: provider.id, modelId: provider.models[0]?.id || '' })}
+                      disabled={!provider.enabled || provider.models.length === 0}
+                      style={{
+                        padding: '4px 10px',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: 'none',
+                        borderRadius: 4,
+                        color: 'white',
+                        cursor: provider.enabled && provider.models.length > 0 ? 'pointer' : 'not-allowed',
+                        fontSize: 11,
+                        opacity: provider.enabled && provider.models.length > 0 ? 1 : 0.5,
+                      }}
+                    >
+                      设为默认
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProvider(provider.id)}
+                      style={{
+                        padding: '4px 10px',
+                        background: 'rgba(239, 68, 68, 0.2)',
+                        border: 'none',
+                        borderRadius: 4,
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        fontSize: 11,
+                      }}
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>API Key</span>
+                    <input
+                      type="checkbox"
+                      checked={provider.enabled}
+                      onChange={(e) => handleUpdateProvider(provider.id, { enabled: e.target.checked })}
+                      style={{ marginLeft: 4 }}
+                    />
+                    <span style={{ fontSize: 10 }}>启用</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={provider.apiKey || ''}
+                    onChange={(e) => handleUpdateProvider(provider.id, { apiKey: e.target.value })}
+                    onBlur={() => {}}
+                    placeholder="sk-..."
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 6,
+                      color: 'white',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }}>
+                    已启用模型 ({provider.models?.length || 0})
+                  </label>
+                  {provider.models?.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {provider.models.map((model) => (
+                        <span
+                          key={model.id}
+                          style={{
+                            padding: '4px 10px',
+                            background: defaultModel?.providerId === provider.id && defaultModel?.modelId === model.id
+                              ? 'var(--accent-color)'
+                              : 'rgba(255,255,255,0.08)',
+                            borderRadius: 4,
+                            fontSize: 12,
+                            color: defaultModel?.providerId === provider.id && defaultModel?.modelId === model.id
+                              ? 'white'
+                              : 'var(--text-secondary)',
+                          }}
+                        >
+                          {model.name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>暂无可用模型，请配置API Key后获取</span>
+                  )}
                 </div>
               </div>
             ))}
+
+            {modes.providers.length === 0 && !showAddProvider && (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-secondary)' }}>
+                <p>暂无模型提供商</p>
+                <button
+                  onClick={() => setShowAddProvider(true)}
+                  style={{
+                    padding: '8px 16px',
+                    background: 'var(--accent-color)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                  }}
+                >
+                  添加第一个提供商
+                </button>
+              </div>
+            )}
           </div>
         );
 
@@ -731,13 +1089,14 @@ export function SettingsApp(_props: SettingsAppProps) {
           <div className="settings-section">
             <h3>应用配置</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16 }}>
-              为每个应用选择使用的AI模型。模型需要在"模型"标签页中配置API Key。
+              为每个应用选择使用的AI模型。模型需要在"模型"标签页中配置API Key并启用。
             </p>
             <div style={{ maxHeight: 400, overflowY: 'auto' }}>
               {installedApps.map((app) => {
                 const appConfig = appConfigs[app.id];
                 const currentModel = appConfig?.models?.[0];
-                const currentProvider = currentModel ? modes.providers.find(p => p.name === currentModel.provider) : null;
+                const currentProvider = currentModel ? modes.providers.find(p => p.id === currentModel.provider) : null;
+                const enabledProviders = modes.providers.filter(p => p.enabled && p.apiKey && p.models.length > 0);
 
                 return (
                   <div key={app.id} style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
@@ -771,8 +1130,8 @@ export function SettingsApp(_props: SettingsAppProps) {
                           }}
                         >
                           <option value="">选择提供商...</option>
-                          {modes.providers.filter(p => p.apiKey).map((p) => (
-                            <option key={p.name} value={p.name}>{p.name}</option>
+                          {enabledProviders.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
                           ))}
                         </select>
                       </div>
@@ -804,6 +1163,12 @@ export function SettingsApp(_props: SettingsAppProps) {
                         </select>
                       </div>
                     </div>
+
+                    {!currentModel && enabledProviders.length === 0 && (
+                      <div style={{ marginTop: 8, fontSize: 11, color: '#f59e0b' }}>
+                        请先在"模型"标签页配置并启用一个提供商
+                      </div>
+                    )}
 
                     {currentModel && (
                       <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)' }}>

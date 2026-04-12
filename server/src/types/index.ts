@@ -186,7 +186,9 @@ export interface DesktopSettings {
   startMenu: StartMenuSettings;
 }
 
-// Model Provider
+// Model
+export type ApiCompatType = 'openai' | 'anthropic' | 'custom';
+
 export interface ProviderModel {
   id: string;
   name: string;
@@ -199,9 +201,12 @@ export interface ProviderModel {
 }
 
 export interface ModelProvider {
+  id: string;
   name: string;
+  apiType: ApiCompatType;
   apiKey?: string;
   baseUrl?: string;
+  enabled: boolean;
   models: ProviderModel[];
 }
 

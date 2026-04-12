@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { settingsService } from '../services/settings.js';
+import { OpenAIAdapter } from '../models/openai.js';
+import type { ApiCompatType } from '../types/index.js';
 
 const router = Router();
 
@@ -44,9 +46,9 @@ router.put('/modes', async (req: Request, res: Response) => {
 });
 
 // Update single provider
-router.put('/modes/providers/:providerName', async (req: Request, res: Response) => {
+router.put('/modes/providers/:providerId', async (req: Request, res: Response) => {
   try {
-    const modes = await settingsService.updateProvider(req.params.providerName, req.body);
+    const modes = await settingsService.updateProvider(req.params.providerId, req.body);
     res.json(modes);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -64,12 +66,37 @@ router.post('/modes/providers', async (req: Request, res: Response) => {
 });
 
 // Delete provider
-router.delete('/modes/providers/:providerName', async (req: Request, res: Response) => {
+router.delete('/modes/providers/:providerId', async (req: Request, res: Response) => {
   try {
-    const modes = await settingsService.deleteProvider(req.params.providerName);
+    const modes = await settingsService.deleteProvider(req.params.providerId);
     res.json(modes);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Fetch available models from provider API
+router.post('/modes/fetch-models', async (req: Request, res: Response) => {
+  try {
+    const { apiKey, baseUrl, apiType } = req.body;
+
+    if (!apiKey || !baseUrl) {
+      res.status(400).json({ error: 'API key and base URL are required' });
+      return;
+    }
+
+    // Only OpenAI-compatible APIs are supported for now
+    if (apiType !== 'openai' && apiType !== 'custom') {
+      res.json({ models: [] });
+      return;
+    }
+
+    const adapter = new OpenAIAdapter(apiKey, baseUrl);
+    const models = await adapter.listModels();
+
+    res.json({ models });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message, models: [] });
   }
 });
 

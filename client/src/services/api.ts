@@ -1,4 +1,4 @@
-import type { App, AppInfo, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill } from '../types';
+import type { App, AppInfo, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel } from '../types';
 
 const API_BASE = '/api';
 
@@ -152,8 +152,8 @@ export async function updateModes(modes: { providers: ModelProvider[] }): Promis
   });
 }
 
-export async function updateProvider(providerName: string, provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
-  return fetchJson<{ providers: ModelProvider[] }>(`/settings/modes/providers/${providerName}`, {
+export async function updateProvider(providerId: string, provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
+  return fetchJson<{ providers: ModelProvider[] }>(`/settings/modes/providers/${providerId}`, {
     method: 'PUT',
     body: JSON.stringify(provider),
   });
@@ -166,9 +166,16 @@ export async function addProvider(provider: ModelProvider): Promise<{ providers:
   });
 }
 
-export async function deleteProvider(providerName: string): Promise<{ providers: ModelProvider[] }> {
-  return fetchJson<{ providers: ModelProvider[] }>(`/settings/modes/providers/${providerName}`, {
+export async function deleteProvider(providerId: string): Promise<{ providers: ModelProvider[] }> {
+  return fetchJson<{ providers: ModelProvider[] }>(`/settings/modes/providers/${providerId}`, {
     method: 'DELETE',
+  });
+}
+
+export async function fetchModels(apiKey: string, baseUrl: string, apiType: string): Promise<{ models: ProviderModel[] }> {
+  return fetchJson<{ models: ProviderModel[] }>('/settings/modes/fetch-models', {
+    method: 'POST',
+    body: JSON.stringify({ apiKey, baseUrl, apiType }),
   });
 }
 

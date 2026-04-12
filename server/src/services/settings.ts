@@ -28,9 +28,12 @@ const DEFAULT_SETTINGS: DesktopSettings = {
 const DEFAULT_MODES: { providers: ModelProvider[] } = {
   providers: [
     {
-      name: 'openai',
+      id: 'openai',
+      name: 'OpenAI',
+      apiType: 'openai',
       apiKey: '',
       baseUrl: 'https://api.openai.com/v1',
+      enabled: true,
       models: [
         { id: 'gpt-4o', name: 'GPT-4o', maxTokens: 128000, supports: ['text', 'image'], params: { temperature: 0.7, top_p: 0.9 } },
         { id: 'gpt-4o-mini', name: 'GPT-4o Mini', maxTokens: 128000, supports: ['text'], params: { temperature: 0.7, top_p: 0.9 } },
@@ -38,9 +41,12 @@ const DEFAULT_MODES: { providers: ModelProvider[] } = {
       ]
     },
     {
-      name: 'anthropic',
+      id: 'anthropic',
+      name: 'Anthropic',
+      apiType: 'anthropic',
       apiKey: '',
       baseUrl: 'https://api.anthropic.com/v1',
+      enabled: true,
       models: [
         { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', maxTokens: 200000, supports: ['text', 'image'], params: { temperature: 0.7, top_p: 0.9 } },
         { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', maxTokens: 200000, supports: ['text'], params: { temperature: 0.7, top_p: 0.9 } }
@@ -104,12 +110,12 @@ class SettingsService {
     return { ...this.modes };
   }
 
-  async updateProvider(providerName: string, provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
+  async updateProvider(providerId: string, provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.modes) {
       await this.loadModes();
     }
-    const index = this.modes!.providers.findIndex(p => p.name === providerName);
+    const index = this.modes!.providers.findIndex(p => p.id === providerId);
     if (index >= 0) {
       this.modes!.providers[index] = provider;
     }
@@ -122,21 +128,21 @@ class SettingsService {
     if (!this.modes) {
       await this.loadModes();
     }
-    const existing = this.modes!.providers.find(p => p.name === provider.name);
+    const existing = this.modes!.providers.find(p => p.id === provider.id);
     if (existing) {
-      throw new Error(`Provider ${provider.name} already exists`);
+      throw new Error(`Provider ${provider.id} already exists`);
     }
     this.modes!.providers.push(provider);
     await writeJsonFile(path.join(CONFIGS_DIR, 'modes.json'), this.modes);
     return { providers: this.modes!.providers };
   }
 
-  async deleteProvider(providerName: string): Promise<{ providers: ModelProvider[] }> {
+  async deleteProvider(providerId: string): Promise<{ providers: ModelProvider[] }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.modes) {
       await this.loadModes();
     }
-    this.modes!.providers = this.modes!.providers.filter(p => p.name !== providerName);
+    this.modes!.providers = this.modes!.providers.filter(p => p.id !== providerId);
     await writeJsonFile(path.join(CONFIGS_DIR, 'modes.json'), this.modes);
     return { providers: this.modes!.providers };
   }

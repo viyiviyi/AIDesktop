@@ -1,4 +1,4 @@
-import type { ChatParams, ChatResponse, ChatStreamEvent, Content, Message, Tool } from '../types/index.js';
+import type { ChatParams, ChatResponse, ChatStreamEvent, Content, Message, Tool, ProviderModel } from '../types/index.js';
 
 interface OpenAIMessage {
   role: 'user' | 'assistant' | 'system';
@@ -186,5 +186,38 @@ export class OpenAIAdapter {
 
   supports(): ('text' | 'image' | 'audio' | 'video' | 'file')[] {
     return ['text', 'image'];
+  }
+
+  async listModels(): Promise<ProviderModel[]> {
+    if (!this.apiKey) {
+      throw new Error('API key not configured');
+    }
+
+    const response = await fetch(`${this.baseUrl}/models`, {
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list models: ${response.status}`);
+    }
+
+    const data = await response.json() as {
+      data: Array<{
+        id: string;
+        name?: string;
+        context_window?: number;
+        input_modalities?: string[];
+      }>;
+    };
+
+    return data.data.map(model => ({
+      id: model.id,
+      name: model.name || model.id,
+      maxTokens: model.context_window || 128000,
+      supports: (model.input_modalities?.includes('text') ?? true) ? ['text', 'image'] : ['text'],
+      params: { temperature: 0.7, top_p: 0.9 }
+    }));
   }
 }
