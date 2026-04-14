@@ -223,8 +223,8 @@ body {
 .start-menu {
   position: fixed;
   top: calc(var(--menu-bar-height) + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 8px;
+  transform: none;
   width: 700px;
   height: 500px;
   background: var(--window-bg);
@@ -698,4 +698,79 @@ button {
 
 .theme-light ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.3);
+}
+
+/* Dock Window Menu */
+.dock-window-menu {
+  position: fixed;
+  transform: translateX(-50%);
+  min-width: 200px;
+  background: var(--window-bg);
+  backdrop-filter: blur(20px);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.dock-window-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--window-title-bg);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.dock-window-menu-header img {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.dock-window-menu-header span {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dock-window-menu-items {
+  padding: 8px;
+}
+
+.dock-window-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dock-window-menu-item:hover {
+  background: var(--bg-primary);
+}
+
+.dock-window-menu-item.new-window {
+  border-top: 1px solid var(--border-primary);
+  margin-top: 8px;
+  padding-top: 12px;
+  color: var(--accent-color);
+}
+
+.dock-window-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dock-window-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success-color);
+  flex-shrink: 0;
 }

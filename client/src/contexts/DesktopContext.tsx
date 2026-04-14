@@ -112,9 +112,14 @@ function reducer(state: DesktopState, action: Action): DesktopState {
   }
 }
 
+interface OpenAppOptions {
+  conversationId?: string;
+  forceNew?: boolean;
+}
+
 interface DesktopContextValue {
   state: DesktopState;
-  openApp: (app: AppInfo, conversationId?: string) => void;
+  openApp: (app: AppInfo, options?: OpenAppOptions) => void;
   closeWindow: (windowId: string) => void;
   focusWindow: (windowId: string) => void;
   updateWindow: (windowId: string, updates: Partial<WindowState>) => void;
@@ -150,22 +155,27 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
     loadInitialData();
   }, [loadInitialData]);
 
-  const openApp = useCallback((app: AppInfo, conversationId?: string) => {
-    const existingWindow = state.windows.find((w) => w.appId === app.id);
-    if (existingWindow) {
-      dispatch({ type: 'FOCUS_WINDOW', payload: existingWindow.id });
-      if (existingWindow.isMinimized) {
-        dispatch({
-          type: 'UPDATE_WINDOW',
-          payload: { id: existingWindow.id, updates: { isMinimized: false } },
-        });
+  const openApp = useCallback((app: AppInfo, options?: OpenAppOptions) => {
+    const { forceNew, conversationId } = options || {};
+
+    if (!forceNew) {
+      const existingWindow = state.windows.find((w) => w.appId === app.id);
+      if (existingWindow) {
+        dispatch({ type: 'FOCUS_WINDOW', payload: existingWindow.id });
+        if (existingWindow.isMinimized) {
+          dispatch({
+            type: 'UPDATE_WINDOW',
+            payload: { id: existingWindow.id, updates: { isMinimized: false } },
+          });
+        }
+        return;
       }
-      return;
     }
 
     const id = `window-${++windowIdCounter}`;
     const { defaultSize } = state.settings.window;
     const offset = state.windows.length * 30;
+    const newConversationId = conversationId || `conv-${++windowIdCounter}`;
 
     const newWindow: WindowState = {
       id,
@@ -180,7 +190,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       isMaximized: false,
       isMinimized: false,
       zIndex: offset,
-      conversationId,
+      conversationId: newConversationId,
     };
 
     dispatch({ type: 'ADD_WINDOW', payload: newWindow });

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
-import type { AppInfo } from '../types';
+import type { AppInfo, WindowState } from '../types';
 
 // Default icons for apps without icons
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -10,13 +10,106 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   </svg>
 `);
 
+interface DockWindowMenuProps {
+  windows: WindowState[];
+  app: AppInfo;
+  anchorEl: HTMLElement;
+  onClose: () => void;
+  onFocusWindow: (windowId: string) => void;
+  onOpenNewWindow: (app: AppInfo) => void;
+}
+
+function DockWindowMenu({
+  windows,
+  app,
+  anchorEl,
+  onClose,
+  onFocusWindow,
+  onOpenNewWindow,
+}: DockWindowMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (anchorEl) {
+      const rect = anchorEl.getBoundingClientRect();
+      setPosition({
+        top: rect.top - 8,
+        left: rect.left + rect.width / 2,
+      });
+    }
+  }, [anchorEl]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={menuRef}
+      className="dock-window-menu"
+      style={{ top: position.top, left: position.left }}
+    >
+      <div className="dock-window-menu-header">
+        <img src={app.icon || DEFAULT_ICON} alt={app.name} />
+        <span>{app.name}</span>
+      </div>
+      <div className="dock-window-menu-items">
+        {windows.map((window) => (
+          <div
+            key={window.id}
+            className="dock-window-menu-item"
+            onClick={() => {
+              onFocusWindow(window.id);
+              onClose();
+            }}
+          >
+            <span className="dock-window-title">{window.title}</span>
+            <span className="dock-window-indicator" />
+          </div>
+        ))}
+      </div>
+      <div
+        className="dock-window-menu-item new-window"
+        onClick={() => {
+          onOpenNewWindow(app);
+          onClose();
+        }}
+      >
+        <span>新建窗口</span>
+      </div>
+    </div>
+  );
+}
+
 export function Dock() {
-  const { state, openApp, toggleStartMenu } = useDesktop();
+  const { state, openApp, toggleStartMenu, focusWindow } = useDesktop();
+  const [windowMenu, setWindowMenu] = useState<{
+    app: AppInfo;
+    windows: WindowState[];
+    anchorEl: HTMLElement;
+  } | null>(null);
 
-  const desktopApps = state.installedApps.filter((app) => app.type === 'desktop');
+  const getWindowsForApp = (appId: string) => {
+    return state.windows.filter((w) => w.appId === appId);
+  };
 
-  const handleAppClick = (app: AppInfo) => {
-    openApp(app);
+  const handleAppClick = (app: AppInfo, e: React.MouseEvent) => {
+    const windows = getWindowsForApp(app.id);
+
+    if (windows.length === 0) {
+      openApp(app, { forceNew: true });
+    } else if (windows.length === 1) {
+      focusWindow(windows[0].id);
+    } else {
+      setWindowMenu({ app, windows, anchorEl: e.currentTarget as HTMLElement });
+    }
   };
 
   const handleStartClick = () => {
@@ -30,38 +123,55 @@ export function Dock() {
   };
 
   return (
-    <div className="dock bottom">
-      {desktopApps.map((app) => (
+    <>
+      <div className="dock bottom">
+        {state.taskbarApps.map((appId) => {
+          const app = state.installedApps.find((a) => a.id === appId);
+          if (!app) return null;
+          const windows = getWindowsForApp(app.id);
+          return (
+            <div
+              key={app.id}
+              className={`dock-item running`}
+              onClick={(e) => handleAppClick(app, e)}
+              title={app.name}
+            >
+              <img
+                src={app.icon || DEFAULT_ICON}
+                alt={app.name}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = DEFAULT_ICON;
+                }}
+              />
+            </div>
+          );
+        })}
+        <div className="dock-separator" />
         <div
-          key={app.id}
-          className={`dock-item ${state.taskbarApps.includes(app.id) ? 'running' : ''}`}
-          onClick={() => handleAppClick(app)}
-          title={app.name}
+          className="dock-item"
+          onClick={handleStartClick}
+          onDoubleClick={handleDoubleClick}
+          title="开始菜单"
         >
-          <img
-            src={app.icon || DEFAULT_ICON}
-            alt={app.name}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = DEFAULT_ICON;
-            }}
-          />
+          <svg viewBox="0 0 100 100" width="48" height="48">
+            <rect width="100" height="100" rx="20" fill="rgba(255,255,255,0.9)"/>
+            <rect x="20" y="20" width="25" height="25" rx="4" fill="#0078d4"/>
+            <rect x="55" y="20" width="25" height="25" rx="4" fill="#28c840"/>
+            <rect x="20" y="55" width="25" height="25" rx="4" fill="#febc2e"/>
+            <rect x="55" y="55" width="25" height="25" rx="4" fill="#ff5f57"/>
+          </svg>
         </div>
-      ))}
-      <div className="dock-separator" />
-      <div
-        className="dock-item"
-        onClick={handleStartClick}
-        onDoubleClick={handleDoubleClick}
-        title="开始菜单"
-      >
-        <svg viewBox="0 0 100 100" width="48" height="48">
-          <rect width="100" height="100" rx="20" fill="rgba(255,255,255,0.9)"/>
-          <rect x="20" y="20" width="25" height="25" rx="4" fill="#0078d4"/>
-          <rect x="55" y="20" width="25" height="25" rx="4" fill="#28c840"/>
-          <rect x="20" y="55" width="25" height="25" rx="4" fill="#febc2e"/>
-          <rect x="55" y="55" width="25" height="25" rx="4" fill="#ff5f57"/>
-        </svg>
       </div>
-    </div>
+      {windowMenu && (
+        <DockWindowMenu
+          windows={windowMenu.windows}
+          app={windowMenu.app}
+          anchorEl={windowMenu.anchorEl}
+          onClose={() => setWindowMenu(null)}
+          onFocusWindow={focusWindow}
+          onOpenNewWindow={(app) => openApp(app, { forceNew: true })}
+        />
+      )}
+    </>
   );
 }
