@@ -101,9 +101,18 @@ export function Window({ windowState, children }: WindowProps) {
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = async () => {
       setIsDragging(false);
       setIsResizing(false);
+
+      // Save window position after dragging
+      if (windowStateRef.current) {
+        try {
+          await api.saveWindowPosition(windowStateRef.current.appId, windowStateRef.current.position);
+        } catch (error) {
+          console.error('Failed to save window position:', error);
+        }
+      }
     };
 
     if (isDragging || isResizing) {
@@ -132,7 +141,7 @@ export function Window({ windowState, children }: WindowProps) {
       onMouseDown={handleMouseDown}
     >
       <div className="window-header" onMouseDown={handleHeaderMouseDown}>
-        <div style={{ width: 52 }} />
+        <div style={{ width: 84 }} />
         <div className="window-title">
           <img src={windowState.icon || DEFAULT_ICON} alt="" className="window-title-icon" />
           {windowState.title}
@@ -1723,8 +1732,8 @@ export function SettingsApp(_props: SettingsAppProps) {
                         <select
                           value={currentModel?.model || ''}
                           onChange={(e) => {
-                            if (e.target.value && currentModel?.provider) {
-                              handleAppModelUpdate(app.id, currentModel.provider, e.target.value);
+                            if (e.target.value && currentProvider) {
+                              handleAppModelUpdate(app.id, currentProvider.id, e.target.value);
                             }
                           }}
                           disabled={!currentProvider || !currentProvider.models?.length}
@@ -1733,7 +1742,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                             background: 'var(--bg-primary)',
                             border: '1px solid var(--border-primary)',
                             borderRadius: 4,
-                            color: currentModel?.model ? 'white' : 'var(--text-secondary)',
+                            color: currentModel?.model ? 'var(--text-primary)' : 'var(--text-secondary)',
                             width: '100%',
                             boxSizing: 'border-box',
                           }}

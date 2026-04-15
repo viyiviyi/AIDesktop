@@ -232,3 +232,15 @@ export async function updateSkillSettings(skills: { skills: Skill[]; globalEnabl
 export async function healthCheck(): Promise<{ status: string; timestamp: string }> {
   return fetchJson<{ status: string; timestamp: string }>('/health');
 }
+
+// Window Positions
+export async function getWindowPositions(): Promise<Record<string, { x: number; y: number }>> {
+  return fetchJson<Record<string, { x: number; y: number }>>('/settings/window-positions');
+}
+
+export async function saveWindowPosition(appId: string, position: { x: number; y: number }): Promise<void> {
+  await fetchJson(`/settings/window-positions/${appId}`, {
+    method: 'PUT',
+    body: JSON.stringify(position),
+  });
+}

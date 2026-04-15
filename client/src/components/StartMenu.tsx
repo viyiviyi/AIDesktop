@@ -105,14 +105,10 @@ export function StartMenu() {
       )
     : desktopApps;
 
-  if (!state.startMenuOpen) {
-    return null;
-  }
-
   return (
     <>
-      <div className="start-menu-overlay" onClick={handleOverlayClick} />
-      <div className="start-menu">
+      {state.startMenuOpen && <div className="start-menu-overlay" onClick={handleOverlayClick} />}
+      <div className={`start-menu ${state.startMenuOpen ? 'visible' : ''}`}>
         <div className="start-menu-left">
           {displayedApps.slice(0, 6).map((app) => (
             <div

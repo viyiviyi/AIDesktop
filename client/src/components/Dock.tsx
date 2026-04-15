@@ -125,6 +125,21 @@ export function Dock() {
   return (
     <>
       <div className="dock bottom">
+        <div
+          className="dock-item"
+          onClick={handleStartClick}
+          onDoubleClick={handleDoubleClick}
+          title="开始菜单"
+        >
+          <svg viewBox="0 0 100 100" width="48" height="48">
+            <rect width="100" height="100" rx="20" fill="rgba(255,255,255,0.9)"/>
+            <rect x="20" y="20" width="25" height="25" rx="4" fill="#0078d4"/>
+            <rect x="55" y="20" width="25" height="25" rx="4" fill="#28c840"/>
+            <rect x="20" y="55" width="25" height="25" rx="4" fill="#febc2e"/>
+            <rect x="55" y="55" width="25" height="25" rx="4" fill="#ff5f57"/>
+          </svg>
+        </div>
+        <div className="dock-separator" />
         {state.taskbarApps.map((appId) => {
           const app = state.installedApps.find((a) => a.id === appId);
           if (!app) return null;
@@ -146,21 +161,6 @@ export function Dock() {
             </div>
           );
         })}
-        <div className="dock-separator" />
-        <div
-          className="dock-item"
-          onClick={handleStartClick}
-          onDoubleClick={handleDoubleClick}
-          title="开始菜单"
-        >
-          <svg viewBox="0 0 100 100" width="48" height="48">
-            <rect width="100" height="100" rx="20" fill="rgba(255,255,255,0.9)"/>
-            <rect x="20" y="20" width="25" height="25" rx="4" fill="#0078d4"/>
-            <rect x="55" y="20" width="25" height="25" rx="4" fill="#28c840"/>
-            <rect x="20" y="55" width="25" height="25" rx="4" fill="#febc2e"/>
-            <rect x="55" y="55" width="25" height="25" rx="4" fill="#ff5f57"/>
-          </svg>
-        </div>
       </div>
       {windowMenu && (
         <DockWindowMenu

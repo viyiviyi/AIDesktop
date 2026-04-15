@@ -200,4 +200,5 @@ export interface DesktopState {
   startMenuOpen: boolean;
   startMenuMode: 'click' | 'voice';
   taskbarApps: string[];
+  appLastPositions: Record<string, { x: number; y: number }>;
 }

@@ -27,6 +27,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
 type Action =
   | { type: 'SET_SETTINGS'; payload: DesktopSettings }
   | { type: 'SET_APPS'; payload: AppInfo[] }
+  | { type: 'SET_WINDOW_POSITIONS'; payload: Record<string, { x: number; y: number }> }
   | { type: 'ADD_WINDOW'; payload: WindowState }
   | { type: 'REMOVE_WINDOW'; payload: string }
   | { type: 'UPDATE_WINDOW'; payload: { id: string; updates: Partial<WindowState> } }
@@ -42,6 +43,7 @@ const initialState: DesktopState = {
   startMenuOpen: false,
   startMenuMode: 'click',
   taskbarApps: [],
+  appLastPositions: {},
 };
 
 function reducer(state: DesktopState, action: Action): DesktopState {
@@ -51,6 +53,9 @@ function reducer(state: DesktopState, action: Action): DesktopState {
 
     case 'SET_APPS':
       return { ...state, installedApps: action.payload };
+
+    case 'SET_WINDOW_POSITIONS':
+      return { ...state, appLastPositions: action.payload };
 
     case 'ADD_WINDOW': {
       const newWindows = [...state.windows, action.payload];
@@ -140,12 +145,16 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
 
   const loadInitialData = useCallback(async () => {
     try {
-      const [settings, apps] = await Promise.all([
+      const [settings, apps, windowPositions] = await Promise.all([
         api.getSettings(),
         api.getApps(),
+        api.getWindowPositions().catch(() => ({})),
       ]);
       dispatch({ type: 'SET_SETTINGS', payload: settings });
       dispatch({ type: 'SET_APPS', payload: apps });
+      if (Object.keys(windowPositions).length > 0) {
+        dispatch({ type: 'SET_WINDOW_POSITIONS', payload: windowPositions });
+      }
     } catch (error) {
       console.error('Failed to load initial data:', error);
     }
@@ -174,27 +183,37 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
 
     const id = `window-${++windowIdCounter}`;
     const { defaultSize } = state.settings.window;
-    const offset = state.windows.length * 30;
     const newConversationId = conversationId || `conv-${++windowIdCounter}`;
+
+    // Calculate position: use last position if available, otherwise center
+    const lastPos = state.appLastPositions?.[app.id];
+    let basePosition = lastPos || {
+      x: (window.innerWidth - defaultSize.width) / 2,
+      y: (window.innerHeight - defaultSize.height) / 2,
+    };
+
+    // Multi-instance offset: when forceNew, offset by 30px
+    const offset = forceNew ? 30 : 0;
+    const newPosition = {
+      x: basePosition.x + offset,
+      y: basePosition.y + offset,
+    };
 
     const newWindow: WindowState = {
       id,
       appId: app.id,
       title: app.name,
       icon: app.icon,
-      position: {
-        x: 100 + offset,
-        y: 50 + offset,
-      },
+      position: newPosition,
       size: { ...defaultSize },
       isMaximized: false,
       isMinimized: false,
-      zIndex: offset,
+      zIndex: state.windows.length,
       conversationId: newConversationId,
     };
 
     dispatch({ type: 'ADD_WINDOW', payload: newWindow });
-  }, [state.windows, state.settings.window]);
+  }, [state.windows, state.settings.window, state.appLastPositions]);
 
   const closeWindow = useCallback((windowId: string) => {
     dispatch({ type: 'REMOVE_WINDOW', payload: windowId });
