@@ -47,6 +47,13 @@ export async function deleteApp(appId: string): Promise<void> {
   await fetchJson(`/apps/${appId}`, { method: 'DELETE' });
 }
 
+// Reload all apps from disk (useful when new apps are added)
+export async function reloadApps(): Promise<{ success: boolean; message: string; apps: AppInfo[] }> {
+  return fetchJson<{ success: boolean; message: string; apps: AppInfo[] }>('/apps/reload', {
+    method: 'POST',
+  });
+}
+
 // Conversations
 export async function getConversations(appId: string): Promise<Conversation[]> {
   const data = await fetchJson<{ conversations: Conversation[] }>(`/apps/${appId}/conversations`);

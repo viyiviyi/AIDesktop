@@ -11,7 +11,7 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
 `);
 
 export function StartMenu() {
-  const { state, openApp, closeStartMenu } = useDesktop();
+  const { state, openApp, closeStartMenu, refreshApps } = useDesktop();
   const [searchQuery, setSearchQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -168,6 +168,11 @@ export function StartMenu() {
             </button>
           </div>
           <div className="start-menu-footer">
+            <button title="刷新应用" onClick={async () => {
+              await refreshApps();
+            }}>
+              <span>🔄</span> 刷新
+            </button>
             <button title="搜索">
               <span>🔍</span> 搜索
             </button>

@@ -104,4 +104,26 @@ router.delete('/:appId', async (req: Request, res: Response) => {
   }
 });
 
+// Reload all apps (useful when new apps are added)
+router.post('/reload', async (req: Request, res: Response) => {
+  try {
+    await appLoader.reloadAll();
+    const apps = appLoader.getAllApps();
+    res.json({
+      success: true,
+      message: `Reloaded ${apps.length} apps`,
+      apps: apps.map(a => ({
+        id: a.meta.id,
+        name: a.meta.name,
+        description: a.meta.description,
+        source: a.meta.source,
+        type: a.meta.type,
+        icon: a.meta.icon
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 export default router;

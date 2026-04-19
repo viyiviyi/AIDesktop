@@ -101,6 +101,12 @@ class AppLoader {
     return this.getAllApps().filter(app => app.meta.type === 'desktop');
   }
 
+  // Reload all apps from disk (useful when apps are added/removed without restart)
+  async reloadAll(): Promise<void> {
+    this.apps.clear();
+    await this.loadAll();
+  }
+
   async createApp(app: Omit<App, 'meta'> & { meta: Partial<AppMeta> }, source: AppSource): Promise<App> {
     const id = app.meta.id || uuidv4();
     const now = new Date().toISOString();

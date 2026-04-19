@@ -241,8 +241,9 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshApps = useCallback(async () => {
-    const apps = await api.getApps();
-    dispatch({ type: 'SET_APPS', payload: apps });
+    // Use reloadApps to re-scan disk and load any new apps
+    const result = await api.reloadApps();
+    dispatch({ type: 'SET_APPS', payload: result.apps });
   }, []);
 
   const minimizeWindow = useCallback((windowId: string) => {
