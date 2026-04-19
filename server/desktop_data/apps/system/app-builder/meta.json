@@ -1,7 +1,7 @@
 {
   "id": "app-builder",
   "name": "创建应用",
-  "description": "通过对话方式创建新的桌面应用或后台服务",
+  "description": "通过对话方式创建新的桌面应用或后台服务。可以调用其他应用和服务来辅助创建过程。",
   "source": "system",
   "type": "desktop",
   "icon": "/public_icons/app-builder.svg",
@@ -21,7 +21,7 @@
   "supportedInputs": ["text"],
   "inputDescription": "支持应用配置描述",
   "outputDescription": "生成应用代码和配置",
-  "visibleApps": [],
+  "visibleApps": ["settings"],
   "visibleServices": [],
-  "tools": ["mcp.filesystem"]
+  "tools": ["mcp.filesystem", "mcp.agent"]
 }
