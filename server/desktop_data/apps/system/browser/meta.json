@@ -1,0 +1,27 @@
+{
+  "id": "browser",
+  "name": "浏览器服务",
+  "description": "浏览器服务，提供网页导航、内容获取、页面交互等功能。此服务设计用于Agent批量查看网页场景，上下文只保留最新页面内容以防止溢出。",
+  "source": "system",
+  "type": "background",
+  "icon": null,
+  "models": [
+    {
+      "provider": "local_llama",
+      "model": "qwen3.5-9b-uncensored-hauhaucs-aggressive",
+      "priority": 1,
+      "maxTokens": 128000,
+      "supports": ["text", "image"],
+      "params": {
+        "temperature": 0.7,
+        "top_p": 0.9
+      }
+    }
+  ],
+  "supportedInputs": ["text"],
+  "inputDescription": "接受浏览器操作命令，如导航、获取内容、点击等",
+  "outputDescription": "返回页面内容或操作结果",
+  "visibleApps": [],
+  "visibleServices": [],
+  "tools": ["mcp.browser"]
+}

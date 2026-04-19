@@ -21,6 +21,11 @@ const builtInServices: Record<string, MCPService> = {
     name: 'mcp.settings',
     description: 'Settings service - get and update desktop settings',
     methods: ['get', 'update']
+  },
+  'mcp.browser': {
+    name: 'mcp.browser',
+    description: 'Browser service - navigate, interact with web pages, get content',
+    methods: ['navigate', 'getContent', 'interact', 'close', 'listSessions']
   }
 };
 
@@ -79,6 +84,8 @@ class MCPServiceRegistry {
         return this.handleFilesystemMethod(method, args, context);
       case 'mcp.settings':
         return this.handleSettingsMethod(method, args, context);
+      case 'mcp.browser':
+        return this.handleBrowserMethod(method, args, context);
       default:
         throw new Error(`Service ${serviceName} not implemented`);
     }
@@ -302,6 +309,118 @@ class MCPServiceRegistry {
         return settingsService.getSettings();
       case 'update':
         return settingsService.updateSettings(args as Record<string, unknown>);
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleBrowserMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string }
+  ): Promise<unknown> {
+    const { browserManager } = await import('./browser/manager.js');
+
+    switch (method) {
+      case 'navigate': {
+        // args: { url: string, tabId?: string, timeout?: number }
+        const url = args.url as string;
+        const tabId = (args.tabId as string) || 'default';
+        const timeout = (args.timeout as number) || 30;
+
+        if (!url) {
+          throw new Error('url is required');
+        }
+
+        // 验证 URL 格式
+        try {
+          new URL(url);
+        } catch {
+          throw new Error(`Invalid URL format: ${url}`);
+        }
+
+        const result = await browserManager.navigateTo(tabId, url, timeout * 1000);
+        return {
+          success: true,
+          tabId,
+          pageInfo: {
+            title: result.title,
+            url: result.url
+          },
+          message: `已导航到 ${url}`
+        };
+      }
+
+      case 'getContent': {
+        // args: { tabId?: string, contentType?: 'dom' | 'accessibility' | 'screenshot' }
+        const tabId = (args.tabId as string) || 'default';
+        const contentType = (args.contentType as 'dom' | 'accessibility' | 'screenshot') || 'accessibility';
+
+        const result = await browserManager.getPageContent(tabId, contentType);
+
+        // 关键：返回页面内容，但通过调用者确保不在上下文中保留历史
+        return {
+          success: true,
+          tabId,
+          pageInfo: {
+            title: result.title,
+            url: result.url
+          },
+          content: result.content,
+          contentType,
+          // 重要提示：当前页面内容会替换之前的上下文
+          // 调用者应该及时提取并记录需要的信息
+          _hint: 'Only the latest page content is visible in context. Extract important information immediately.'
+        };
+      }
+
+      case 'interact': {
+        // args: { tabId?: string, action: string, selector?: string, text?: string, key?: string, value?: string }
+        const tabId = (args.tabId as string) || 'default';
+        const action = args.action as 'click' | 'fill' | 'press' | 'hover' | 'select' | 'check' | 'uncheck' | 'goBack' | 'goForward' | 'reload';
+        const selector = args.selector as string | undefined;
+        const text = args.text as string | undefined;
+        const key = args.key as string | undefined;
+        const value = args.value as string | undefined;
+
+        if (!action) {
+          throw new Error('action is required');
+        }
+
+        const result = await browserManager.interact(tabId, action, { selector, text, key, value });
+        return {
+          success: result.success,
+          tabId,
+          action,
+          message: result.message
+        };
+      }
+
+      case 'close': {
+        // args: { tabId?: string }
+        const tabId = (args.tabId as string) || 'default';
+
+        const closed = await browserManager.closeSession(tabId);
+        return {
+          success: closed,
+          tabId,
+          message: closed ? `已关闭浏览器会话: ${tabId}` : `会话 ${tabId} 不存在`
+        };
+      }
+
+      case 'listSessions': {
+        const sessions = browserManager.listSessions();
+        return {
+          sessions: sessions.map(s => ({
+            id: s.id,
+            url: s.url,
+            title: s.title,
+            createdAt: s.createdAt.toISOString()
+          })),
+          count: sessions.length
+        };
+      }
+
       default:
         throw new Error(`Unknown method: ${method}`);
     }
