@@ -719,7 +719,7 @@ button {
 /* Dock Window Menu */
 .dock-window-menu {
   position: fixed;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateY(-100%);
   min-width: 200px;
   background: var(--window-bg);
   backdrop-filter: blur(20px);

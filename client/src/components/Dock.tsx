@@ -34,7 +34,7 @@ function DockWindowMenu({
     if (anchorEl) {
       const rect = anchorEl.getBoundingClientRect();
       setPosition({
-        top: rect.top - 8,
+        top: rect.top, // 菜单位于图标顶部
         left: rect.left + rect.width / 2,
       });
     }
