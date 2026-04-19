@@ -23,5 +23,5 @@
   "outputDescription": "返回文本、图片、语音回复",
   "visibleApps": ["file-manager", "settings", "app-builder"],
   "visibleServices": ["clipboard", "notification"],
-  "tools": ["mcp.filesystem", "mcp.window", "mcp.settings"]
+  "tools": ["mcp.filesystem", "mcp.window", "mcp.settings", "mcp.agent"]
 }

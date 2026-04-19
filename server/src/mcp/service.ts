@@ -1,4 +1,4 @@
-import type { MCPService } from '../types/index.js';
+import type { MCPService, Content } from '../types/index.js';
 
 // Built-in MCP services
 const builtInServices: Record<string, MCPService> = {
@@ -90,25 +90,120 @@ class MCPServiceRegistry {
     context: { appId?: string }
   ): Promise<unknown> {
     const { appLoader } = await import('../services/appLoader.js');
+    const { conversationService } = await import('../services/conversation.js');
+    const { agentEngine } = await import('../agents/engine.js');
 
     switch (method) {
-      case 'list':
+      case 'list': {
+        // 获取调用者的信息，用于过滤可见的agent列表
+        const callerApp = context.appId ? appLoader.getApp(context.appId) : null;
+        const visibleApps = callerApp?.meta.visibleApps || [];
+
         return {
           agents: appLoader.getAllApps()
-            .filter(a => a.meta.type === 'desktop')
+            .filter(a => {
+              // 过滤掉自己
+              if (a.meta.id === context.appId) return false;
+              // 只返回 desktop 和 background 类型的应用
+              if (a.meta.type !== 'desktop' && a.meta.type !== 'background') return false;
+              // 如果调用者配置了 visibleApps，则只返回在列表中的
+              if (visibleApps.length > 0 && !visibleApps.includes(a.meta.id)) return false;
+              return true;
+            })
             .map(a => ({
               id: a.meta.id,
               name: a.meta.name,
               description: a.meta.description,
-              type: a.meta.type
+              type: a.meta.type,
+              icon: a.meta.icon,
+              supportedInputs: a.meta.supportedInputs
             }))
         };
-      case 'getInfo':
+      }
+      case 'getInfo': {
         const app = appLoader.getApp(args.id as string);
-        return app ? { id: app.meta.id, name: app.meta.name, ...app } : null;
-      case 'call':
-        // This would trigger another agent - simplified for now
-        return { success: true, message: 'Agent call initiated' };
+        if (!app) {
+          return { error: 'Agent not found' };
+        }
+        return {
+          id: app.meta.id,
+          name: app.meta.name,
+          description: app.meta.description,
+          type: app.meta.type,
+          icon: app.meta.icon,
+          supportedInputs: app.meta.supportedInputs,
+          tools: app.meta.tools
+        };
+      }
+      case 'call': {
+        // args: { agentId: string, message: Content[], convId?: string }
+        const agentId = args.agentId as string;
+        const message = args.message as Content[];
+        const convId = args.convId as string | undefined;
+
+        if (!agentId) {
+          throw new Error('agentId is required');
+        }
+        if (!message || !Array.isArray(message) || message.length === 0) {
+          throw new Error('message is required and must be a non-empty array');
+        }
+
+        // 不能调用自己
+        if (agentId === context.appId) {
+          throw new Error('Cannot call yourself');
+        }
+
+        // Validate target agent exists
+        const targetApp = appLoader.getApp(agentId);
+        if (!targetApp) {
+          throw new Error(`Agent ${agentId} not found`);
+        }
+        if (targetApp.meta.type !== 'desktop' && targetApp.meta.type !== 'background') {
+          throw new Error(`Agent ${agentId} is not a callable agent`);
+        }
+
+        // 检查可见性：调用者的 visibleApps 控制可以调用哪些 agent
+        if (context.appId) {
+          const callerApp = appLoader.getApp(context.appId);
+          if (callerApp && callerApp.meta.visibleApps.length > 0) {
+            if (!callerApp.meta.visibleApps.includes(agentId)) {
+              throw new Error(`Agent ${agentId} is not visible to ${context.appId}`);
+            }
+          }
+        }
+
+        // Get or create conversation
+        let targetConvId = convId;
+        if (!targetConvId) {
+          // Create new conversation for target agent
+          const conversations = await conversationService.getConversations(agentId);
+          if (conversations.length > 0) {
+            // Use most recent conversation
+            targetConvId = conversations[conversations.length - 1].id;
+          } else {
+            const newConv = await conversationService.createConversation(agentId, '新会话');
+            targetConvId = newConv.id;
+          }
+        }
+
+        // Validate conversation exists
+        const conversation = await conversationService.getConversation(agentId, targetConvId);
+        if (!conversation) {
+          throw new Error(`Conversation ${targetConvId} not found`);
+        }
+
+        // Add user message to target conversation
+        await conversationService.addMessage(agentId, targetConvId, 'user', message);
+
+        // Process message with target agent
+        const { assistantMessage } = await agentEngine.processMessage(agentId, targetConvId, message);
+
+        return {
+          success: true,
+          conversationId: targetConvId,
+          message: assistantMessage
+        };
+      }
       default:
         throw new Error(`Unknown method: ${method}`);
     }
