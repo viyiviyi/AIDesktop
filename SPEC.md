@@ -67,59 +67,77 @@
 ### 2.2 技术栈
 
 #### 前端
-- **框架**：React 18 + TypeScript
-- **UI库**：Ant Design 5.x
+- **框架**：React 19.2.4 + TypeScript
+- **UI库**：Ant Design 6.3.5
 - **状态管理**：React Context + useReducer
-- **构建工具**：Vite
+- **构建工具**：Vite 8.0.4
 - **样式**：CSS Modules + Ant Design Tokens
+- **路由**：React Router 7.14.0
 
 #### 后端
 - **运行时**：Node.js 18+
-- **框架**：Express.js / Fastify
-- **语言**：TypeScript
+- **框架**：Express.js 4.18.2
+- **语言**：TypeScript 5.3.3
 - **通信协议**：HTTP REST + Server-Sent Events (SSE)
+- **验证**：Zod 3.22.4
 
 ### 2.3 项目目录结构
 
 ```
 AIDesktop/
-├── client/                    # 前端项目
+├── client/                    # 前端项目 (React SPA)
 │   ├── public/
-│   │   └── icons/            # 应用图标
+│   │   ├── icons/            # 应用图标
+│   │   ├── wallpapers/       # 壁纸资源
+│   │   └── favicon.svg       # 网站图标
 │   ├── src/
 │   │   ├── components/       # React组件
-│   │   │   ├── Desktop/      # 桌面组件
-│   │   │   ├── Dock/         # Dock栏组件
-│   │   │   ├── Taskbar/      # 任务栏组件
-│   │   │   ├── StartMenu/    # 开始菜单组件
-│   │   │   ├── Window/       # 窗口管理组件
-│   │   │   └── App/          # 应用窗口内容
-│   │   ├── contexts/         # React Context
-│   │   ├── hooks/            # 自定义Hooks
-│   │   ├── services/         # API服务调用
-│   │   ├── types/            # TypeScript类型定义
-│   │   ├── styles/           # 全局样式
-│   │   ├── App.tsx
-│   │   └── main.tsx
+│   │   │   ├── Desktop.tsx   # 桌面组件 - 管理桌面图标网格
+│   │   │   ├── Dock.tsx      # Dock栏组件
+│   │   │   ├── MenuBar.tsx    # 菜单栏组件
+│   │   │   ├── StartMenu.tsx  # 开始菜单组件
+│   │   │   └── Window.tsx     # 窗口管理组件
+│   │   ├── contexts/
+│   │   │   └── DesktopContext.tsx # 全局桌面状态管理
+│   │   ├── services/
+│   │   │   └── api.ts        # API服务调用封装
+│   │   ├── types/
+│   │   │   └── index.ts      # TypeScript类型定义
+│   │   ├── styles/
+│   │   │   └── global.css     # 全局样式
+│   │   ├── App.tsx           # 根组件
+│   │   └── main.tsx          # 入口文件
 │   ├── index.html
 │   ├── package.json
 │   ├── tsconfig.json
-│   └── vite.config.ts
+│   └── vite.config.ts        # Vite配置 (代理/api到3001端口)
 │
-├── server/                    # 后端项目
+├── server/                    # 后端项目 (Express TypeScript)
 │   ├── src/
-│   │   ├── routes/           # 路由
+│   │   ├── routes/           # 路由模块
+│   │   │   ├── apps.ts       # 应用管理路由
+│   │   │   ├── conversations.ts # 会话管理路由
+│   │   │   ├── settings.ts   # 设置路由
+│   │   │   └── mcp.ts        # MCP服务路由
 │   │   ├── agents/           # Agent核心
+│   │   │   └── engine.ts     # Agent引擎 - 处理消息和工具调用
 │   │   ├── mcp/              # MCP服务
+│   │   │   └── service.ts    # MCP服务注册表
 │   │   ├── models/           # 模型适配器
+│   │   │   └── openai.ts     # OpenAI兼容适配器
 │   │   ├── services/         # 业务服务
+│   │   │   ├── appLoader.ts  # 应用加载服务
+│   │   │   ├── conversation.ts # 会话服务
+│   │   │   └── settings.ts   # 设置服务
 │   │   ├── types/            # 类型定义
 │   │   ├── utils/            # 工具函数
-│   │   └── index.ts          # 入口文件
+│   │   └── index.ts          # 入口文件 (Express服务器)
 │   ├── desktop_data/         # 数据目录
+│   ├── dist/                  # 编译输出
 │   ├── package.json
 │   └── tsconfig.json
 │
+├── SPEC.md                    # 产品设计规格书
 └── desktop.md                 # 原始设计文档
 ```
 
@@ -166,11 +184,17 @@ desktop_data/
 │   │   └── code-interpreter/
 │   └── shared/                        # 共享资源
 │
+├── public_icons/                       # 公共图标目录
+│
+├── wallpapers/                         # 壁纸目录
+│
 └── configs/                           # 配置文件
     ├── setting.json                   # 桌面设置
-    ├── modes.json                     # 模型配置
+    ├── modes.json                     # 模型提供商配置
+    ├── models.json                    # 默认模型配置
     ├── mcp.json                       # MCP服务配置
-    └── skills.json                    # 技能配置
+    ├── skills.json                    # 技能配置
+    └── window-positions.json          # 窗口位置配置
 ```
 
 **应用来源分类**：
@@ -306,7 +330,16 @@ desktop_data/
 }
 ```
 
-#### 3.2.5 技能配置 (configs/skills.json)
+#### 3.2.5 模型配置 (configs/models.json)
+
+```json
+{
+  "providerId": "local_llama",
+  "modelId": "qwen3.5-9b-uncensored-hauhaucs-aggressive"
+}
+```
+
+#### 3.2.6 技能配置 (configs/skills.json)
 
 ```json
 {
@@ -394,10 +427,10 @@ desktop_data/
 - 点击图标启动/聚焦应用
 - 支持拖拽排序
 
-#### 4.2.3 Taskbar 任务栏组件
-- 显示当前打开的窗口
-- 点击切换窗口焦点
-- 显示窗口最小化/最大化/关闭按钮
+#### 4.2.3 MenuBar 菜单栏组件
+- 显示当前时间和系统状态图标（电池、网络等）
+- 应用名称显示
+- 点击区域可触发应用菜单
 
 #### 4.2.4 StartMenu 开始菜单组件
 - 点击开始按钮滑出
@@ -412,6 +445,7 @@ desktop_data/
 - 支持最小化/最大化/关闭
 - 支持层叠和平铺
 - 支持双击标题栏最大化
+- 内置 ChatApp 和 SettingsApp 内容渲染
 
 #### 4.2.6 AppWindow 应用窗口内容
 根据不同应用类型渲染不同内容：
@@ -910,6 +944,31 @@ interface ChatStreamEvent {
 
 ---
 
-## 10. 备注
+## 10. 关键文件路径
+
+| 文件路径 | 用途 |
+|---------|------|
+| `client/src/App.tsx` | 前端根组件 |
+| `client/src/main.tsx` | 前端入口 |
+| `client/src/contexts/DesktopContext.tsx` | 前端状态管理 |
+| `client/src/services/api.ts` | 前端API服务 |
+| `client/src/components/Desktop.tsx` | 桌面组件 |
+| `client/src/components/Dock.tsx` | Dock栏组件 |
+| `client/src/components/Window.tsx` | 窗口组件 |
+| `server/src/index.ts` | 后端入口 |
+| `server/src/agents/engine.ts` | Agent引擎 |
+| `server/src/mcp/service.ts` | MCP服务注册 |
+| `server/src/services/appLoader.ts` | 应用加载器 |
+| `server/src/services/settings.ts` | 设置服务 |
+| `server/src/routes/apps.ts` | 应用路由 |
+| `server/src/routes/conversations.ts` | 会话路由 |
+| `server/src/routes/settings.ts` | 设置路由 |
+| `server/desktop_data/configs/setting.json` | 桌面设置 |
+| `server/desktop_data/configs/modes.json` | 模型配置 |
+| `server/desktop_data/apps/system/desktop-assistant/meta.json` | 桌面助手元数据 |
+
+---
+
+## 11. 备注
 
 本文档为产品设计规格书，具体实现可能根据技术评估结果调整。

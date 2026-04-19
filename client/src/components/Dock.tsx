@@ -101,15 +101,26 @@ export function Dock() {
   };
 
   const handleAppClick = (app: AppInfo, e: React.MouseEvent) => {
+    // 左键点击：聚焦现有窗口或创建新窗口
+    if (e.button !== 0) return; // 只处理左键
+
     const windows = getWindowsForApp(app.id);
 
     if (windows.length === 0) {
       openApp(app, { forceNew: true });
-    } else if (windows.length === 1) {
-      focusWindow(windows[0].id);
     } else {
-      setWindowMenu({ app, windows, anchorEl: e.currentTarget as HTMLElement });
+      // 聚焦最高层的窗口
+      const topWindow = windows.reduce((top, w) =>
+        w.zIndex > top.zIndex ? w : top
+      );
+      focusWindow(topWindow.id);
     }
+  };
+
+  const handleAppRightClick = (app: AppInfo, e: React.MouseEvent) => {
+    e.preventDefault();
+    const windows = getWindowsForApp(app.id);
+    setWindowMenu({ app, windows, anchorEl: e.currentTarget as HTMLElement });
   };
 
   const handleStartClick = () => {
@@ -143,12 +154,12 @@ export function Dock() {
         {state.taskbarApps.map((appId) => {
           const app = state.installedApps.find((a) => a.id === appId);
           if (!app) return null;
-          const windows = getWindowsForApp(app.id);
           return (
             <div
               key={app.id}
               className={`dock-item running`}
               onClick={(e) => handleAppClick(app, e)}
+              onContextMenu={(e) => handleAppRightClick(app, e)}
               title={app.name}
             >
               <img
