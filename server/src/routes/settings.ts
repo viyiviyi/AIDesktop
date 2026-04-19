@@ -204,4 +204,26 @@ router.put('/default-model', async (req: Request, res: Response) => {
   }
 });
 
+// Get window positions
+router.get('/window-positions', async (req: Request, res: Response) => {
+  try {
+    const positions = await settingsService.getWindowPositions();
+    res.json(positions);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Save window position
+router.put('/window-positions/:appId', async (req: Request, res: Response) => {
+  try {
+    const { appId } = req.params;
+    const position = req.body;
+    await settingsService.saveWindowPosition(appId, position);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 export default router;

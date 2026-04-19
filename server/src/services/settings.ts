@@ -81,6 +81,7 @@ class SettingsService {
   private mcp: { connections: MCPConnection[] } | null = null;
   private skills: { skills: Skill[]; globalEnabled: boolean } | null = null;
   private modelConfig: DefaultModelConfig | null = null;
+  private windowPositions: Record<string, { x: number; y: number }> | null = null;
 
   async getSettings(): Promise<DesktopSettings> {
     if (!this.settings) {
@@ -266,6 +267,29 @@ class SettingsService {
     this.modelConfig = { ...config };
     await writeJsonFile(path.join(CONFIGS_DIR, 'models.json'), this.modelConfig);
     return { ...this.modelConfig };
+  }
+
+  // Window Positions
+  async getWindowPositions(): Promise<Record<string, { x: number; y: number }>> {
+    if (!this.windowPositions) {
+      await this.loadWindowPositions();
+    }
+    return { ...this.windowPositions! };
+  }
+
+  private async loadWindowPositions(): Promise<void> {
+    await ensureDir(CONFIGS_DIR);
+    const positions = await readJsonFile<Record<string, { x: number; y: number }>>(path.join(CONFIGS_DIR, 'window-positions.json'));
+    this.windowPositions = positions || {};
+  }
+
+  async saveWindowPosition(appId: string, position: { x: number; y: number }): Promise<void> {
+    await ensureDir(CONFIGS_DIR);
+    if (!this.windowPositions) {
+      await this.loadWindowPositions();
+    }
+    this.windowPositions![appId] = position;
+    await writeJsonFile(path.join(CONFIGS_DIR, 'window-positions.json'), this.windowPositions);
   }
 }
 

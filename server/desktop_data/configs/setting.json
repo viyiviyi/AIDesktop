@@ -1,5 +1,5 @@
 {
-  "theme": "light",
+  "theme": "dark",
   "wallpaper": "/wallpapers/default.jpg",
   "dock": {
     "position": "bottom",
@@ -7,8 +7,14 @@
     "autoHide": false
   },
   "window": {
-    "defaultSize": { "width": 800, "height": 600 },
-    "minSize": { "width": 400, "height": 300 },
+    "defaultSize": {
+      "width": 800,
+      "height": 600
+    },
+    "minSize": {
+      "width": 400,
+      "height": 300
+    },
     "maximized": false
   },
   "menuBar": {

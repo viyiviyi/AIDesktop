@@ -4,3 +4,4 @@ build/
 .env
 *.log
 .DS_Store
+server/desktop_data/apps/desktop-assistant/data/conversations/
