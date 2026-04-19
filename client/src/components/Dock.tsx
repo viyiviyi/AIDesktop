@@ -100,27 +100,24 @@ export function Dock() {
     return state.windows.filter((w) => w.appId === appId);
   };
 
-  const handleAppClick = (app: AppInfo, e: React.MouseEvent) => {
-    // 左键点击：聚焦现有窗口或创建新窗口
-    if (e.button !== 0) return; // 只处理左键
-
-    const windows = getWindowsForApp(app.id);
-
-    if (windows.length === 0) {
-      openApp(app, { forceNew: true });
-    } else {
-      // 聚焦最高层的窗口
-      const topWindow = windows.reduce((top, w) =>
-        w.zIndex > top.zIndex ? w : top
-      );
-      focusWindow(topWindow.id);
+  const handleAppMouseDown = (app: AppInfo, e: React.MouseEvent) => {
+    if (e.button === 0) {
+      // 左键：聚焦现有窗口或创建新窗口
+      const windows = getWindowsForApp(app.id);
+      if (windows.length === 0) {
+        openApp(app, { forceNew: true });
+      } else {
+        const topWindow = windows.reduce((top, w) =>
+          w.zIndex > top.zIndex ? w : top
+        );
+        focusWindow(topWindow.id);
+      }
+    } else if (e.button === 2) {
+      // 右键：显示窗口菜单
+      e.preventDefault();
+      const windows = getWindowsForApp(app.id);
+      setWindowMenu({ app, windows, anchorEl: e.currentTarget as HTMLElement });
     }
-  };
-
-  const handleAppRightClick = (app: AppInfo, e: React.MouseEvent) => {
-    e.preventDefault();
-    const windows = getWindowsForApp(app.id);
-    setWindowMenu({ app, windows, anchorEl: e.currentTarget as HTMLElement });
   };
 
   const handleStartClick = () => {
@@ -158,8 +155,8 @@ export function Dock() {
             <div
               key={app.id}
               className={`dock-item running`}
-              onClick={(e) => handleAppClick(app, e)}
-              onContextMenu={(e) => handleAppRightClick(app, e)}
+              onMouseDown={(e) => handleAppMouseDown(app, e)}
+              onContextMenu={(e) => e.preventDefault()}
               title={app.name}
             >
               <img
