@@ -51,10 +51,11 @@ export function StartMenu() {
   const handleSend = async () => {
     if (!input.trim() || !conversationId || isLoading) return;
 
+    const messageText = input.trim();
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
       role: 'user',
-      content: [{ type: 'text', text: input }],
+      content: [{ type: 'text', text: messageText }],
       timestamp: new Date().toISOString(),
     };
 
@@ -64,7 +65,7 @@ export function StartMenu() {
 
     try {
       const { message } = await api.sendMessage('desktop-assistant', conversationId, [
-        { type: 'text', text: input },
+        { type: 'text', text: messageText },
       ]);
       setMessages((prev) => [...prev.filter((m) => m.id !== userMessage.id), message]);
     } catch (error) {

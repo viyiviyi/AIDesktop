@@ -7,8 +7,8 @@
   "icon": "/public_icons/assistant.svg",
   "models": [
     {
-      "provider": "openai",
-      "model": "gpt-4o",
+      "provider": "local_llama",
+      "model": "qwen3.5-9b-uncensored-hauhaucs-aggressive",
       "priority": 1,
       "maxTokens": 128000,
       "supports": ["text", "image"],

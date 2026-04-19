@@ -14,7 +14,7 @@ class AgentEngine {
     }
 
     const modes = await settingsService.getModes();
-    const providerConfig = modes.providers.find(p => p.name === provider);
+    const providerConfig = modes.providers.find(p => p.id === provider);
 
     if (!providerConfig || !providerConfig.apiKey) {
       return null;
@@ -40,8 +40,29 @@ class AgentEngine {
       throw new Error(`Conversation ${convId} not found`);
     }
 
-    // Get model config - use first available
-    const modelConfig = app.meta.models[0];
+    // Get model config - use app's configured model or fall back to default
+    let modelConfig = app.meta.models[0];
+    if (!modelConfig) {
+      // Fall back to default model
+      const defaultModel = await settingsService.getDefaultModel();
+      if (defaultModel.providerId && defaultModel.modelId) {
+        const modes = await settingsService.getModes();
+        const provider = modes.providers.find(p => p.id === defaultModel.providerId);
+        if (provider) {
+          const model = provider.models.find(m => m.id === defaultModel.modelId);
+          if (model) {
+            modelConfig = {
+              provider: defaultModel.providerId,
+              model: defaultModel.modelId,
+              priority: 0,
+              maxTokens: model.maxTokens,
+              supports: model.supports,
+              params: model.params
+            };
+          }
+        }
+      }
+    }
     if (!modelConfig) {
       throw new Error(`No model configured for app ${appId}`);
     }
