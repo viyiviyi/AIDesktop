@@ -1,21 +1,56 @@
 import type { App, AppInfo, AppSource, AppType, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel, ModelConfig, ContentType } from '../types';
+import { logger } from './logger';
 
 const API_BASE = '/api';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
+  const startTime = Date.now();
+  const method = options?.method || 'GET';
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  logger.info(`API ${method}`, `→ ${url}`);
+
+  try {
+    const response = await fetch(`${API_BASE}${url}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+
+    const duration = Date.now() - startTime;
+
+    if (!response.ok) {
+      let errorBody: unknown;
+      try {
+        errorBody = await response.json();
+      } catch {
+        errorBody = response.statusText;
+      }
+
+      logger.error(`API ${method}`, `✗ ${url} - ${response.status} ${response.statusText}`, {
+        status: response.status,
+        duration,
+        error: errorBody,
+      });
+
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    logger.info(`API ${method}`, `✓ ${url}`, { status: response.status, duration });
+    return data;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if ((error as Error).message.startsWith('API error:')) {
+      throw error;
+    }
+    logger.error(`API ${method}`, `✗ ${url} - ${(error as Error).message}`, {
+      duration,
+      error: (error as Error).message,
+    });
+    throw error;
   }
-
-  return response.json();
 }
 
 // Apps

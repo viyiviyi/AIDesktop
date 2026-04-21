@@ -200,6 +200,12 @@ export function StartMenu() {
             }}>
               <span>🗑️</span> 回收站
             </button>
+            <button title="日志 (Ctrl+L)" onClick={() => {
+              openSystemApp('logs', '日志');
+              closeStartMenu();
+            }}>
+              <span>📋</span> 日志
+            </button>
           </div>
         </div>
       </div>

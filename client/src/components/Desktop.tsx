@@ -5,6 +5,7 @@ import { AppManagerWindow } from './AppManagerWindow';
 import { SettingsMainWindow } from './SettingsMainWindow';
 import { AppDetailWindow } from './AppDetailWindow';
 import { AppSettingsWindow } from './AppSettingsWindow';
+import { LogWindow } from './LogWindow';
 import type { AppInfo } from '../types';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -15,7 +16,7 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
 `);
 
 export function Desktop() {
-  const { state, openApp, closeStartMenu } = useDesktop();
+  const { state, openApp, openSystemApp, closeStartMenu } = useDesktop();
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -30,6 +31,22 @@ export function Desktop() {
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+L to open logs
+      if (e.ctrlKey && e.key === 'l') {
+        e.preventDefault();
+        const hasLogsOpen = state.windows.some((w) => w.appId === 'logs');
+        if (!hasLogsOpen) {
+          openSystemApp('logs', '日志');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state.windows, openSystemApp]);
 
   const desktopApps = state.installedApps.filter((app) => app.type === 'desktop');
 
@@ -70,6 +87,8 @@ export function Desktop() {
         return <SettingsMainWindow />;
       case 'app-manager':
         return <AppManagerWindow />;
+      case 'logs':
+        return <LogWindow />;
       case 'desktop-assistant':
       case 'app-builder':
         return <ChatApp appId={windowState.appId} conversationId={windowState.conversationId} />;
