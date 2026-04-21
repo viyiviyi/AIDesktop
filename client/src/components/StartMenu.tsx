@@ -3,6 +3,7 @@ import { useDesktop } from '../contexts/DesktopContext';
 import type { AppInfo, Message } from '../types';
 import * as api from '../services/api';
 
+// 默认图标（蓝色方块带字母A）
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#0078d4"/>
@@ -10,27 +11,41 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   </svg>
 `);
 
+/**
+ * 开始菜单组件
+ * 显示桌面应用列表、搜索功能、内置对话助手
+ */
 export function StartMenu() {
   const { state, openApp, openSystemApp, closeStartMenu, refreshApps } = useDesktop();
+  // 搜索关键词
   const [searchQuery, setSearchQuery] = useState('');
+  // 对话消息列表
   const [messages, setMessages] = useState<Message[]>([]);
+  // 输入框内容
   const [input, setInput] = useState('');
+  // 加载状态
   const [isLoading, setIsLoading] = useState(false);
+  // 当前会话ID
   const [conversationId, setConversationId] = useState<string | null>(null);
+  // 消息列表底部引用（用于自动滚动）
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 筛选桌面应用
   const desktopApps = state.installedApps.filter((app) => app.type === 'desktop');
 
+  // 打开菜单时初始化会话
   useEffect(() => {
     if (state.startMenuOpen && !conversationId) {
       initConversation();
     }
   }, [state.startMenuOpen]);
 
+  // 新消息时自动滚动
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // 初始化对话
   const initConversation = async () => {
     try {
       const conv = await api.createConversation('desktop-assistant', '开始菜单对话');
@@ -48,6 +63,7 @@ export function StartMenu() {
     }
   };
 
+  // 发送消息
   const handleSend = async () => {
     if (!input.trim() || !conversationId || isLoading) return;
 
@@ -76,6 +92,7 @@ export function StartMenu() {
     }
   };
 
+  // 键盘事件处理
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -83,15 +100,18 @@ export function StartMenu() {
     }
   };
 
+  // 点击应用图标
   const handleAppClick = (app: AppInfo) => {
     openApp(app);
     closeStartMenu();
   };
 
+  // 点击遮罩层关闭菜单
   const handleOverlayClick = () => {
     closeStartMenu();
   };
 
+  // 提取消息文本
   const getMessageText = (msg: Message): string => {
     return msg.content
       .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
@@ -99,6 +119,7 @@ export function StartMenu() {
       .join('');
   };
 
+  // 根据搜索过滤应用
   const displayedApps = searchQuery
     ? desktopApps.filter((app) =>
         app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

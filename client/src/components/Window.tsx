@@ -5,6 +5,7 @@ import { logger } from '../services/logger';
 import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel, ContentType } from '../types';
 import * as api from '../services/api';
 
+// 默认窗口图标（SVG格式的蓝色方块带字母A）
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#0078d4"/>
@@ -12,31 +13,44 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   </svg>
 `);
 
+// 窗口组件属性接口
 interface WindowProps {
   windowState: WindowState;
   children: React.ReactNode;
 }
 
+/**
+ * 窗口组件 - 负责渲染可拖拽、可调整大小的窗口
+ * 支持窗口最大化、最小化、关闭等操作
+ */
 export function Window({ windowState, children }: WindowProps) {
   const { state, focusWindow, updateWindow, closeWindow, minimizeWindow, maximizeWindow } = useDesktop();
   const windowRef = useRef<HTMLDivElement>(null);
+  // 拖拽状态
   const [isDragging, setIsDragging] = useState(false);
+  // 调整大小状态
   const [isResizing, setIsResizing] = useState(false);
+  // 拖拽偏移量（鼠标按下时记录）
   const dragOffsetRef = useRef({ x: 0, y: 0 });
+  // 调整大小方向（e东、s南、w西、n北的组合）
   const resizeDirectionRef = useRef('');
+  // 使用ref保持windowState引用最新（避免闭包问题）
   const windowStateRef = useRef(windowState);
 
-  // Keep windowStateRef in sync with latest windowState
+  // 保持windowStateRef与最新windowState同步
   windowStateRef.current = windowState;
 
+  // 判断当前窗口是否被聚焦
   const isFocused = state.focusedWindowId === windowState.id;
 
+  // 聚焦时提升窗口层级
   useEffect(() => {
     if (isFocused && windowRef.current) {
       windowRef.current.style.zIndex = '9999';
     }
   }, [isFocused]);
 
+  // 点击窗口时聚焦（但点击控制按钮时不触发）
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.target instanceof HTMLElement && e.target.closest('.window-control')) {
       return;
@@ -44,12 +58,14 @@ export function Window({ windowState, children }: WindowProps) {
     focusWindow(windowState.id);
   };
 
+  // 标题栏鼠标按下 - 开始拖拽移动
   const handleHeaderMouseDown = (e: React.MouseEvent) => {
     if (e.target instanceof HTMLElement && e.target.closest('.window-control')) {
       return;
     }
     e.preventDefault();
     setIsDragging(true);
+    // 计算鼠标相对窗口左上角的偏移
     dragOffsetRef.current = {
       x: e.clientX - windowState.position.x,
       y: e.clientY - windowState.position.y,
@@ -57,6 +73,7 @@ export function Window({ windowState, children }: WindowProps) {
     focusWindow(windowState.id);
   };
 
+  // 调整大小把手鼠标按下 - 开始调整窗口大小
   const handleResizeMouseDown = (e: React.MouseEvent, direction: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -69,6 +86,7 @@ export function Window({ windowState, children }: WindowProps) {
     const handleMouseMove = (e: MouseEvent) => {
       const currentWindowState = windowStateRef.current;
 
+      // 拖拽移动
       if (isDragging) {
         updateWindow(currentWindowState.id, {
           position: {
@@ -77,6 +95,7 @@ export function Window({ windowState, children }: WindowProps) {
           },
         });
       }
+      // 调整大小
       if (isResizing && resizeDirectionRef.current) {
         const deltaX = e.clientX - (currentWindowState.position.x + currentWindowState.size.width);
         const deltaY = e.clientY - (currentWindowState.position.y + currentWindowState.size.height);
@@ -85,6 +104,7 @@ export function Window({ windowState, children }: WindowProps) {
         let newHeight = currentWindowState.size.height;
         const dir = resizeDirectionRef.current;
 
+        // 根据方向计算新尺寸
         if (dir.includes('e')) newWidth += deltaX;
         if (dir.includes('s')) newHeight += deltaY;
         if (dir.includes('w')) {
@@ -94,6 +114,7 @@ export function Window({ windowState, children }: WindowProps) {
           newHeight -= deltaY;
         }
 
+        // 限制最小尺寸
         newWidth = Math.max(state.settings.window.minSize.width, newWidth);
         newHeight = Math.max(state.settings.window.minSize.height, newHeight);
 
@@ -103,11 +124,12 @@ export function Window({ windowState, children }: WindowProps) {
       }
     };
 
+    // 鼠标松开 - 结束拖拽或调整大小
     const handleMouseUp = async () => {
       setIsDragging(false);
       setIsResizing(false);
 
-      // Save window position after dragging
+      // 拖拽结束后保存窗口位置
       if (windowStateRef.current) {
         try {
           await api.saveWindowPosition(windowStateRef.current.appId, windowStateRef.current.position);
@@ -117,6 +139,7 @@ export function Window({ windowState, children }: WindowProps) {
       }
     };
 
+    // 拖拽或调整大小时添加全局事件监听
     if (isDragging || isResizing) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
@@ -201,35 +224,49 @@ export function Window({ windowState, children }: WindowProps) {
   );
 }
 
-// App content components
+// 应用内容组件 - 聊天应用
 interface ChatAppProps {
   appId: string;
   conversationId?: string;
 }
 
+/**
+ * 聊天应用组件 - 负责渲染聊天界面
+ * 支持多会话管理、消息发送与接收、流式响应
+ */
 export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const { addToast } = useToast();
+  // 会话列表
   const [conversations, setConversations] = useState<{ id: string; title: string }[]>([]);
+  // 当前会话ID
   const [currentConvId, setCurrentConvId] = useState<string | null>(conversationId || null);
+  // 消息列表
   const [messages, setMessages] = useState<Message[]>([]);
+  // 输入框内容
   const [input, setInput] = useState('');
+  // 加载状态
   const [isLoading, setIsLoading] = useState(false);
+  // 消息列表底部引用（用于自动滚动）
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
+  // 加载会话列表
   useEffect(() => {
     loadConversations();
   }, [appId]);
 
+  // 加载当前会话的消息
   useEffect(() => {
     if (currentConvId) {
       loadMessages(currentConvId);
     }
   }, [currentConvId]);
 
+  // 新消息时自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // 加载会话列表
   const loadConversations = async () => {
     try {
       const convs = await api.getConversations(appId);
@@ -242,6 +279,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
+  // 加载指定会话的消息
   const loadMessages = async (convId: string) => {
     try {
       const conv = await api.getConversation(appId, convId);
@@ -251,6 +289,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
+  // 创建新会话
   const createNewConversation = async () => {
     try {
       const conv = await api.createConversation(appId, `会话 ${conversations.length + 1}`);
@@ -262,9 +301,11 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
+  // 发送消息
   const sendMessage = async () => {
     if (!input.trim() || !currentConvId || isLoading) return;
 
+    // 创建临时用户消息（乐观更新）
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
       role: 'user',
@@ -272,7 +313,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       timestamp: new Date().toISOString(),
     };
 
-    // Add message optimistically
+    // 乐观添加消息到列表
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
@@ -281,13 +322,13 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       const { message } = await api.sendMessage(appId, currentConvId, [
         { type: 'text', text: input },
       ]);
-      // Replace temp message with real one from server
+      // 用服务器返回的真实消息替换临时消息
       setMessages((prev) => [...prev.filter((m) => m.id !== userMessage.id), message]);
       logger.info('ChatApp', `Message sent successfully to ${appId}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '发送消息失败';
       logger.error('ChatApp', `Failed to send message: ${errorMsg}`, { appId, conversationId: currentConvId });
-      // Mark message as failed instead of removing it
+      // 标记消息为发送失败（不删除，保留让用户看到）
       setMessages((prev) =>
         prev.map((m) =>
           m.id === userMessage.id ? { ...m, _failed: true, _error: errorMsg } : m
@@ -299,6 +340,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
+  // 键盘事件处理 - Enter发送消息
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -306,6 +348,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
+  // 提取消息文本内容
   const getMessageText = (msg: Message): string => {
     return msg.content
       .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
@@ -388,23 +431,36 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   );
 }
 
+// 设置应用属性接口
 interface SettingsAppProps {
   appId?: string;
 }
 
+// 设置标签页类型
 type SettingsTab = 'desktop' | 'model' | 'app' | 'mcp' | 'skill';
 
+/**
+ * 设置应用组件 - 提供系统设置界面
+ * 支持桌面、模型、应用、MCP、技能等配置
+ */
 export function SettingsApp(_props: SettingsAppProps) {
   const { state, updateSettings } = useDesktop();
+  // 当前激活的标签页
   const [activeTab, setActiveTab] = useState<SettingsTab>('desktop');
+  // 本地设置的副本（用于表单编辑）
   const [localSettings, setLocalSettings] = useState(state.settings);
+  // 模型提供商列表
   const [modes, setModes] = useState<{ providers: ModelProvider[] }>({ providers: [] });
+  // MCP连接列表
   const [mcpConnections, setMcpConnections] = useState<{ connections: MCPConnection[] }>({ connections: [] });
+  // 技能列表
   const [skills, setSkills] = useState<{ skills: Skill[]; globalEnabled: boolean }>({ skills: [], globalEnabled: true });
+  // 已安装的应用列表
   const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
+  // 应用配置映射
   const [appConfigs, setAppConfigs] = useState<Record<string, App>>({});
 
-  // Model provider management
+  // 模型提供商管理状态
   const [showAddProvider, setShowAddProvider] = useState(false);
   const [newProvider, setNewProvider] = useState<{
     id: string;
@@ -420,7 +476,7 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [showManualAddModel, setShowManualAddModel] = useState(false);
   const [manualModel, setManualModel] = useState<{ id: string; name: string; maxTokens: number; supportsText: boolean; supportsImage: boolean }>({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
 
-  // Edit provider state
+  // 编辑提供商状态
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
     apiKey: string;
@@ -433,10 +489,12 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [editShowManualAddModel, setEditShowManualAddModel] = useState(false);
   const [editManualModel, setEditManualModel] = useState<{ id: string; name: string; maxTokens: number; supportsText: boolean; supportsImage: boolean }>({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
 
+  // 当全局设置变化时更新本地副本
   useEffect(() => {
     setLocalSettings(state.settings);
   }, [state.settings]);
 
+  // 初始化加载数据
   useEffect(() => {
     loadModes();
     loadMcpSettings();
@@ -444,6 +502,7 @@ export function SettingsApp(_props: SettingsAppProps) {
     loadInstalledApps();
   }, []);
 
+  // 加载模型提供商数据
   const loadModes = async () => {
     try {
       const [data, defaultModelConfig] = await Promise.all([

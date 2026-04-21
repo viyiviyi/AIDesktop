@@ -1,10 +1,12 @@
 import type { ChatParams, ChatResponse, ChatStreamEvent, Content, Message, Tool, ProviderModel } from '../types/index.js';
 
+// OpenAI API消息格式
 interface OpenAIMessage {
   role: 'user' | 'assistant' | 'system';
   content: string | { type: string; text?: string; image_url?: { url: string } }[];
 }
 
+// OpenAI流式响应chunk格式
 interface OpenAIStreamChunk {
   choices: Array<{
     delta?: { content?: string; role?: string };
@@ -12,6 +14,10 @@ interface OpenAIStreamChunk {
   }>;
 }
 
+/**
+ * OpenAIAdapter - OpenAI API适配器
+ * 封装与OpenAI兼容API的交互，支持聊天和流式响应
+ */
 export class OpenAIAdapter {
   private apiKey: string;
   private baseUrl: string;
@@ -21,6 +27,7 @@ export class OpenAIAdapter {
     this.baseUrl = baseUrl;
   }
 
+  // 将内部消息格式转换为OpenAI格式
   private convertMessage(msg: Message): OpenAIMessage {
     const textContent = msg.content
       .filter(c => c.type === 'text')
@@ -33,6 +40,7 @@ export class OpenAIAdapter {
     };
   }
 
+  // 将工具定义转换为OpenAI格式
   private convertTools(tools?: Tool[]): Array<{
     type: string;
     function: {
@@ -52,6 +60,7 @@ export class OpenAIAdapter {
     }));
   }
 
+  // 非流式聊天
   async chat(params: ChatParams): Promise<ChatResponse> {
     if (!this.apiKey) {
       throw new Error('OpenAI API key not configured');
@@ -105,6 +114,10 @@ export class OpenAIAdapter {
     return { content, toolCalls };
   }
 
+  /**
+   * 流式聊天
+   * 使用AsyncGenerator逐个yield内容片段
+   */
   async *chatStream(params: ChatParams): AsyncGenerator<ChatStreamEvent> {
     if (!this.apiKey) {
       throw new Error('OpenAI API key not configured');
@@ -173,7 +186,7 @@ export class OpenAIAdapter {
               };
             }
           } catch {
-            // Skip invalid JSON
+            // 跳过无效JSON
           }
         }
       }
@@ -184,10 +197,12 @@ export class OpenAIAdapter {
     }
   }
 
+  // 获取支持的输入类型
   supports(): ('text' | 'image' | 'audio' | 'video' | 'file')[] {
     return ['text', 'image'];
   }
 
+  // 列出可用模型
   async listModels(): Promise<ProviderModel[]> {
     if (!this.apiKey) {
       throw new Error('API key not configured');

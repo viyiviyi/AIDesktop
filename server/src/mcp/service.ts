@@ -1,6 +1,6 @@
 import type { MCPService, Content } from '../types/index.js';
 
-// Built-in MCP services
+// 内置MCP服务定义
 const builtInServices: Record<string, MCPService> = {
   'mcp.agent': {
     name: 'mcp.agent',
@@ -29,36 +29,49 @@ const builtInServices: Record<string, MCPService> = {
   }
 };
 
+/**
+ * MCP服务注册表
+ * 管理和路由所有MCP服务的调用
+ * 支持内置服务和自定义服务的注册
+ */
 class MCPServiceRegistry {
+  // 服务映射表
   private services: Map<string, MCPService> = new Map();
 
   constructor() {
-    // Register built-in services
+    // 构造函数中注册所有内置服务
     for (const [name, service] of Object.entries(builtInServices)) {
       this.services.set(name, service);
     }
   }
 
+  // 获取指定服务
   getService(name: string): MCPService | undefined {
     return this.services.get(name);
   }
 
+  // 获取所有服务
   getAllServices(): MCPService[] {
     return Array.from(this.services.values());
   }
 
+  // 注册新服务
   registerService(service: MCPService): void {
     this.services.set(service.name, service);
   }
 
+  // 注销服务（内置服务不可注销）
   unregisterService(name: string): boolean {
-    // Cannot unregister built-in services
     if (builtInServices[name]) {
       return false;
     }
     return this.services.delete(name);
   }
 
+  /**
+   * 调用服务方法
+   * 核心路由方法，根据服务名和方法名分发到具体处理函数
+   */
   async callMethod(
     serviceName: string,
     method: string,
@@ -74,7 +87,7 @@ class MCPServiceRegistry {
       throw new Error(`Method ${method} not found on service ${serviceName}`);
     }
 
-    // Route to built-in handlers
+    // 根据服务名路由到对应的处理函数
     switch (serviceName) {
       case 'mcp.agent':
         return this.handleAgentMethod(method, args, context);

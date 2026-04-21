@@ -9,13 +9,21 @@ import {
   ensureDir
 } from '../utils/file.js';
 
+/**
+ * ConversationService - 会话服务
+ * 管理应用会话的创建、消息存储、获取
+ * 使用两级缓存：appId -> convId -> conversation
+ */
 class ConversationService {
-  private cache: Map<string, Map<string, Conversation>> = new Map(); // appId -> convId -> conversation
+  // 两级缓存：appId -> Map<convId, Conversation>
+  private cache: Map<string, Map<string, Conversation>> = new Map();
 
+  // 获取会话目录路径
   private getConversationsDir(appId: string): string {
     return path.join(APPS_DIR, appId, 'data', 'conversations');
   }
 
+  // 获取应用的所有会话
   async getConversations(appId: string): Promise<Conversation[]> {
     if (!this.cache.has(appId)) {
       await this.loadConversations(appId);
@@ -23,6 +31,7 @@ class ConversationService {
     return Array.from(this.cache.get(appId)!.values());
   }
 
+  // 从磁盘加载会话到缓存
   private async loadConversations(appId: string): Promise<void> {
     const convDir = this.getConversationsDir(appId);
     const convs = new Map<string, Conversation>();
@@ -38,12 +47,13 @@ class ConversationService {
         }
       }
     } catch {
-      // Directory might not exist
+      // 目录可能不存在
     }
 
     this.cache.set(appId, convs);
   }
 
+  // 获取单个会话
   async getConversation(appId: string, convId: string): Promise<Conversation | null> {
     if (!this.cache.has(appId)) {
       await this.loadConversations(appId);
@@ -51,6 +61,7 @@ class ConversationService {
     return this.cache.get(appId)!.get(convId) || null;
   }
 
+  // 创建新会话
   async createConversation(appId: string, title?: string): Promise<Conversation> {
     const convDir = this.getConversationsDir(appId);
     await ensureDir(convDir);
@@ -75,6 +86,7 @@ class ConversationService {
     return conv;
   }
 
+  // 添加消息到会话
   async addMessage(
     appId: string,
     convId: string,
@@ -102,6 +114,7 @@ class ConversationService {
     return message;
   }
 
+  // 更新会话标题
   async updateConversationTitle(appId: string, convId: string, title: string): Promise<boolean> {
     const conv = await this.getConversation(appId, convId);
     if (!conv) return false;
@@ -115,6 +128,7 @@ class ConversationService {
     return true;
   }
 
+  // 删除会话
   async deleteConversation(appId: string, convId: string): Promise<boolean> {
     const conv = await this.getConversation(appId, convId);
     if (!conv) return false;
@@ -131,6 +145,7 @@ class ConversationService {
     }
   }
 
+  // 清空缓存
   clearCache(appId?: string): void {
     if (appId) {
       this.cache.delete(appId);

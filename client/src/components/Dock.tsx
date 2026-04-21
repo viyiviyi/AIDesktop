@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import type { AppInfo, WindowState } from '../types';
 
-// Default icons for apps without icons
+// 应用默认图标（蓝色方块带字母A）
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#0078d4"/>
@@ -10,6 +10,7 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   </svg>
 `);
 
+// Dock窗口菜单属性接口
 interface DockWindowMenuProps {
   windows: WindowState[];
   app: AppInfo;
@@ -19,6 +20,10 @@ interface DockWindowMenuProps {
   onOpenNewWindow: (app: AppInfo) => void;
 }
 
+/**
+ * Dock窗口菜单组件
+ * 显示某个应用的所有窗口列表，支持聚焦窗口和新建窗口
+ */
 function DockWindowMenu({
   windows,
   app,
@@ -30,6 +35,7 @@ function DockWindowMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
 
+  // 根据锚点元素计算菜单位置
   useEffect(() => {
     if (anchorEl) {
       const rect = anchorEl.getBoundingClientRect();
@@ -40,6 +46,7 @@ function DockWindowMenu({
     }
   }, [anchorEl]);
 
+  // 点击外部关闭菜单
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -88,18 +95,26 @@ function DockWindowMenu({
   );
 }
 
+/**
+ * Dock组件（任务栏）
+ * 显示开始按钮和正在运行的应用图标
+ * 支持左键聚焦/新建窗口，右键显示窗口菜单
+ */
 export function Dock() {
   const { state, openApp, toggleStartMenu, focusWindow } = useDesktop();
+  // 当前显示的窗口菜单
   const [windowMenu, setWindowMenu] = useState<{
     app: AppInfo;
     windows: WindowState[];
     anchorEl: HTMLElement;
   } | null>(null);
 
+  // 获取指定应用的所有窗口
   const getWindowsForApp = (appId: string) => {
     return state.windows.filter((w) => w.appId === appId);
   };
 
+  // 应用图标鼠标按下事件
   const handleAppMouseDown = (app: AppInfo, e: React.MouseEvent) => {
     if (e.button === 0) {
       // 左键：聚焦现有窗口或创建新窗口
@@ -120,10 +135,12 @@ export function Dock() {
     }
   };
 
+  // 开始按钮点击
   const handleStartClick = () => {
     toggleStartMenu('click');
   };
 
+  // 双击开始按钮（额外处理）
   const handleDoubleClick = (e: React.MouseEvent) => {
     if (e.detail === 2) {
       handleStartClick();

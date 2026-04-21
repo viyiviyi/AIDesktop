@@ -3,12 +3,21 @@ import { BrowserSession, BrowserConfig, DEFAULT_CONFIG } from './types.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
+/**
+ * BrowserManager - 浏览器生命周期管理器
+ * 使用Playwright控制浏览器，实现多会话管理、页面导航、内容获取、用户交互
+ * 采用单例模式，确保全局只有一个浏览器实例
+ */
 export class BrowserManager {
   private static instance: BrowserManager;
+  // 会话映射表（sessionId -> BrowserSession）
   private sessions: Map<string, BrowserSession> = new Map();
+  // 主浏览器实例
   private mainBrowser: Browser | null = null;
+  // 浏览器配置
   private config: BrowserConfig = DEFAULT_CONFIG;
 
+  // 私有构造函数（单例模式）
   private constructor() {
     // 设置 Playwright 浏览器路径
     const browsersPath = path.join(process.cwd(), 'playwright-browsers');
@@ -17,6 +26,7 @@ export class BrowserManager {
     }
   }
 
+  // 获取单例实例
   public static getInstance(): BrowserManager {
     if (!BrowserManager.instance) {
       BrowserManager.instance = new BrowserManager();
@@ -24,14 +34,20 @@ export class BrowserManager {
     return BrowserManager.instance;
   }
 
+  // 获取当前配置
   public getConfig(): BrowserConfig {
     return this.config;
   }
 
+  // 更新配置
   public updateConfig(newConfig: Partial<BrowserConfig>): void {
     this.config = { ...this.config, ...newConfig };
   }
 
+  /**
+   * 创建新会话
+   * 如果已存在同名会话，先关闭再创建
+   */
   public async createSession(sessionId: string = 'default'): Promise<BrowserSession> {
     // 如果会话已存在，先关闭
     if (this.sessions.has(sessionId)) {
@@ -69,6 +85,10 @@ export class BrowserManager {
     return session;
   }
 
+  /**
+   * 获取会话（如果不存在则返回undefined）
+   * 自动更新最后使用时间
+   */
   public getSession(sessionId: string = 'default'): BrowserSession | undefined {
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -77,6 +97,9 @@ export class BrowserManager {
     return session;
   }
 
+  /**
+   * 导航到指定URL
+   */
   public async navigateTo(sessionId: string, url: string, timeout: number = 30000): Promise<{ title: string; url: string }> {
     let session = this.getSession(sessionId);
     if (!session) {
@@ -90,6 +113,10 @@ export class BrowserManager {
     return { title: session.title, url: session.url };
   }
 
+  /**
+   * 获取页面内容
+   * @param contentType - 内容类型：dom（纯文本）、accessibility（可访问性树）、screenshot（截图）
+   */
   public async getPageContent(
     sessionId: string = 'default',
     contentType?: 'dom' | 'accessibility' | 'screenshot'
@@ -115,7 +142,7 @@ export class BrowserManager {
       };
     }
 
-    // 获取 accessibility 树（交互元素）
+    // 获取 accessibility 树（可交互元素树）
     if (contentType === 'accessibility') {
       // @ts-ignore - accessibility.snapshot() 在 Playwright 类型中存在
       const snapshot = await session.page.accessibility.snapshot();
@@ -123,7 +150,7 @@ export class BrowserManager {
       return { content, title, url };
     }
 
-    // 获取 DOM 树
+    // 获取 DOM 纯文本内容
     const domContent = await session.page.evaluate(() => {
       return document.body.innerText.substring(0, 5000);
     });
@@ -131,6 +158,9 @@ export class BrowserManager {
     return { content: domContent, title, url };
   }
 
+  /**
+   * 格式化可访问性树为可读文本
+   */
   private formatAccessibilityTree(node: any, depth: number = 0): string {
     if (!node) return '';
 
@@ -152,6 +182,10 @@ export class BrowserManager {
     return result;
   }
 
+  /**
+   * 与页面交互
+   * 支持：click、fill（填充文本）、press（按键）、hover、select、check、uncheck、goBack、goForward、reload
+   */
   public async interact(
     sessionId: string,
     action: 'click' | 'fill' | 'press' | 'hover' | 'select' | 'check' | 'uncheck' | 'goBack' | 'goForward' | 'reload',
@@ -223,6 +257,10 @@ export class BrowserManager {
     }
   }
 
+  /**
+   * 关闭指定会话
+   * 如果关闭后没有更多会话，同时关闭浏览器
+   */
   public async closeSession(sessionId: string = 'default'): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
@@ -249,6 +287,7 @@ export class BrowserManager {
     return true;
   }
 
+  // 关闭所有会话
   public async closeAllSessions(): Promise<void> {
     const sessionIds = Array.from(this.sessions.keys());
     for (const id of sessionIds) {
@@ -256,6 +295,7 @@ export class BrowserManager {
     }
   }
 
+  // 列出所有会话信息
   public listSessions(): Array<{ id: string; url: string; title: string; createdAt: Date }> {
     return Array.from(this.sessions.values()).map(s => ({
       id: s.id,
@@ -266,4 +306,5 @@ export class BrowserManager {
   }
 }
 
+// 导出单例实例
 export const browserManager = BrowserManager.getInstance();

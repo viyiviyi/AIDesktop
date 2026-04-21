@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback } 
 import type { DesktopState, WindowState, AppInfo, DesktopSettings } from '../types';
 import * as api from '../services/api';
 
+// 默认桌面设置配置
 const DEFAULT_SETTINGS: DesktopSettings = {
   theme: 'light',
   wallpaper: '/wallpapers/default.jpg',
@@ -24,6 +25,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   },
 };
 
+// Action类型定义 - 描述所有可能的桌面状态更新操作
 type Action =
   | { type: 'SET_SETTINGS'; payload: DesktopSettings }
   | { type: 'SET_APPS'; payload: AppInfo[] }
@@ -35,6 +37,7 @@ type Action =
   | { type: 'TOGGLE_START_MENU'; payload?: 'click' | 'voice' }
   | { type: 'CLOSE_START_MENU' };
 
+// 初始桌面状态
 const initialState: DesktopState = {
   settings: DEFAULT_SETTINGS,
   installedApps: [],
@@ -46,6 +49,7 @@ const initialState: DesktopState = {
   appLastPositions: {},
 };
 
+// 状态更新reducer - 根据action更新桌面状态
 function reducer(state: DesktopState, action: Action): DesktopState {
   switch (action.type) {
     case 'SET_SETTINGS':
@@ -57,8 +61,10 @@ function reducer(state: DesktopState, action: Action): DesktopState {
     case 'SET_WINDOW_POSITIONS':
       return { ...state, appLastPositions: action.payload };
 
+    // 添加新窗口
     case 'ADD_WINDOW': {
       const newWindows = [...state.windows, action.payload];
+      // 维护taskbar上显示的应用列表（去重）
       const taskbarApps = [...new Set([...state.taskbarApps, action.payload.appId])];
       return {
         ...state,
@@ -68,11 +74,14 @@ function reducer(state: DesktopState, action: Action): DesktopState {
       };
     }
 
+    // 移除窗口
     case 'REMOVE_WINDOW': {
       const newWindows = state.windows.filter((w) => w.id !== action.payload);
+      // 如果没有窗口了，清空taskbar
       const taskbarApps = newWindows.length > 0
         ? [...new Set(newWindows.map((w) => w.appId))]
         : [];
+      // 如果移除的是当前聚焦窗口，聚焦到最后一个窗口
       const focusedWindowId = state.focusedWindowId === action.payload
         ? (newWindows.length > 0 ? newWindows[newWindows.length - 1].id : null)
         : state.focusedWindowId;
@@ -92,6 +101,7 @@ function reducer(state: DesktopState, action: Action): DesktopState {
         ),
       };
 
+    // 聚焦窗口（同时提升其zIndex）
     case 'FOCUS_WINDOW':
       return {
         ...state,
@@ -117,11 +127,13 @@ function reducer(state: DesktopState, action: Action): DesktopState {
   }
 }
 
+// 打开应用时的可选参数
 interface OpenAppOptions {
   conversationId?: string;
   forceNew?: boolean;
 }
 
+// Context值接口定义
 interface DesktopContextValue {
   state: DesktopState;
   openApp: (app: AppInfo, options?: OpenAppOptions) => void;
@@ -137,13 +149,20 @@ interface DesktopContextValue {
   maximizeWindow: (windowId: string) => void;
 }
 
+// 创建Context（初始值为null）
 const DesktopContext = createContext<DesktopContextValue | null>(null);
 
+// 窗口ID计数器（用于生成唯一窗口ID）
 let windowIdCounter = 0;
 
+/**
+ * 桌面Provider组件 - 提供桌面状态管理和操作接口
+ * 包裹整个应用，提供窗口管理、设置更新等功能
+ */
 export function DesktopProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
+  // 加载初始数据（设置、应用列表、窗口位置）
   const loadInitialData = useCallback(async () => {
     try {
       const [settings, apps, windowPositions] = await Promise.all([
@@ -161,17 +180,21 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // 组件挂载时加载初始数据
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
 
+  // 打开应用
   const openApp = useCallback((app: AppInfo, options?: OpenAppOptions) => {
     const { forceNew, conversationId } = options || {};
 
+    // 如果不是强制新窗口，且已有该应用的窗口，则聚焦现有窗口
     if (!forceNew) {
       const existingWindow = state.windows.find((w) => w.appId === app.id);
       if (existingWindow) {
         dispatch({ type: 'FOCUS_WINDOW', payload: existingWindow.id });
+        // 如果窗口是最小化状态，则恢复
         if (existingWindow.isMinimized) {
           dispatch({
             type: 'UPDATE_WINDOW',
@@ -182,24 +205,26 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // 生成新窗口ID和会话ID
     const id = `window-${++windowIdCounter}`;
     const { defaultSize } = state.settings.window;
     const newConversationId = conversationId || `conv-${++windowIdCounter}`;
 
-    // Calculate position: use last position if available, otherwise center
+    // 计算窗口位置：优先使用上次位置，否则居中显示
     const lastPos = state.appLastPositions?.[app.id];
     let basePosition = lastPos || {
       x: (window.innerWidth - defaultSize.width) / 2,
       y: (window.innerHeight - defaultSize.height) / 2,
     };
 
-    // Multi-instance offset: when forceNew, offset by 30px
+    // 多实例偏移：强制新窗口时偏移30px
     const offset = forceNew ? 30 : 0;
     const newPosition = {
       x: basePosition.x + offset,
       y: basePosition.y + offset,
     };
 
+    // 创建新窗口状态
     const newWindow: WindowState = {
       id,
       appId: app.id,
@@ -216,7 +241,9 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'ADD_WINDOW', payload: newWindow });
   }, [state.windows, state.settings.window, state.appLastPositions]);
 
+  // 打开系统应用（如设置窗口）
   const openSystemApp = useCallback((appId: string, title: string, icon?: string) => {
+    // 系统应用也检查是否存在
     const existingWindow = state.windows.find((w) => w.appId === appId);
     if (existingWindow) {
       dispatch({ type: 'FOCUS_WINDOW', payload: existingWindow.id });
@@ -252,37 +279,45 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'ADD_WINDOW', payload: newWindow });
   }, [state.windows, state.settings.window, state.appLastPositions]);
 
+  // 关闭窗口
   const closeWindow = useCallback((windowId: string) => {
     dispatch({ type: 'REMOVE_WINDOW', payload: windowId });
   }, []);
 
+  // 聚焦窗口
   const focusWindow = useCallback((windowId: string) => {
     dispatch({ type: 'FOCUS_WINDOW', payload: windowId });
   }, []);
 
+  // 更新窗口属性
   const updateWindow = useCallback((windowId: string, updates: Partial<WindowState>) => {
     dispatch({ type: 'UPDATE_WINDOW', payload: { id: windowId, updates } });
   }, []);
 
+  // 切换开始菜单
   const toggleStartMenu = useCallback((mode?: 'click' | 'voice') => {
     dispatch({ type: 'TOGGLE_START_MENU', payload: mode });
   }, []);
 
+  // 关闭开始菜单
   const closeStartMenu = useCallback(() => {
     dispatch({ type: 'CLOSE_START_MENU' });
   }, []);
 
+  // 更新设置
   const updateSettingsAction = useCallback(async (settings: Partial<DesktopSettings>) => {
     const updated = await api.updateSettings(settings);
     dispatch({ type: 'SET_SETTINGS', payload: updated });
   }, []);
 
+  // 刷新应用列表
   const refreshApps = useCallback(async () => {
-    // Use reloadApps to re-scan disk and load any new apps
+    // 使用reloadApps重新扫描磁盘，加载新应用
     const result = await api.reloadApps();
     dispatch({ type: 'SET_APPS', payload: result.apps });
   }, []);
 
+  // 最小化窗口
   const minimizeWindow = useCallback((windowId: string) => {
     dispatch({
       type: 'UPDATE_WINDOW',
@@ -290,6 +325,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // 最大化/还原窗口
   const maximizeWindow = useCallback((windowId: string) => {
     const window = state.windows.find((w) => w.id === windowId);
     if (window) {
@@ -322,6 +358,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// 使用桌面Context的hook
 export function useDesktop() {
   const context = useContext(DesktopContext);
   if (!context) {

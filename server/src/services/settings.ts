@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import type { DesktopSettings, ModelProvider, MCPConnection, Skill } from '../types/index.js';
 import { CONFIGS_DIR, readJsonFile, writeJsonFile, ensureDir } from '../utils/file.js';
 
+// 默认桌面设置
 const DEFAULT_SETTINGS: DesktopSettings = {
   theme: 'light',
   wallpaper: '/wallpapers/default.jpg',
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   }
 };
 
+// 默认模型提供商配置
 const DEFAULT_MODES: { providers: ModelProvider[] } = {
   providers: [
     {
@@ -55,16 +57,18 @@ const DEFAULT_MODES: { providers: ModelProvider[] } = {
   ]
 };
 
+// 默认MCP连接配置
 const DEFAULT_MCP: { connections: MCPConnection[] } = {
   connections: []
 };
 
+// 默认技能配置
 const DEFAULT_SKILLS: { skills: Skill[]; globalEnabled: boolean } = {
   skills: [],
   globalEnabled: true
 };
 
-// Default model configuration
+// 默认模型配置接口
 interface DefaultModelConfig {
   providerId: string;
   modelId: string;
@@ -75,6 +79,11 @@ const DEFAULT_MODEL_CONFIG: DefaultModelConfig = {
   modelId: ''
 };
 
+/**
+ * SettingsService - 设置服务
+ * 管理桌面设置、模型提供商、MCP连接、技能等配置的持久化
+ * 使用内存缓存+磁盘存储模式
+ */
 class SettingsService {
   private settings: DesktopSettings | null = null;
   private modes: { providers: ModelProvider[] } | null = null;
@@ -83,6 +92,7 @@ class SettingsService {
   private modelConfig: DefaultModelConfig | null = null;
   private windowPositions: Record<string, { x: number; y: number }> | null = null;
 
+  // 获取桌面设置
   async getSettings(): Promise<DesktopSettings> {
     if (!this.settings) {
       await this.loadSettings();
@@ -90,12 +100,14 @@ class SettingsService {
     return { ...this.settings! };
   }
 
+  // 加载桌面设置（从磁盘读取）
   private async loadSettings(): Promise<void> {
     await ensureDir(CONFIGS_DIR);
     const settings = await readJsonFile<DesktopSettings>(path.join(CONFIGS_DIR, 'setting.json'));
     this.settings = settings || { ...DEFAULT_SETTINGS };
   }
 
+  // 更新桌面设置
   async updateSettings(updates: Partial<DesktopSettings>): Promise<DesktopSettings> {
     await ensureDir(CONFIGS_DIR);
     this.settings = { ...this.settings!, ...updates };
@@ -103,6 +115,7 @@ class SettingsService {
     return { ...this.settings };
   }
 
+  // 获取模型提供商列表
   async getModes(): Promise<{ providers: ModelProvider[] }> {
     if (!this.modes) {
       await this.loadModes();
@@ -110,12 +123,14 @@ class SettingsService {
     return { ...this.modes! };
   }
 
+  // 加载模型配置
   private async loadModes(): Promise<void> {
     await ensureDir(CONFIGS_DIR);
     const modes = await readJsonFile<{ providers: ModelProvider[] }>(path.join(CONFIGS_DIR, 'modes.json'));
     this.modes = modes || { ...DEFAULT_MODES };
   }
 
+  // 更新模型提供商列表
   async updateModes(updates: Partial<{ providers: ModelProvider[] }>): Promise<{ providers: ModelProvider[] }> {
     await ensureDir(CONFIGS_DIR);
     this.modes = { ...this.modes!, ...updates };
@@ -123,6 +138,7 @@ class SettingsService {
     return { ...this.modes };
   }
 
+  // 更新单个提供商
   async updateProvider(providerId: string, provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.modes) {
@@ -136,6 +152,7 @@ class SettingsService {
     return { providers: this.modes!.providers };
   }
 
+  // 添加新提供商
   async addProvider(provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.modes) {
@@ -150,6 +167,7 @@ class SettingsService {
     return { providers: this.modes!.providers };
   }
 
+  // 删除提供商
   async deleteProvider(providerId: string): Promise<{ providers: ModelProvider[] }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.modes) {
@@ -160,6 +178,7 @@ class SettingsService {
     return { providers: this.modes!.providers };
   }
 
+  // 获取MCP连接配置
   async getMcp(): Promise<{ connections: MCPConnection[] }> {
     if (!this.mcp) {
       await this.loadMcp();
@@ -167,12 +186,14 @@ class SettingsService {
     return { ...this.mcp! };
   }
 
+  // 加载MCP配置
   private async loadMcp(): Promise<void> {
     await ensureDir(CONFIGS_DIR);
     const mcp = await readJsonFile<{ connections: MCPConnection[] }>(path.join(CONFIGS_DIR, 'mcp.json'));
     this.mcp = mcp || { ...DEFAULT_MCP };
   }
 
+  // 更新MCP配置
   async updateMcp(updates: Partial<{ connections: MCPConnection[] }>): Promise<{ connections: MCPConnection[] }> {
     await ensureDir(CONFIGS_DIR);
     this.mcp = { ...this.mcp!, ...updates };
@@ -180,6 +201,7 @@ class SettingsService {
     return { ...this.mcp };
   }
 
+  // 连接新MCP服务
   async connectMcp(connection: Omit<MCPConnection, 'id'>): Promise<{ connections: MCPConnection[] }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.mcp) {
@@ -194,6 +216,7 @@ class SettingsService {
     return { connections: this.mcp!.connections };
   }
 
+  // 断开MCP连接
   async disconnectMcp(connectionId: string): Promise<{ connections: MCPConnection[] }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.mcp) {
@@ -204,6 +227,7 @@ class SettingsService {
     return { connections: this.mcp!.connections };
   }
 
+  // 获取技能配置
   async getSkills(): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
     if (!this.skills) {
       await this.loadSkills();
@@ -211,12 +235,14 @@ class SettingsService {
     return { ...this.skills! };
   }
 
+  // 加载技能配置
   private async loadSkills(): Promise<void> {
     await ensureDir(CONFIGS_DIR);
     const skills = await readJsonFile<{ skills: Skill[]; globalEnabled: boolean }>(path.join(CONFIGS_DIR, 'skills.json'));
     this.skills = skills || { ...DEFAULT_SKILLS };
   }
 
+  // 更新技能配置
   async updateSkills(updates: Partial<{ skills: Skill[]; globalEnabled: boolean }>): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
     await ensureDir(CONFIGS_DIR);
     this.skills = { ...this.skills!, ...updates };
@@ -224,6 +250,7 @@ class SettingsService {
     return { ...this.skills };
   }
 
+  // 添加技能
   async addSkill(skill: Omit<Skill, 'id'>): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.skills) {
@@ -238,6 +265,7 @@ class SettingsService {
     return { skills: this.skills!.skills, globalEnabled: this.skills!.globalEnabled };
   }
 
+  // 删除技能
   async deleteSkill(skillId: string): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
     await ensureDir(CONFIGS_DIR);
     if (!this.skills) {
@@ -248,7 +276,7 @@ class SettingsService {
     return { skills: this.skills!.skills, globalEnabled: this.skills!.globalEnabled };
   }
 
-  // Default Model Config
+  // 获取默认模型配置
   async getDefaultModel(): Promise<DefaultModelConfig> {
     if (!this.modelConfig) {
       await this.loadModelConfig();
@@ -256,12 +284,14 @@ class SettingsService {
     return { ...this.modelConfig! };
   }
 
+  // 加载默认模型配置
   private async loadModelConfig(): Promise<void> {
     await ensureDir(CONFIGS_DIR);
     const config = await readJsonFile<DefaultModelConfig>(path.join(CONFIGS_DIR, 'models.json'));
     this.modelConfig = config || { ...DEFAULT_MODEL_CONFIG };
   }
 
+  // 更新默认模型配置
   async updateDefaultModel(config: DefaultModelConfig): Promise<DefaultModelConfig> {
     await ensureDir(CONFIGS_DIR);
     this.modelConfig = { ...config };
@@ -269,7 +299,7 @@ class SettingsService {
     return { ...this.modelConfig };
   }
 
-  // Window Positions
+  // 获取窗口位置记录
   async getWindowPositions(): Promise<Record<string, { x: number; y: number }>> {
     if (!this.windowPositions) {
       await this.loadWindowPositions();
@@ -277,12 +307,14 @@ class SettingsService {
     return { ...this.windowPositions! };
   }
 
+  // 加载窗口位置
   private async loadWindowPositions(): Promise<void> {
     await ensureDir(CONFIGS_DIR);
     const positions = await readJsonFile<Record<string, { x: number; y: number }>>(path.join(CONFIGS_DIR, 'window-positions.json'));
     this.windowPositions = positions || {};
   }
 
+  // 保存窗口位置
   async saveWindowPosition(appId: string, position: { x: number; y: number }): Promise<void> {
     await ensureDir(CONFIGS_DIR);
     if (!this.windowPositions) {

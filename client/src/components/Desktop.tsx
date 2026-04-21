@@ -8,6 +8,7 @@ import { AppSettingsWindow } from './AppSettingsWindow';
 import { LogWindow } from './LogWindow';
 import type { AppInfo } from '../types';
 
+// 默认图标（蓝色方块带字母A）
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#0078d4"/>
@@ -15,14 +16,20 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   </svg>
 `);
 
+/**
+ * 桌面组件 - 应用的主容器
+ * 负责渲染桌面图标、窗口、系统主题、快捷键
+ */
 export function Desktop() {
   const { state, openApp, openSystemApp, closeStartMenu } = useDesktop();
+  // 选中的桌面图标
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
+  // 系统主题（用于auto模式）
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   );
 
-  // Listen for system theme changes when using auto mode
+  // 监听系统主题变化（用于auto模式）
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = (e: MediaQueryListEvent) => {
@@ -32,10 +39,10 @@ export function Desktop() {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
-  // Keyboard shortcuts
+  // 键盘快捷键处理
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+L to open logs
+      // Ctrl+L 打开日志窗口
       if (e.ctrlKey && e.key === 'l') {
         e.preventDefault();
         const hasLogsOpen = state.windows.some((w) => w.appId === 'logs');
@@ -48,8 +55,10 @@ export function Desktop() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state.windows, openSystemApp]);
 
+  // 筛选桌面应用
   const desktopApps = state.installedApps.filter((app) => app.type === 'desktop');
 
+  // 点击桌面空白区域
   const handleDesktopClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       setSelectedIcon(null);
@@ -57,24 +66,27 @@ export function Desktop() {
     }
   };
 
+  // 双击图标打开应用
   const handleIconDoubleClick = (app: AppInfo) => {
     openApp(app);
   };
 
+  // 单击图标选中
   const handleIconClick = (app: AppInfo) => {
     setSelectedIcon(app.id);
   };
 
+  // 根据窗口appId渲染对应内容
   const renderAppContent = (windowState: typeof state.windows[0]) => {
     const appId = windowState.appId;
 
-    // Handle app-detail:xxx format
+    // 处理 app-detail:xxx 格式（应用详情窗口）
     if (appId.startsWith('app-detail:')) {
       const targetAppId = appId.split(':')[1];
       return <AppDetailWindow appId={targetAppId} />;
     }
 
-    // Handle app-settings:xxx format
+    // 处理 app-settings:xxx 格式（应用设置窗口）
     if (appId.startsWith('app-settings:')) {
       const targetAppId = appId.split(':')[1];
       return <AppSettingsWindow appId={targetAppId} />;
@@ -91,20 +103,21 @@ export function Desktop() {
         return <LogWindow />;
       case 'desktop-assistant':
       case 'app-builder':
-        return <ChatApp appId={windowState.appId} conversationId={windowState.conversationId} />;
       default:
         return <ChatApp appId={windowState.appId} conversationId={windowState.conversationId} />;
     }
   };
 
+  // 壁纸样式
   const wallpaperStyle = state.settings.wallpaper
     ? { backgroundImage: `url(${state.settings.wallpaper})` }
     : { background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' };
 
+  // 获取主题CSS类
   const getThemeClass = () => {
     if (state.settings.theme === 'light') return 'theme-light';
     if (state.settings.theme === 'dark') return 'theme-dark';
-    // auto: follow system preference
+    // auto: 跟随系统主题
     return systemTheme === 'dark' ? 'theme-dark' : 'theme-light';
   };
   const themeClass = getThemeClass();

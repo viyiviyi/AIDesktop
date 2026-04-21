@@ -1,8 +1,13 @@
 import type { App, AppInfo, AppSource, AppType, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel, ModelConfig, ContentType } from '../types';
 import { logger } from './logger';
 
+// API基础URL
 const API_BASE = '/api';
 
+/**
+ * 通用JSON请求封装
+ * 自动处理请求/响应日志、错误处理
+ */
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const startTime = Date.now();
   const method = options?.method || 'GET';
@@ -20,6 +25,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
     const duration = Date.now() - startTime;
 
+    // 错误处理
     if (!response.ok) {
       let errorBody: unknown;
       try {
@@ -53,13 +59,16 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   }
 }
 
-// Apps
+// ============ 应用相关API ============
+
+// 获取已安装的应用列表
 export async function getApps(source?: string): Promise<AppInfo[]> {
   const url = source ? `/apps?source=${source}` : '/apps';
   const data = await fetchJson<{ apps: AppInfo[] }>(url);
   return data.apps;
 }
 
+// 获取单个应用的完整信息
 export async function getApp(appId: string): Promise<App> {
   const data = await fetchJson<{
     meta: {
@@ -83,7 +92,7 @@ export async function getApp(appId: string): Promise<App> {
     mcpServices: string[];
     skills: string[];
   }>(`/apps/${appId}`);
-  // Transform server App format (with meta) to client App format (flat)
+  // 将服务器返回的App格式（包含meta字段）转换为客户端App格式（扁平结构）
   return {
     id: data.meta.id,
     name: data.meta.name,
@@ -104,6 +113,7 @@ export async function getApp(appId: string): Promise<App> {
   };
 }
 
+// 创建新应用
 export async function createApp(app: Partial<App>): Promise<App> {
   return fetchJson<App>('/apps', {
     method: 'POST',
@@ -111,6 +121,7 @@ export async function createApp(app: Partial<App>): Promise<App> {
   });
 }
 
+// 更新应用信息
 export async function updateApp(appId: string, updates: Partial<App>): Promise<App> {
   return fetchJson<App>(`/apps/${appId}`, {
     method: 'PUT',
@@ -118,35 +129,42 @@ export async function updateApp(appId: string, updates: Partial<App>): Promise<A
   });
 }
 
+// 删除应用
 export async function deleteApp(appId: string): Promise<void> {
   await fetchJson(`/apps/${appId}`, { method: 'DELETE' });
 }
 
+// 启用应用
 export async function enableApp(appId: string): Promise<void> {
   await fetchJson(`/apps/${appId}/enable`, { method: 'PUT' });
 }
 
+// 禁用应用
 export async function disableApp(appId: string): Promise<void> {
   await fetchJson(`/apps/${appId}/disable`, { method: 'PUT' });
 }
 
-// Reload all apps from disk (useful when new apps are added)
+// 重新加载应用（从磁盘扫描，用于添加新应用后刷新）
 export async function reloadApps(): Promise<{ success: boolean; message: string; apps: AppInfo[] }> {
   return fetchJson<{ success: boolean; message: string; apps: AppInfo[] }>('/apps/reload', {
     method: 'POST',
   });
 }
 
-// Conversations
+// ============ 会话相关API ============
+
+// 获取应用的所有会话
 export async function getConversations(appId: string): Promise<Conversation[]> {
   const data = await fetchJson<{ conversations: Conversation[] }>(`/apps/${appId}/conversations`);
   return data.conversations;
 }
 
+// 获取单个会话详情
 export async function getConversation(appId: string, convId: string): Promise<Conversation> {
   return fetchJson<Conversation>(`/apps/${appId}/conversations/${convId}`);
 }
 
+// 创建新会话
 export async function createConversation(appId: string, title?: string): Promise<Conversation> {
   return fetchJson<Conversation>(`/apps/${appId}/conversations`, {
     method: 'POST',
@@ -154,10 +172,12 @@ export async function createConversation(appId: string, title?: string): Promise
   });
 }
 
+// 删除会话
 export async function deleteConversation(appId: string, convId: string): Promise<void> {
   await fetchJson(`/apps/${appId}/conversations/${convId}`, { method: 'DELETE' });
 }
 
+// 发送消息（非流式）
 export async function sendMessage(
   appId: string,
   convId: string,
@@ -169,6 +189,11 @@ export async function sendMessage(
   });
 }
 
+/**
+ * 流式发送消息
+ * 使用SSE（Server-Sent Events）接收实时响应
+ * yield每个消息片段，最终返回完成状态
+ */
 export async function* streamMessage(
   appId: string,
   convId: string,
@@ -218,11 +243,14 @@ export async function* streamMessage(
   }
 }
 
-// Settings
+// ============ 设置相关API ============
+
+// 获取桌面设置
 export async function getSettings(): Promise<DesktopSettings> {
   return fetchJson<DesktopSettings>('/settings');
 }
 
+// 更新桌面设置（部分更新）
 export async function updateSettings(settings: Partial<DesktopSettings>): Promise<DesktopSettings> {
   return fetchJson<DesktopSettings>('/settings', {
     method: 'PUT',
@@ -230,11 +258,14 @@ export async function updateSettings(settings: Partial<DesktopSettings>): Promis
   });
 }
 
-// Model Settings
+// ============ 模型相关API ============
+
+// 获取模型提供商列表
 export async function getModes(): Promise<{ providers: ModelProvider[] }> {
   return fetchJson<{ providers: ModelProvider[] }>('/settings/modes');
 }
 
+// 更新模型提供商列表
 export async function updateModes(modes: { providers: ModelProvider[] }): Promise<{ providers: ModelProvider[] }> {
   return fetchJson<{ providers: ModelProvider[] }>('/settings/modes', {
     method: 'PUT',
@@ -242,6 +273,7 @@ export async function updateModes(modes: { providers: ModelProvider[] }): Promis
   });
 }
 
+// 更新单个提供商
 export async function updateProvider(providerId: string, provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
   return fetchJson<{ providers: ModelProvider[] }>(`/settings/modes/providers/${providerId}`, {
     method: 'PUT',
@@ -249,6 +281,7 @@ export async function updateProvider(providerId: string, provider: ModelProvider
   });
 }
 
+// 添加新提供商
 export async function addProvider(provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
   return fetchJson<{ providers: ModelProvider[] }>('/settings/modes/providers', {
     method: 'POST',
@@ -256,12 +289,14 @@ export async function addProvider(provider: ModelProvider): Promise<{ providers:
   });
 }
 
+// 删除提供商
 export async function deleteProvider(providerId: string): Promise<{ providers: ModelProvider[] }> {
   return fetchJson<{ providers: ModelProvider[] }>(`/settings/modes/providers/${providerId}`, {
     method: 'DELETE',
   });
 }
 
+// 从提供商API获取模型列表
 export async function fetchModels(apiKey: string, baseUrl: string, apiType: string): Promise<{ models: ProviderModel[] }> {
   return fetchJson<{ models: ProviderModel[] }>('/settings/modes/fetch-models', {
     method: 'POST',
@@ -269,11 +304,12 @@ export async function fetchModels(apiKey: string, baseUrl: string, apiType: stri
   });
 }
 
-// Default Model Config
+// 获取默认模型配置
 export async function getDefaultModel(): Promise<{ providerId: string; modelId: string }> {
   return fetchJson<{ providerId: string; modelId: string }>('/settings/default-model');
 }
 
+// 更新默认模型配置
 export async function updateDefaultModel(config: { providerId: string; modelId: string }): Promise<{ providerId: string; modelId: string }> {
   return fetchJson<{ providerId: string; modelId: string }>('/settings/default-model', {
     method: 'PUT',
@@ -281,11 +317,14 @@ export async function updateDefaultModel(config: { providerId: string; modelId: 
   });
 }
 
-// MCP Settings
+// ============ MCP相关API ============
+
+// 获取MCP连接配置
 export async function getMcpSettings(): Promise<{ connections: MCPConnection[] }> {
   return fetchJson<{ connections: MCPConnection[] }>('/settings/mcp');
 }
 
+// 更新MCP连接配置
 export async function updateMcpSettings(mcp: { connections: MCPConnection[] }): Promise<{ connections: MCPConnection[] }> {
   return fetchJson<{ connections: MCPConnection[] }>('/settings/mcp', {
     method: 'PUT',
@@ -293,6 +332,7 @@ export async function updateMcpSettings(mcp: { connections: MCPConnection[] }): 
   });
 }
 
+// 连接新的MCP服务
 export async function connectMcp(connection: Omit<MCPConnection, 'id'>): Promise<{ connections: MCPConnection[] }> {
   return fetchJson<{ connections: MCPConnection[] }>('/settings/mcp/connect', {
     method: 'POST',
@@ -300,17 +340,21 @@ export async function connectMcp(connection: Omit<MCPConnection, 'id'>): Promise
   });
 }
 
+// 断开MCP连接
 export async function disconnectMcp(connectionId: string): Promise<{ connections: MCPConnection[] }> {
   return fetchJson<{ connections: MCPConnection[] }>(`/settings/mcp/${connectionId}`, {
     method: 'DELETE',
   });
 }
 
-// Skill Settings
+// ============ 技能相关API ============
+
+// 获取技能设置
 export async function getSkillSettings(): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
   return fetchJson<{ skills: Skill[]; globalEnabled: boolean }>('/settings/skills');
 }
 
+// 更新技能设置
 export async function updateSkillSettings(skills: { skills: Skill[]; globalEnabled: boolean }): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
   return fetchJson<{ skills: Skill[]; globalEnabled: boolean }>('/settings/skills', {
     method: 'PUT',
@@ -318,16 +362,19 @@ export async function updateSkillSettings(skills: { skills: Skill[]; globalEnabl
   });
 }
 
-// Health check
+// ============ 其他API ============
+
+// 健康检查
 export async function healthCheck(): Promise<{ status: string; timestamp: string }> {
   return fetchJson<{ status: string; timestamp: string }>('/health');
 }
 
-// Window Positions
+// 获取窗口位置记录
 export async function getWindowPositions(): Promise<Record<string, { x: number; y: number }>> {
   return fetchJson<Record<string, { x: number; y: number }>>('/settings/window-positions');
 }
 
+// 保存单个窗口位置
 export async function saveWindowPosition(appId: string, position: { x: number; y: number }): Promise<void> {
   await fetchJson(`/settings/window-positions/${appId}`, {
     method: 'PUT',

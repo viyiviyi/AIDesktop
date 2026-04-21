@@ -13,15 +13,23 @@ import {
   ensureDir
 } from '../utils/file.js';
 
+/**
+ * AppLoader - 应用加载器
+ * 负责从磁盘加载应用、管理应用的创建、更新、删除
+ * 应用存储在三个目录：system（系统）、user（用户）、marketplace（市场）
+ */
 class AppLoader {
+  // 应用内存缓存
   private apps: Map<string, App> = new Map();
 
+  // 加载所有应用（从三个目录）
   async loadAll(): Promise<void> {
     await this.loadFromDirectory(SYSTEM_APPS_DIR, 'system');
     await this.loadFromDirectory(USER_APPS_DIR, 'user');
     await this.loadFromDirectory(MARKETPLACE_APPS_DIR, 'marketplace');
   }
 
+  // 从指定目录加载应用
   private async loadFromDirectory(dir: string, source: AppSource): Promise<void> {
     try {
       const entries = await readDir(dir);
@@ -35,10 +43,11 @@ class AppLoader {
         }
       }
     } catch {
-      // Directory might not exist yet
+      // 目录可能不存在
     }
   }
 
+  // 加载单个应用（读取meta.json、app.md、mcp.json、skills）
   private async loadApp(appDir: string, source: AppSource): Promise<App | null> {
     const metaPath = path.join(appDir, 'meta.json');
     const appMdPath = path.join(appDir, 'app.md');
@@ -48,7 +57,7 @@ class AppLoader {
     const meta = await readJsonFile<AppMeta>(metaPath);
     if (!meta) return null;
 
-    // Override source from file system location
+    // 覆盖source为文件系统位置
     meta.source = source;
 
     let appMd = '';
@@ -74,7 +83,7 @@ class AppLoader {
         skills = includeData.skills;
       }
     } catch {
-      // Skills directory might not exist
+      // Skills目录可能不存在
     }
 
     return {
@@ -85,32 +94,38 @@ class AppLoader {
     };
   }
 
+  // 获取单个应用
   getApp(id: string): App | undefined {
     return this.apps.get(id);
   }
 
+  // 获取所有应用
   getAllApps(): App[] {
     return Array.from(this.apps.values());
   }
 
+  // 按来源获取应用
   getAppsBySource(source: AppSource): App[] {
     return this.getAllApps().filter(app => app.meta.source === source);
   }
 
+  // 获取桌面应用
   getDesktopApps(): App[] {
     return this.getAllApps().filter(app => app.meta.type === 'desktop');
   }
 
-  // Reload all apps from disk (useful when apps are added/removed without restart)
+  // 重新加载所有应用（用于不重启添删应用）
   async reloadAll(): Promise<void> {
     this.apps.clear();
     await this.loadAll();
   }
 
+  // 创建新应用
   async createApp(app: Omit<App, 'meta'> & { meta: Partial<AppMeta> }, source: AppSource): Promise<App> {
     const id = app.meta.id || uuidv4();
     const now = new Date().toISOString();
 
+    // 构建完整的meta
     const fullMeta: AppMeta = {
       id,
       name: app.meta.name || '新应用',
@@ -129,16 +144,19 @@ class AppLoader {
       enabled: app.meta.enabled !== undefined ? app.meta.enabled : true
     };
 
+    // 根据来源确定目录
     const sourceDir = source === 'system' ? SYSTEM_APPS_DIR :
                       source === 'user' ? USER_APPS_DIR :
                       MARKETPLACE_APPS_DIR;
 
+    // 创建目录结构
     const appDir = path.join(sourceDir, id);
     await ensureDir(appDir);
     await ensureDir(path.join(appDir, 'data'));
     await ensureDir(path.join(appDir, 'data', 'conversations'));
     await ensureDir(path.join(appDir, 'skills'));
 
+    // 写入文件
     await writeJsonFile(path.join(appDir, 'meta.json'), fullMeta);
     await writeJsonFile(path.join(appDir, 'app.md'), app.appMd || '');
     await writeJsonFile(path.join(appDir, 'mcp.json'), app.mcpServices || []);
@@ -154,10 +172,11 @@ class AppLoader {
     return newApp;
   }
 
+  // 更新应用（系统应用不可修改）
   async updateApp(id: string, updates: Partial<AppMeta>): Promise<App | null> {
     const app = this.apps.get(id);
     if (!app) return null;
-    if (app.meta.source === 'system') return null; // Cannot modify system apps
+    if (app.meta.source === 'system') return null; // 系统应用不可修改
 
     const updatedMeta = { ...app.meta, ...updates };
     const sourceDir = app.meta.source === 'user' ? USER_APPS_DIR : MARKETPLACE_APPS_DIR;
@@ -170,10 +189,11 @@ class AppLoader {
     return updatedApp;
   }
 
+  // 删除应用（系统应用不可删除）
   async deleteApp(id: string): Promise<boolean> {
     const app = this.apps.get(id);
     if (!app) return false;
-    if (app.meta.source === 'system') return false; // Cannot delete system apps
+    if (app.meta.source === 'system') return false; // 系统应用不可删除
 
     const { rm } = await import('fs/promises');
     const sourceDir = app.meta.source === 'user' ? USER_APPS_DIR : MARKETPLACE_APPS_DIR;
@@ -188,13 +208,14 @@ class AppLoader {
     }
   }
 
+  // 设置应用启用/禁用状态
   async setAppEnabled(id: string, enabled: boolean): Promise<App | null> {
     const app = this.apps.get(id);
     if (!app) return null;
 
     const updatedMeta = { ...app.meta, enabled };
 
-    // Persist to meta.json for all app sources
+    // 持久化到meta.json（所有来源的应用都支持）
     const sourceDir = app.meta.source === 'system' ? SYSTEM_APPS_DIR :
                       app.meta.source === 'user' ? USER_APPS_DIR :
                       MARKETPLACE_APPS_DIR;
@@ -203,7 +224,7 @@ class AppLoader {
     try {
       await writeJsonFile(path.join(appDir, 'meta.json'), updatedMeta);
     } catch {
-      // If write fails (e.g., read-only system apps), only update in-memory
+      // 如果写入失败（如只读系统应用），只更新内存
     }
 
     const updatedApp = { ...app, meta: updatedMeta };
