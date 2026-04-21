@@ -11,7 +11,7 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
 `);
 
 export function StartMenu() {
-  const { state, openApp, closeStartMenu, refreshApps } = useDesktop();
+  const { state, openApp, openSystemApp, closeStartMenu, refreshApps } = useDesktop();
   const [searchQuery, setSearchQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -183,10 +183,16 @@ export function StartMenu() {
               <span>📁</span> 文件
             </button>
             <button title="设置" onClick={() => {
-              const settings = state.installedApps.find((a) => a.id === 'settings');
-              if (settings) handleAppClick(settings);
+              openSystemApp('settings', '设置');
+              closeStartMenu();
             }}>
               <span>⚙️</span> 设置
+            </button>
+            <button title="应用管理" onClick={() => {
+              openSystemApp('settings-main', '应用管理');
+              closeStartMenu();
+            }}>
+              <span>📦</span> 应用管理
             </button>
             <button title="回收站" onClick={() => {
               const trash = state.installedApps.find((a) => a.id === 'trash');

@@ -21,7 +21,8 @@ router.get('/', async (req: Request, res: Response) => {
         description: a.meta.description,
         source: a.meta.source,
         type: a.meta.type,
-        icon: a.meta.icon
+        icon: a.meta.icon,
+        enabled: a.meta.enabled !== false
       }))
     });
   } catch (error) {
@@ -36,7 +37,13 @@ router.get('/:appId', async (req: Request, res: Response) => {
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
-    res.json(app);
+    // Return flat structure: merge meta with app-level fields
+    res.json({
+      meta: app.meta,
+      appMd: app.appMd,
+      mcpServices: app.mcpServices,
+      skills: app.skills,
+    });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
@@ -74,7 +81,14 @@ router.put('/:appId', async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Cannot modify system apps' });
     }
 
-    const updated = await appLoader.updateApp(req.params.appId, req.body);
+    // Handle flat structure from client - models comes at top level, need to merge into meta
+    const { models, ...rest } = req.body;
+    const updates: Partial<typeof app.meta> = { ...rest };
+    if (models !== undefined) {
+      updates.models = models;
+    }
+
+    const updated = await appLoader.updateApp(req.params.appId, updates);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -99,6 +113,34 @@ router.delete('/:appId', async (req: Request, res: Response) => {
     } else {
       res.status(500).json({ error: 'Failed to delete app' });
     }
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Enable app
+router.put('/:appId/enable', async (req: Request, res: Response) => {
+  try {
+    const app = appLoader.getApp(req.params.appId);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+    const updated = await appLoader.setAppEnabled(req.params.appId, true);
+    res.json({ success: true, app: updated });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Disable app
+router.put('/:appId/disable', async (req: Request, res: Response) => {
+  try {
+    const app = appLoader.getApp(req.params.appId);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+    const updated = await appLoader.setAppEnabled(req.params.appId, false);
+    res.json({ success: true, app: updated });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }

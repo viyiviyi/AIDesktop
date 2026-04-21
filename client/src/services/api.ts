@@ -1,4 +1,4 @@
-import type { App, AppInfo, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel } from '../types';
+import type { App, AppInfo, AppSource, AppType, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel, ModelConfig, ContentType } from '../types';
 
 const API_BASE = '/api';
 
@@ -26,7 +26,47 @@ export async function getApps(source?: string): Promise<AppInfo[]> {
 }
 
 export async function getApp(appId: string): Promise<App> {
-  return fetchJson<App>(`/apps/${appId}`);
+  const data = await fetchJson<{
+    meta: {
+      id: string;
+      name: string;
+      description: string;
+      source: AppSource;
+      type: AppType;
+      icon: string;
+      enabled?: boolean;
+      backgroundImage?: string;
+      models?: ModelConfig[];
+      supportedInputs?: ContentType[];
+      inputDescription?: string;
+      outputDescription?: string;
+      visibleApps?: string[];
+      visibleServices?: string[];
+      tools?: string[];
+    };
+    appMd: string;
+    mcpServices: string[];
+    skills: string[];
+  }>(`/apps/${appId}`);
+  // Transform server App format (with meta) to client App format (flat)
+  return {
+    id: data.meta.id,
+    name: data.meta.name,
+    description: data.meta.description,
+    source: data.meta.source,
+    type: data.meta.type,
+    icon: data.meta.icon,
+    enabled: data.meta.enabled,
+    backgroundImage: data.meta.backgroundImage,
+    models: data.meta.models || [],
+    supportedInputs: data.meta.supportedInputs || ['text'],
+    inputDescription: data.meta.inputDescription || '',
+    outputDescription: data.meta.outputDescription || '',
+    visibleApps: data.meta.visibleApps || [],
+    visibleServices: data.meta.visibleServices || [],
+    tools: data.meta.tools || [],
+    appMd: data.appMd,
+  };
 }
 
 export async function createApp(app: Partial<App>): Promise<App> {
@@ -45,6 +85,14 @@ export async function updateApp(appId: string, updates: Partial<App>): Promise<A
 
 export async function deleteApp(appId: string): Promise<void> {
   await fetchJson(`/apps/${appId}`, { method: 'DELETE' });
+}
+
+export async function enableApp(appId: string): Promise<void> {
+  await fetchJson(`/apps/${appId}/enable`, { method: 'PUT' });
+}
+
+export async function disableApp(appId: string): Promise<void> {
+  await fetchJson(`/apps/${appId}/disable`, { method: 'PUT' });
 }
 
 // Reload all apps from disk (useful when new apps are added)

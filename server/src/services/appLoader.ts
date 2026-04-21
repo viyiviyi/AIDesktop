@@ -125,7 +125,8 @@ class AppLoader {
       outputDescription: app.meta.outputDescription || '',
       visibleApps: app.meta.visibleApps || [],
       visibleServices: app.meta.visibleServices || [],
-      tools: app.meta.tools || []
+      tools: app.meta.tools || [],
+      enabled: app.meta.enabled !== undefined ? app.meta.enabled : true
     };
 
     const sourceDir = source === 'system' ? SYSTEM_APPS_DIR :
@@ -185,6 +186,29 @@ class AppLoader {
     } catch {
       return false;
     }
+  }
+
+  async setAppEnabled(id: string, enabled: boolean): Promise<App | null> {
+    const app = this.apps.get(id);
+    if (!app) return null;
+
+    const updatedMeta = { ...app.meta, enabled };
+
+    // Persist to meta.json for all app sources
+    const sourceDir = app.meta.source === 'system' ? SYSTEM_APPS_DIR :
+                      app.meta.source === 'user' ? USER_APPS_DIR :
+                      MARKETPLACE_APPS_DIR;
+    const appDir = path.join(sourceDir, id);
+
+    try {
+      await writeJsonFile(path.join(appDir, 'meta.json'), updatedMeta);
+    } catch {
+      // If write fails (e.g., read-only system apps), only update in-memory
+    }
+
+    const updatedApp = { ...app, meta: updatedMeta };
+    this.apps.set(id, updatedApp);
+    return updatedApp;
   }
 }
 

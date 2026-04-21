@@ -90,6 +90,7 @@ export interface AppMeta {
   visibleApps: string[];
   visibleServices: string[];
   tools: string[];
+  enabled?: boolean;
 }
 
 export interface App {

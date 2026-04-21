@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import { Window, ChatApp, SettingsApp } from './Window';
+import { AppManagerWindow } from './AppManagerWindow';
+import { SettingsMainWindow } from './SettingsMainWindow';
+import { AppDetailWindow } from './AppDetailWindow';
+import { AppSettingsWindow } from './AppSettingsWindow';
 import type { AppInfo } from '../types';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -45,9 +49,27 @@ export function Desktop() {
   };
 
   const renderAppContent = (windowState: typeof state.windows[0]) => {
-    switch (windowState.appId) {
+    const appId = windowState.appId;
+
+    // Handle app-detail:xxx format
+    if (appId.startsWith('app-detail:')) {
+      const targetAppId = appId.split(':')[1];
+      return <AppDetailWindow appId={targetAppId} />;
+    }
+
+    // Handle app-settings:xxx format
+    if (appId.startsWith('app-settings:')) {
+      const targetAppId = appId.split(':')[1];
+      return <AppSettingsWindow appId={targetAppId} />;
+    }
+
+    switch (appId) {
       case 'settings':
         return <SettingsApp appId={windowState.appId} />;
+      case 'settings-main':
+        return <SettingsMainWindow />;
+      case 'app-manager':
+        return <AppManagerWindow />;
       case 'desktop-assistant':
       case 'app-builder':
         return <ChatApp appId={windowState.appId} conversationId={windowState.conversationId} />;

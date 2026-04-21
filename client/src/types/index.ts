@@ -82,11 +82,19 @@ export interface AppInfo {
   source: AppSource;
   type: AppType;
   icon: string;
+  enabled?: boolean;
 }
 
-export interface App extends AppInfo {
+export interface App {
+  id: string;
+  name: string;
+  description: string;
+  source: AppSource;
+  type: AppType;
+  icon: string;
+  enabled?: boolean;
   backgroundImage?: string;
-  models: ModelConfig[];
+  models?: ModelConfig[];
   supportedInputs: ContentType[];
   inputDescription: string;
   outputDescription: string;
@@ -94,6 +102,15 @@ export interface App extends AppInfo {
   visibleServices: string[];
   tools: string[];
   appMd?: string;
+}
+
+export interface AppWithDetails {
+  meta: AppInfo;
+  backgroundImage?: string;
+  appMd: string;
+  mcpServices: string[];
+  skills: string[];
+  models: ModelConfig[];
 }
 
 // Desktop Settings
