@@ -125,6 +125,7 @@ interface OpenAppOptions {
 interface DesktopContextValue {
   state: DesktopState;
   openApp: (app: AppInfo, options?: OpenAppOptions) => void;
+  openSystemApp: (appId: string, title: string, icon?: string) => void;
   closeWindow: (windowId: string) => void;
   focusWindow: (windowId: string) => void;
   updateWindow: (windowId: string, updates: Partial<WindowState>) => void;
@@ -215,6 +216,42 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'ADD_WINDOW', payload: newWindow });
   }, [state.windows, state.settings.window, state.appLastPositions]);
 
+  const openSystemApp = useCallback((appId: string, title: string, icon?: string) => {
+    const existingWindow = state.windows.find((w) => w.appId === appId);
+    if (existingWindow) {
+      dispatch({ type: 'FOCUS_WINDOW', payload: existingWindow.id });
+      if (existingWindow.isMinimized) {
+        dispatch({
+          type: 'UPDATE_WINDOW',
+          payload: { id: existingWindow.id, updates: { isMinimized: false } },
+        });
+      }
+      return;
+    }
+
+    const id = `window-${++windowIdCounter}`;
+    const { defaultSize } = state.settings.window;
+    const lastPos = state.appLastPositions?.[appId];
+    const basePosition = lastPos || {
+      x: (window.innerWidth - defaultSize.width) / 2,
+      y: (window.innerHeight - defaultSize.height) / 2,
+    };
+
+    const newWindow: WindowState = {
+      id,
+      appId,
+      title,
+      icon: icon || '',
+      position: basePosition,
+      size: { ...defaultSize },
+      isMaximized: false,
+      isMinimized: false,
+      zIndex: state.windows.length,
+    };
+
+    dispatch({ type: 'ADD_WINDOW', payload: newWindow });
+  }, [state.windows, state.settings.window, state.appLastPositions]);
+
   const closeWindow = useCallback((windowId: string) => {
     dispatch({ type: 'REMOVE_WINDOW', payload: windowId });
   }, []);
@@ -268,6 +305,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       value={{
         state,
         openApp,
+        openSystemApp,
         closeWindow,
         focusWindow,
         updateWindow,
