@@ -171,40 +171,40 @@ export function StartMenu() {
             <button title="刷新应用" onClick={async () => {
               await refreshApps();
             }}>
-              <span>🔄</span> 刷新
+              🔄
             </button>
             <button title="搜索">
-              <span>🔍</span> 搜索
+              🔍
             </button>
             <button title="文件" onClick={() => {
               const fileManager = state.installedApps.find((a) => a.id === 'file-manager');
               if (fileManager) handleAppClick(fileManager);
             }}>
-              <span>📁</span> 文件
+              📁
             </button>
             <button title="设置" onClick={() => {
               openSystemApp('settings', '设置');
               closeStartMenu();
             }}>
-              <span>⚙️</span> 设置
+              ⚙️
             </button>
             <button title="应用管理" onClick={() => {
               openSystemApp('settings-main', '应用管理');
               closeStartMenu();
             }}>
-              <span>📦</span> 应用管理
+              📦
             </button>
             <button title="回收站" onClick={() => {
               const trash = state.installedApps.find((a) => a.id === 'trash');
               if (trash) handleAppClick(trash);
             }}>
-              <span>🗑️</span> 回收站
+              🗑️
             </button>
             <button title="日志 (Ctrl+L)" onClick={() => {
               openSystemApp('logs', '日志');
               closeStartMenu();
             }}>
-              <span>📋</span> 日志
+              📋
             </button>
           </div>
         </div>
