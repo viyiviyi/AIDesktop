@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
+import { useToast } from '../contexts/ToastContext';
+import { logger } from '../services/logger';
 import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel, ContentType } from '../types';
 import * as api from '../services/api';
 
@@ -206,6 +208,7 @@ interface ChatAppProps {
 }
 
 export function ChatApp({ appId, conversationId }: ChatAppProps) {
+  const { addToast } = useToast();
   const [conversations, setConversations] = useState<{ id: string; title: string }[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(conversationId || null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -269,6 +272,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       timestamp: new Date().toISOString(),
     };
 
+    // Add message optimistically
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
@@ -277,10 +281,19 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       const { message } = await api.sendMessage(appId, currentConvId, [
         { type: 'text', text: input },
       ]);
+      // Replace temp message with real one from server
       setMessages((prev) => [...prev.filter((m) => m.id !== userMessage.id), message]);
+      logger.info('ChatApp', `Message sent successfully to ${appId}`);
     } catch (error) {
-      console.error('Failed to send message:', error);
-      setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
+      const errorMsg = error instanceof Error ? error.message : '发送消息失败';
+      logger.error('ChatApp', `Failed to send message: ${errorMsg}`, { appId, conversationId: currentConvId });
+      // Mark message as failed instead of removing it
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === userMessage.id ? { ...m, _failed: true, _error: errorMsg } : m
+        )
+      );
+      addToast('error', `发送失败: ${errorMsg}`);
     } finally {
       setIsLoading(false);
     }
@@ -339,9 +352,15 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       </div>
       <div className="chat-messages">
         {messages.map((msg) => (
-          <div key={msg.id} className={`chat-message ${msg.role}`}>
+          <div
+            key={msg.id}
+            className={`chat-message ${msg.role} ${(msg as Message & { _failed?: boolean })._failed ? 'failed' : ''}`}
+          >
             <div className="chat-message-content">
               {getMessageText(msg)}
+              {(msg as Message & { _failed?: boolean })._failed && (
+                <span className="chat-message-error"> ⚠️ 发送失败</span>
+              )}
             </div>
           </div>
         ))}
