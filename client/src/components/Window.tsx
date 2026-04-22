@@ -46,9 +46,9 @@ export function Window({ windowState, children }: WindowProps) {
   // 聚焦时提升窗口层级
   useEffect(() => {
     if (isFocused && windowRef.current) {
-      windowRef.current.style.zIndex = '9999';
+      windowRef.current.style.zIndex = String(windowState.zIndex);
     }
-  }, [isFocused]);
+  }, [isFocused, windowState.zIndex]);
 
   // 点击窗口时聚焦（但点击控制按钮时不触发）
   const handleMouseDown = (e: React.MouseEvent) => {
