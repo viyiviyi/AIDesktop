@@ -1,4 +1,6 @@
 import type { MCPService, Content } from '../types/index.js';
+import { mcpClientRegistry } from './clientRegistry.js';
+import { logger } from '../utils/logger.js';
 
 // 内置MCP服务定义
 const builtInServices: Record<string, MCPService> = {
@@ -99,6 +101,8 @@ class MCPServiceRegistry {
         return this.handleSettingsMethod(method, args, context);
       case 'mcp.browser':
         return this.handleBrowserMethod(method, args, context);
+      case 'mcp.external':
+        return this.handleExternalMethod(method, args, context);
       default:
         throw new Error(`Service ${serviceName} not implemented`);
     }
@@ -436,6 +440,40 @@ class MCPServiceRegistry {
 
       default:
         throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  /**
+   * 处理外部MCP服务方法
+   * 通过MCPClientRegistry转发到外部MCP服务器
+   */
+  private async handleExternalMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; userId?: string }
+  ): Promise<unknown> {
+    const { connectionId, tool, toolArgs } = args as {
+      connectionId: string;
+      tool: string;
+      toolArgs: Record<string, unknown>;
+    };
+
+    if (!connectionId) {
+      throw new Error('connectionId is required for external MCP calls');
+    }
+
+    if (!tool) {
+      throw new Error('tool name is required for external MCP calls');
+    }
+
+    logger.info('MCPServiceRegistry', `External MCP call: ${tool} on connection ${connectionId}`);
+
+    try {
+      const result = await mcpClientRegistry.callTool(connectionId, tool, toolArgs || {});
+      return result;
+    } catch (error) {
+      logger.error('MCPServiceRegistry', `External MCP call failed: ${(error as Error).message}`);
+      throw error;
     }
   }
 }

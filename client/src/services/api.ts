@@ -347,6 +347,76 @@ export async function disconnectMcp(connectionId: string): Promise<{ connections
   });
 }
 
+// ============ MCP服务器连接API ============
+
+// 获取已连接的MCP服务器
+export async function getMcpConnections(): Promise<Array<{
+  connectionId: string;
+  serverInfo: { name: string; version: string } | null;
+  isConnected: boolean;
+  isInitialized: boolean;
+  tools: Array<{ name: string; description: string; inputSchema: object }>;
+  resources: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
+}>> {
+  const data = await fetchJson<{ connections: Array<{
+    connectionId: string;
+    serverInfo: { name: string; version: string } | null;
+    isConnected: boolean;
+    isInitialized: boolean;
+    tools: Array<{ name: string; description: string; inputSchema: object }>;
+    resources: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
+  }> }>('/mcp/connections');
+  return data.connections;
+}
+
+// 连接到外部MCP服务器
+export async function connectMcpServer(connection: Omit<MCPConnection, 'id'> & { id?: string }): Promise<{
+  success: boolean;
+  connection: MCPConnection & {
+    connected: boolean;
+    initialized: boolean;
+    tools?: Array<{ name: string; description: string; inputSchema: object }>;
+    resources?: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
+    error?: string;
+  };
+}> {
+  return fetchJson<{
+    success: boolean;
+    connection: MCPConnection & {
+      connected: boolean;
+      initialized: boolean;
+      tools?: Array<{ name: string; description: string; inputSchema: object }>;
+      resources?: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
+      error?: string;
+    };
+  }>('/mcp/connect', {
+    method: 'POST',
+    body: JSON.stringify({ connection }),
+  });
+}
+
+// 断开MCP服务器连接
+export async function disconnectMcpServer(connectionId: string): Promise<{ success: boolean; connectionId: string }> {
+  return fetchJson<{ success: boolean; connectionId: string }>(`/mcp/connect/${connectionId}`, {
+    method: 'DELETE',
+  });
+}
+
+// 获取MCP服务器工具列表
+export async function listMcpTools(connectionId: string): Promise<Array<{ name: string; description: string; inputSchema: object }>> {
+  const data = await fetchJson<{ tools: Array<{ name: string; description: string; inputSchema: object }> }>(`/mcp/connections/${connectionId}/tools`);
+  return data.tools;
+}
+
+// 调用MCP工具
+export async function callMcpTool(connectionId: string, tool: string, args: object): Promise<unknown> {
+  const data = await fetchJson<{ result: unknown }>(`/mcp/connections/${connectionId}/call`, {
+    method: 'POST',
+    body: JSON.stringify({ tool, args }),
+  });
+  return data.result;
+}
+
 // ============ 技能相关API ============
 
 // 获取技能设置

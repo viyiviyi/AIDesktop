@@ -9,6 +9,7 @@ import appsRouter from './routes/apps.js';
 import conversationsRouter from './routes/conversations.js';
 import settingsRouter from './routes/settings.js';
 import mcpRouter from './routes/mcp.js';
+import { mcpClientRegistry } from './mcp/clientRegistry.js';
 import { ensureDir, APPS_DIR, CONFIGS_DIR } from './utils/file.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +33,9 @@ async function init() {
 
   await appLoader.loadAll();
   await settingsService.getSettings();
+
+  // Initialize MCP clients from config
+  await mcpClientRegistry.initializeFromConfig();
 
   console.log('Server initialized');
 }

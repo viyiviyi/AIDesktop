@@ -1,5 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { mcpServiceRegistry } from '../mcp/service.js';
+import { mcpClientRegistry } from '../mcp/clientRegistry.js';
+import { settingsService } from '../services/settings.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -28,6 +31,147 @@ router.post('/call', async (req: Request, res: Response) => {
       args || {},
       {}
     );
+
+    res.json({ result });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Get all connected MCP servers
+router.get('/connections', async (req: Request, res: Response) => {
+  try {
+    const clients = mcpClientRegistry.listClients();
+    const connections = clients.map((client) => ({
+      connectionId: client.getConnectionId(),
+      serverInfo: client.getServerInfo(),
+      isConnected: client.isConnected(),
+      isInitialized: client.isInitialized(),
+      tools: client.getTools(),
+      resources: client.getResources(),
+    }));
+    res.json({ connections });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Connect to an external MCP server
+router.post('/connect', async (req: Request, res: Response) => {
+  try {
+    const { connection } = req.body;
+
+    if (!connection || !connection.name || !connection.command) {
+      return res.status(400).json({ error: 'Connection name and command are required' });
+    }
+
+    logger.info('MCPRoutes', `Connecting to external MCP server: ${connection.name}`);
+
+    // Create or update connection in settings
+    const mcp = await settingsService.getMcp();
+    const existingIndex = mcp.connections.findIndex((c) => c.id === connection.id);
+
+    let updatedConnection;
+    if (existingIndex >= 0) {
+      mcp.connections[existingIndex] = { ...mcp.connections[existingIndex], ...connection };
+      updatedConnection = mcp.connections[existingIndex];
+    } else {
+      // Generate new ID
+      updatedConnection = {
+        ...connection,
+        id: connection.id || `mcp-${Date.now()}`,
+        enabled: true,
+        services: [],
+      };
+      mcp.connections.push(updatedConnection);
+    }
+
+    await settingsService.updateMcp({ connections: mcp.connections });
+
+    // Connect to the MCP server
+    try {
+      const client = await mcpClientRegistry.getOrCreateClient(updatedConnection);
+      res.json({
+        success: true,
+        connection: {
+          ...updatedConnection,
+          connected: client.isConnected(),
+          initialized: client.isInitialized(),
+          tools: client.getTools(),
+          resources: client.getResources(),
+        },
+      });
+    } catch (connectError) {
+      // If connection fails, still return the connection config but mark as not connected
+      logger.error('MCPRoutes', `Failed to connect: ${(connectError as Error).message}`);
+      res.json({
+        success: false,
+        connection: {
+          ...updatedConnection,
+          connected: false,
+          initialized: false,
+          error: (connectError as Error).message,
+        },
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Disconnect from an external MCP server
+router.delete('/connect/:connectionId', async (req: Request, res: Response) => {
+  try {
+    const { connectionId } = req.params;
+
+    logger.info('MCPRoutes', `Disconnecting from MCP server: ${connectionId}`);
+
+    // Remove client from registry
+    await mcpClientRegistry.removeClient(connectionId);
+
+    // Update settings to mark as disconnected
+    const mcp = await settingsService.getMcp();
+    const connection = mcp.connections.find((c) => c.id === connectionId);
+    if (connection) {
+      connection.enabled = false;
+      await settingsService.updateMcp({ connections: mcp.connections });
+    }
+
+    res.json({ success: true, connectionId });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Get tools from a specific connection
+router.get('/connections/:connectionId/tools', async (req: Request, res: Response) => {
+  try {
+    const { connectionId } = req.params;
+
+    const client = mcpClientRegistry.getClient(connectionId);
+    if (!client) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    res.json({ tools: client.getTools() });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Call a tool on a specific connection
+router.post('/connections/:connectionId/call', async (req: Request, res: Response) => {
+  try {
+    const { connectionId } = req.params;
+    const { tool, args } = req.body;
+
+    if (!tool) {
+      return res.status(400).json({ error: 'Tool name is required' });
+    }
+
+    logger.info('MCPRoutes', `Calling tool ${tool} on connection ${connectionId}`);
+
+    const result = await mcpClientRegistry.callTool(connectionId, tool, args || {});
 
     res.json({ result });
   } catch (error) {
