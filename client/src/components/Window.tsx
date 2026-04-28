@@ -50,10 +50,16 @@ export function Window({ windowState, children }: WindowProps) {
     }
   }, [isFocused, windowState.zIndex]);
 
-  // 点击窗口时聚焦（但点击控制按钮时不触发）
+  // 点击窗口时聚焦（但点击控制按钮、输入框、按钮等交互元素时不触发）
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.target instanceof HTMLElement && e.target.closest('.window-control')) {
-      return;
+    if (e.target instanceof HTMLElement) {
+      // 不拦截交互元素的点击事件
+      if (e.target.closest('.window-control')) {
+        return;
+      }
+      if (e.target.closest('input, textarea, select, button, label[for]')) {
+        return;
+      }
     }
     focusWindow(windowState.id);
   };
@@ -281,11 +287,13 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
   // 加载指定会话的消息
   const loadMessages = async (convId: string) => {
+    console.log('[ChatApp] loadMessages called with convId:', convId);
     try {
       const conv = await api.getConversation(appId, convId);
+      console.log('[ChatApp] loaded conv.messages count:', conv.messages.length);
       setMessages(conv.messages);
     } catch (error) {
-      console.error('Failed to load messages:', error);
+      console.error('[ChatApp] loadMessages error:', error);
     }
   };
 
@@ -305,35 +313,25 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const sendMessage = async () => {
     if (!input.trim() || !currentConvId || isLoading) return;
 
-    // 创建临时用户消息（乐观更新）
-    const userMessage: Message = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content: [{ type: 'text', text: input }],
-      timestamp: new Date().toISOString(),
-    };
-
-    // 乐观添加消息到列表
-    setMessages((prev) => [...prev, userMessage]);
+    const messageContent = input;
+    console.log('[ChatApp] sendMessage called, content:', messageContent, 'convId:', currentConvId);
     setInput('');
     setIsLoading(true);
 
     try {
+      console.log('[ChatApp] calling api.sendMessage...');
       const { message } = await api.sendMessage(appId, currentConvId, [
-        { type: 'text', text: input },
+        { type: 'text', text: messageContent },
       ]);
-      // 用服务器返回的真实消息替换临时消息
-      setMessages((prev) => [...prev.filter((m) => m.id !== userMessage.id), message]);
+      console.log('[ChatApp] api.sendMessage returned, message:', message.id);
+      // 重新加载消息列表以确保同步
+      await loadMessages(currentConvId);
       logger.info('ChatApp', `Message sent successfully to ${appId}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '发送消息失败';
       logger.error('ChatApp', `Failed to send message: ${errorMsg}`, { appId, conversationId: currentConvId });
-      // 标记消息为发送失败（不删除，保留让用户看到）
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === userMessage.id ? { ...m, _failed: true, _error: errorMsg } : m
-        )
-      );
+      // 恢复输入框内容以便重试
+      setInput(messageContent);
       addToast('error', `发送失败: ${errorMsg}`);
     } finally {
       setIsLoading(false);

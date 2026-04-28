@@ -400,6 +400,8 @@ body {
   overflow: hidden;
   min-width: 400px;
   min-height: 300px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .window.maximized {
@@ -479,6 +481,29 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  user-select: text;
+  -webkit-user-select: text;
+  /* Create a new stacking context but allow clicks to pass through appropriately */
+  pointer-events: auto;
+}
+
+/* Window resize handles - only capture events at exact edges */
+.resize-handle {
+  pointer-events: auto;
+  /* No z-index - handles should not be above content */
+}
+
+.resize-e {
+  /* Ensure resize handles only capture at the very edge (rightmost 6px) */
+  background: transparent;
+}
+
+.resize-s {
+  background: transparent;
+}
+
+.resize-se {
+  background: transparent;
 }
 
 /* App Content - Chat */
@@ -1798,6 +1823,159 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* App Settings Tabs */
+.app-settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+}
+
+.app-settings-tab {
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.app-settings-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.app-settings-tab.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+/* App Settings Section */
+.app-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.app-settings-section h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.app-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.app-settings-field label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.app-settings-field input[type="text"],
+.app-settings-field textarea {
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.app-settings-field input[type="text"]:focus,
+.app-settings-field textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.app-settings-field input[type="text"]:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.app-settings-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.app-settings-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.app-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-settings-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color);
+  cursor: pointer;
+}
+
+.app-settings-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+}
+
+.app-settings-empty {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.app-settings-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.app-settings-tool-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.app-settings-readonly-notice {
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
 }
 
 /* App List Panel */
