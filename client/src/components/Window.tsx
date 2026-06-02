@@ -1,9 +1,10 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import { useToast } from '../contexts/ToastContext';
-import { logger } from '../services/logger';
-import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel, ContentType } from '../types';
+import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel } from '../types';
 import * as api from '../services/api';
+import { useAgentEventStream } from '../services/useAgentEventStream';
+import type { WsConvEvent } from '../services/useAgentEventStream';
 
 // 默认窗口图标（SVG格式的蓝色方块带字母A）
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -58,6 +59,10 @@ export function Window({ windowState, children }: WindowProps) {
         return;
       }
       if (e.target.closest('input, textarea, select, button, label[for]')) {
+        return;
+      }
+      // 不拦截 select option 点击
+      if (e.target.tagName === 'OPTION') {
         return;
       }
     }
@@ -237,23 +242,105 @@ interface ChatAppProps {
 }
 
 /**
- * 聊天应用组件 - 负责渲染聊天界面
- * 支持多会话管理、消息发送与接收、流式响应
+ * 聊天应用组件 - 完整的会话管理
+ * 支持：多会话切换、新建、删除、重命名、消息发送与接收
  */
 export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const { addToast } = useToast();
-  // 会话列表
-  const [conversations, setConversations] = useState<{ id: string; title: string }[]>([]);
-  // 当前会话ID
-  const [currentConvId, setCurrentConvId] = useState<string | null>(conversationId || null);
-  // 消息列表
+  const [conversations, setConversations] = useState<{ id: string; title: string; preview?: string }[]>([]);
+  const [currentConvId, setCurrentConvId] = useState<string | null>(
+    conversationId && !conversationId.startsWith('conv-') ? conversationId : null
+  );
   const [messages, setMessages] = useState<Message[]>([]);
-  // 输入框内容
   const [input, setInput] = useState('');
-  // 加载状态
   const [isLoading, setIsLoading] = useState(false);
-  // 消息列表底部引用（用于自动滚动）
+  const [showConvList, setShowConvList] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  // 流式消息累积状态（WebSocket 事件驱动）
+  const [streamingText, setStreamingText] = useState<string>('');
+  const [toolCalls, setToolCalls] = useState<Array<{ toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean }>>([]);
+  const [thinkingText, setThinkingText] = useState<string>('');
+
+  // WebSocket 事件处理器
+  const handleAgentEvent = useCallback((event: WsConvEvent) => {
+    switch (event.type) {
+      case 'thinking':
+        setThinkingText((event.data.text as string) || '思考中...');
+        break;
+      case 'message_start':
+        // 开始新消息，重置累积
+        setThinkingText('');
+        setStreamingText('');
+        setToolCalls([]);
+        break;
+      case 'text_chunk':
+        setStreamingText(prev => prev + (event.data.text as string));
+        setThinkingText('');
+        break;
+      case 'message_update': {
+        const content = event.data.content as any[] || [];
+        const texts = content.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('');
+        if (texts) {
+          setStreamingText(texts);
+          setThinkingText('');
+        }
+        break;
+      }
+      case 'tool_call':
+        setToolCalls(prev => [...prev, {
+          toolCallId: event.data.toolCallId as string,
+          toolName: event.data.toolName as string,
+          args: event.data.args,
+        }]);
+        break;
+      case 'tool_result':
+        setToolCalls(prev =>
+          prev.map(tc =>
+            tc.toolCallId === event.data.toolCallId
+              ? { ...tc, result: event.data.result, isError: event.data.isError as boolean }
+              : tc
+          )
+        );
+        break;
+      case 'message_end': {
+        const content = event.data.content as any[] || [];
+        const text = content.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('');
+        const finalMsg: Message = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          content: [{ type: 'text', text: text || (event.data.text as string) || '' }],
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => {
+          // 如果最后一条是空 assistant，替换它
+          const last = prev[prev.length - 1];
+          if (last && last.role === 'assistant' && !getMessageText(last)) {
+            return [...prev.slice(0, -1), finalMsg];
+          }
+          return [...prev, finalMsg];
+        });
+        setStreamingText('');
+        setToolCalls([]);
+        setThinkingText('');
+        break;
+      }
+      case 'done':
+        // 完成后重新加载同步
+        setIsLoading(false);
+        loadConversations(currentConvId);
+        if (currentConvId) loadMessages(currentConvId);
+        break;
+      case 'error':
+        addToast('error', `AI 回复失败: ${event.data.message as string}`);
+        setIsLoading(false);
+        break;
+    }
+  }, [addToast]);
+
+  // 连接 WebSocket 事件流
+  useAgentEventStream(appId ?? undefined, currentConvId ?? undefined, handleAgentEvent);
 
   // 加载会话列表
   useEffect(() => {
@@ -273,12 +360,30 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   }, [messages]);
 
   // 加载会话列表
-  const loadConversations = async () => {
+  const loadConversations = async (preserveConvId?: string | null) => {
     try {
       const convs = await api.getConversations(appId);
-      setConversations(convs);
-      if (convs.length > 0 && !currentConvId) {
-        setCurrentConvId(convs[0].id);
+      // 提取每个会话的最后一条用户消息作为预览（前100字）
+      const mapped = convs.map(c => {
+        const lastUserMsg = [...c.messages].reverse().find(m => m.role === 'user');
+        const preview = lastUserMsg
+          ? lastUserMsg.content
+            .filter((x): x is { type: 'text'; text: string } => x.type === 'text')
+            .map(x => x.text)
+            .join('')
+            .slice(0, 100)
+          : undefined;
+        return { id: c.id, title: c.title, preview };
+      });
+      setConversations(mapped);
+      // 自动设置当前会话：优先用传入的 preserveConvId，否则用最后一个有消息的，否则用第一个
+      const curId = preserveConvId !== undefined ? preserveConvId : currentConvId;
+      if (!curId || !mapped.find(c => c.id === curId)) {
+        const convsWithMsgs = convs.filter(c => c.messages.length > 0);
+        const target = convsWithMsgs.length > 0 ? convsWithMsgs[convsWithMsgs.length - 1] : convs[0];
+        if (target) {
+          setCurrentConvId(target.id);
+        }
       }
     } catch (error) {
       console.error('Failed to load conversations:', error);
@@ -287,13 +392,11 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
   // 加载指定会话的消息
   const loadMessages = async (convId: string) => {
-    console.log('[ChatApp] loadMessages called with convId:', convId);
     try {
       const conv = await api.getConversation(appId, convId);
-      console.log('[ChatApp] loaded conv.messages count:', conv.messages.length);
       setMessages(conv.messages);
     } catch (error) {
-      console.error('[ChatApp] loadMessages error:', error);
+      console.error('Failed to load messages:', error);
     }
   };
 
@@ -304,36 +407,86 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       setConversations([...conversations, { id: conv.id, title: conv.title }]);
       setCurrentConvId(conv.id);
       setMessages([]);
+      setShowConvList(false);
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
   };
 
-  // 发送消息
+  // 删除会话
+  const deleteConversation = async (convId: string) => {
+    if (convId === currentConvId) {
+      addToast('warning', '不能删除当前活跃的会话');
+      return;
+    }
+    if (!confirm('确定要删除这个会话吗？')) return;
+    try {
+      await api.deleteConversation(appId, convId);
+      const updated = conversations.filter((c) => c.id !== convId);
+      setConversations(updated);
+      setShowConvList(false);
+      addToast('success', '会话已删除');
+    } catch (error) {
+      addToast('error', '删除会话失败');
+    }
+  };
+
+  // 开始重命名
+  const startRename = (convId: string, title: string) => {
+    setRenamingId(convId);
+    setRenameTitle(title);
+  };
+
+  // 提交重命名
+  const submitRename = async () => {
+    if (!renamingId || !renameTitle.trim()) {
+      setRenamingId(null);
+      return;
+    }
+    try {
+      await api.updateConversationTitle(appId, renamingId, renameTitle.trim());
+      setConversations(conversations.map((c) =>
+        c.id === renamingId ? { ...c, title: renameTitle.trim() } : c
+      ));
+      setRenamingId(null);
+      addToast('success', '会话已重命名');
+    } catch (error) {
+      addToast('error', '重命名失败');
+    }
+  };
+
+  // 切换到指定会话
+  const switchConversation = (convId: string) => {
+    // WebSocket 自动切换订阅（useAgentEventStream 依赖 currentConvId）
+    setCurrentConvId(convId);
+    setShowConvList(false);
+  };
+
+  // 发送消息 — WebSocket 事件驱动模式
   const sendMessage = async () => {
     if (!input.trim() || !currentConvId || isLoading) return;
 
     const messageContent = input;
-    console.log('[ChatApp] sendMessage called, content:', messageContent, 'convId:', currentConvId);
     setInput('');
     setIsLoading(true);
+    setStreamingText('');
+    setToolCalls([]);
+    setThinkingText('');
 
     try {
-      console.log('[ChatApp] calling api.sendMessage...');
-      const { message } = await api.sendMessage(appId, currentConvId, [
+      // POST /messages — 保存 user 消息，后台异步 agent 处理
+      const { userMessage } = await api.sendMessage(appId, currentConvId, [
         { type: 'text', text: messageContent },
       ]);
-      console.log('[ChatApp] api.sendMessage returned, message:', message.id);
-      // 重新加载消息列表以确保同步
-      await loadMessages(currentConvId);
-      logger.info('ChatApp', `Message sent successfully to ${appId}`);
+
+      // 立即把 userMessage 加入消息列表
+      setMessages(prev => [...prev, userMessage]);
+      setThinkingText('思考中...');
+
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '发送消息失败';
-      logger.error('ChatApp', `Failed to send message: ${errorMsg}`, { appId, conversationId: currentConvId });
-      // 恢复输入框内容以便重试
       setInput(messageContent);
       addToast('error', `发送失败: ${errorMsg}`);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -354,64 +507,159 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       .join('');
   };
 
+  const currentConvTitle = conversations.find((c) => c.id === currentConvId)?.title || '会话';
+
   return (
     <div className="app-chat">
-      <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border-primary)' }}>
-        <button
-          onClick={createNewConversation}
-          style={{
-            padding: '4px 12px',
-            background: 'var(--bg-primary)',
-            border: 'none',
-            borderRadius: 4,
-            color: 'var(--text-primary)',
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
-        >
-          新建会话
+      {/* 顶部标题栏 */}
+      <div className="chat-header">
+        <button className="chat-header-btn" onClick={() => setShowConvList(!showConvList)} title="会话列表">
+          ☰
         </button>
-        <select
-          value={currentConvId || ''}
-          onChange={(e) => setCurrentConvId(e.target.value || null)}
-          style={{
-            flex: 1,
-            padding: '4px 8px',
-            background: 'var(--bg-primary)',
-            border: 'none',
-            borderRadius: 4,
-            color: 'var(--text-primary)',
-            fontSize: 12,
-          }}
-        >
-          {conversations.map((conv) => (
-            <option key={conv.id} value={conv.id}>
-              {conv.title}
-            </option>
-          ))}
-        </select>
+        <span className="chat-header-title">{currentConvTitle}</span>
+        <button className="chat-header-btn chat-header-btn-primary" onClick={createNewConversation} title="新建会话">
+          +
+        </button>
       </div>
+
+      {/* 会话列表下拉面板 */}
+      {showConvList && (
+        <div className="chat-conv-list">
+          {conversations.map((conv) => (
+            <div
+              key={conv.id}
+              className={`chat-conv-item ${conv.id === currentConvId ? 'active' : ''}`}
+              onClick={() => switchConversation(conv.id)}
+            >
+              {renamingId === conv.id ? (
+                <input
+                  className="chat-conv-rename-input"
+                  value={renameTitle}
+                  onChange={(e) => setRenameTitle(e.target.value)}
+                  onBlur={submitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitRename();
+                    if (e.key === 'Escape') setRenamingId(null);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  autoFocus
+                />
+              ) : (
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <div className="chat-conv-title">{conv.title}</div>
+                  {conv.preview && (
+                    <div className="chat-conv-preview">{conv.preview}</div>
+                  )}
+                </div>
+              )}
+              <div className="chat-conv-actions">
+                {conv.id !== currentConvId && (
+                  <button
+                    className="chat-conv-action-btn"
+                    onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id); }}
+                    title="删除会话"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      <line x1="10" y1="11" x2="10" y2="17"/>
+                      <line x1="14" y1="11" x2="14" y2="17"/>
+                    </svg>
+                  </button>
+                )}
+                <button
+                  className="chat-conv-action-btn"
+                  onClick={(e) => { e.stopPropagation(); startRename(conv.id, conv.title); }}
+                  title="重命名"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          ))}
+          {conversations.length === 0 && (
+            <div className="chat-conv-empty">暂无会话，点击 + 新建</div>
+          )}
+        </div>
+      )}
+
+      {/* 消息列表 */}
       <div className="chat-messages">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`chat-message ${msg.role} ${(msg as Message & { _failed?: boolean })._failed ? 'failed' : ''}`}
+            className={`chat-message ${msg.role}`}
           >
             <div className="chat-message-content">
               {getMessageText(msg)}
-              {(msg as Message & { _failed?: boolean })._failed && (
-                <span className="chat-message-error"> ⚠️ 发送失败</span>
-              )}
             </div>
           </div>
         ))}
+
+        {/* 流式加载中 — 显示 thinking / tool_call / tool_result / 流式文本 */}
         {isLoading && (
-          <div className="chat-message assistant">
-            <div className="chat-message-content">思考中...</div>
-          </div>
+          <>
+            {/* thinking 指示器 */}
+            {thinkingText && (
+              <div className="chat-message assistant">
+                <div className="chat-message-thinking">
+                  <span className="thinking-icon">���</span>
+                  {thinkingText}
+                </div>
+              </div>
+            )}
+
+            {/* tool calls 区块 */}
+            {toolCalls.length > 0 && (
+              <div className="chat-message assistant">
+                <div className="chat-message-toolcalls">
+                  {toolCalls.map((tc) => (
+                    <div key={tc.toolCallId} className={`tool-call-item ${tc.isError ? 'tool-error' : ''}`}>
+                      <div className="tool-call-header">
+                        <span className="tool-call-icon">{tc.isError ? '✗' : tc.result ? '✓' : '◌'}</span>
+                        <span className="tool-call-name">{tc.toolName}</span>
+                      </div>
+                      {!!tc.args && (
+                        <pre className="tool-call-args">{String(JSON.stringify(tc.args, null, 2) || '')}</pre>
+                      )}
+                      {!!tc.result && (
+                        <pre className="tool-call-result">
+                          {String(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2))}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 流式文本（正在生成的 AI 回复） */}
+            {streamingText && (
+              <div className="chat-message assistant">
+                <div className="chat-message-content streaming">
+                  {streamingText}
+                  <span className="streaming-cursor">|</span>
+                </div>
+              </div>
+            )}
+
+            {/* 没有任何流式信息时的占位 */}
+            {!streamingText && !thinkingText && toolCalls.length === 0 && (
+              <div className="chat-message assistant">
+                <div className="chat-message-content">
+                  <span className="thinking-dots">思考中<span>.</span><span>.</span><span>.</span></span>
+                </div>
+              </div>
+            )}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* 输入区 */}
       <div className="chat-input-area">
         <input
           type="text"
@@ -442,7 +690,7 @@ type SettingsTab = 'desktop' | 'model' | 'app' | 'mcp' | 'skill';
  * 支持桌面、模型、应用、MCP、技能等配置
  */
 export function SettingsApp(_props: SettingsAppProps) {
-  const { state, updateSettings } = useDesktop();
+  const { state, updateSettings, openSystemApp } = useDesktop();
   // 当前激活的标签页
   const [activeTab, setActiveTab] = useState<SettingsTab>('desktop');
   // 本地设置的副本（用于表单编辑）
@@ -485,6 +733,8 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [editSelectedModels, setEditSelectedModels] = useState<Set<string>>(new Set());
   const [editFetching, setEditFetching] = useState(false);
   const [editShowManualAddModel, setEditShowManualAddModel] = useState(false);
+  const [editHeaderParams, setEditHeaderParams] = useState<import('../types').ModelParam[]>([]);
+  const [editBodyParams, setEditBodyParams] = useState<import('../types').ModelParam[]>([]);
   const [editManualModel, setEditManualModel] = useState<{ id: string; name: string; maxTokens: number; supportsText: boolean; supportsImage: boolean }>({ id: '', name: '', maxTokens: 128000, supportsText: true, supportsImage: false });
 
   // 当全局设置变化时更新本地副本
@@ -631,6 +881,8 @@ export function SettingsApp(_props: SettingsAppProps) {
     });
     setEditFetchedModels(provider.models);
     setEditSelectedModels(new Set(provider.models.map(m => m.id)));
+    setEditHeaderParams(provider.models[0]?.headerParams || []);
+    setEditBodyParams(provider.models[0]?.bodyParams || []);
   };
 
   const handleCancelEditProvider = () => {
@@ -701,7 +953,11 @@ export function SettingsApp(_props: SettingsAppProps) {
       apiKey: editForm.apiKey,
       baseUrl: editForm.baseUrl,
       enabled: editForm.enabled,
-      models: editFetchedModels.filter(m => editSelectedModels.has(m.id))
+      models: editFetchedModels.filter(m => editSelectedModels.has(m.id)).map(m => ({
+        ...m,
+        headerParams: editHeaderParams,
+        bodyParams: editBodyParams,
+      }))
     };
 
     try {
@@ -760,46 +1016,6 @@ export function SettingsApp(_props: SettingsAppProps) {
       setAppConfigs(configs);
     } catch (error) {
       console.error('Failed to load apps:', error);
-    }
-  };
-
-  const handleAppModelUpdate = async (appId: string, providerId: string, modelId: string) => {
-    const app = appConfigs[appId];
-    if (!app) return;
-
-    const provider = modes.providers.find(p => p.id === providerId);
-    if (!provider) return;
-
-    // If modelId is provided, get model details
-    let maxTokens = 128000;
-    let supports: ContentType[] = ['text'];
-    let params: { temperature?: number; top_p?: number } = { temperature: 0.7, top_p: 0.9 };
-
-    if (modelId) {
-      const model = provider.models.find(m => m.id === modelId);
-      if (model) {
-        maxTokens = model.maxTokens;
-        supports = model.supports;
-        params = model.params || { temperature: 0.7, top_p: 0.9 };
-      }
-    }
-
-    const newModelConfig = {
-      provider: providerId,
-      model: modelId,
-      priority: 1,
-      maxTokens,
-      supports,
-      params
-    };
-
-    try {
-      const updated = await api.updateApp(appId, {
-        models: [newModelConfig]
-      });
-      setAppConfigs({ ...appConfigs, [appId]: updated });
-    } catch (error) {
-      console.error('Failed to update app model:', error);
     }
   };
 
@@ -1632,6 +1848,70 @@ export function SettingsApp(_props: SettingsAppProps) {
                         </div>
                       )}
                     </div>
+
+                    {/* Extra Parameters Section */}
+                    <div style={{ marginTop: 12, borderTop: '1px dashed var(--border-primary)', paddingTop: 12 }}>
+                      <h4 style={{ margin: '0 0 8px 0', fontSize: 13, color: 'var(--text-primary)' }}>附加参数</h4>
+                      <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                        可选的 HTTP Header 和请求体参数，通过勾选控制是否启用。
+                      </p>
+
+                      {/* Header Params */}
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Header 参数</label>
+                        {editHeaderParams.map((param, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                            <input type="checkbox" checked={param.enabled} onChange={() => {
+                              const next = [...editHeaderParams];
+                              next[i] = { ...next[i], enabled: !next[i].enabled };
+                              setEditHeaderParams(next);
+                            }} />
+                            <input type="text" value={param.key} placeholder="Key" onChange={(e) => {
+                              const next = [...editHeaderParams];
+                              next[i] = { ...next[i], key: e.target.value };
+                              setEditHeaderParams(next);
+                            }} style={{ flex: 1, padding: '4px 8px', background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 12 }} />
+                            <input type="text" value={param.value} placeholder="Value" onChange={(e) => {
+                              const next = [...editHeaderParams];
+                              next[i] = { ...next[i], value: e.target.value };
+                              setEditHeaderParams(next);
+                            }} style={{ flex: 1, padding: '4px 8px', background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 12 }} />
+                            <button onClick={() => setEditHeaderParams(editHeaderParams.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: 'var(--error-color)', cursor: 'pointer', fontSize: 14 }}>×</button>
+                          </div>
+                        ))}
+                        <button onClick={() => setEditHeaderParams([...editHeaderParams, { key: '', value: '', enabled: true }])} style={{ padding: '4px 10px', background: 'var(--bg-secondary)', border: '1px dashed var(--border-secondary)', borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 11 }}>
+                          + 添加 Header 参数
+                        </button>
+                      </div>
+
+                      {/* Body Params */}
+                      <div>
+                        <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Body 参数</label>
+                        {editBodyParams.map((param, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                            <input type="checkbox" checked={param.enabled} onChange={() => {
+                              const next = [...editBodyParams];
+                              next[i] = { ...next[i], enabled: !next[i].enabled };
+                              setEditBodyParams(next);
+                            }} />
+                            <input type="text" value={param.key} placeholder="Key" onChange={(e) => {
+                              const next = [...editBodyParams];
+                              next[i] = { ...next[i], key: e.target.value };
+                              setEditBodyParams(next);
+                            }} style={{ flex: 1, padding: '4px 8px', background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 12 }} />
+                            <input type="text" value={param.value} placeholder="Value" onChange={(e) => {
+                              const next = [...editBodyParams];
+                              next[i] = { ...next[i], value: e.target.value };
+                              setEditBodyParams(next);
+                            }} style={{ flex: 1, padding: '4px 8px', background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 12 }} />
+                            <button onClick={() => setEditBodyParams(editBodyParams.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: 'var(--error-color)', cursor: 'pointer', fontSize: 14 }}>×</button>
+                          </div>
+                        ))}
+                        <button onClick={() => setEditBodyParams([...editBodyParams, { key: '', value: '', enabled: true }])} style={{ padding: '4px 10px', background: 'var(--bg-secondary)', border: '1px dashed var(--border-secondary)', borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 11 }}>
+                          + 添加 Body 参数
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   // View Mode
@@ -1756,95 +2036,41 @@ export function SettingsApp(_props: SettingsAppProps) {
           <div className="settings-section">
             <h3>应用配置</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16 }}>
-              为每个应用选择使用的AI模型。模型需要在"模型"标签页中配置API Key并启用。
+              点击应用名称进入详细设置页面，配置模型、工具、可见性和提示词。
             </p>
-            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-              {installedApps.map((app) => {
-                const appConfig = appConfigs[app.id];
-                const currentModel = appConfig?.models?.[0];
-                const currentProvider = currentModel ? modes.providers.find(p => p.id === currentModel.provider) : null;
-                const enabledProviders = modes.providers.filter(p => p.enabled && p.apiKey && p.models.length > 0);
-
-                return (
-                  <div key={app.id} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <div>
-                        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{app.name}</span>
-                        <span style={{ color: 'var(--text-secondary)', fontSize: 11, marginLeft: 8 }}>
-                          {app.source} • {app.type}
-                        </span>
-                      </div>
+            <div className="app-manager-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {installedApps.map((app) => (
+                <div key={app.id} className="app-manager-item" style={{ cursor: 'pointer' }} onClick={() => {
+                  openSystemApp('app-settings:' + app.id, '应用设置: ' + app.name, app.icon);
+                }}>
+                  <img
+                    src={app.icon}
+                    alt={app.name}
+                    className="app-manager-item-icon"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = DEFAULT_ICON;
+                    }}
+                  />
+                  <div className="app-manager-item-info">
+                    <div className="app-manager-item-name">{app.name}</div>
+                    <div className="app-manager-item-meta">
+                      {app.source === 'system' ? '系统' : app.source === 'user' ? '用户' : '市场'} •{' '}
+                      {app.type === 'desktop' ? '桌面应用' : '后台服务'}
+                      {app.enabled === false && ' • 已禁用'}
                     </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <div>
-                        <label style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>提供商</label>
-                        <select
-                          value={currentModel?.provider || ''}
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              handleAppModelUpdate(app.id, e.target.value, '');
-                            }
-                          }}
-                          style={{
-                            padding: '6px 10px',
-                            background: 'var(--bg-primary)',
-                            border: '1px solid var(--border-primary)',
-                            borderRadius: 4,
-                            color: 'var(--text-primary)',
-                            width: '100%',
-                            boxSizing: 'border-box',
-                          }}
-                        >
-                          <option value="">选择提供商...</option>
-                          {enabledProviders.map((p) => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>模型</label>
-                        <select
-                          value={currentModel?.model || ''}
-                          onChange={(e) => {
-                            if (e.target.value && currentProvider) {
-                              handleAppModelUpdate(app.id, currentProvider.id, e.target.value);
-                            }
-                          }}
-                          disabled={!currentProvider || !currentProvider.models?.length}
-                          style={{
-                            padding: '6px 10px',
-                            background: 'var(--bg-primary)',
-                            border: '1px solid var(--border-primary)',
-                            borderRadius: 4,
-                            color: currentModel?.model ? 'var(--text-primary)' : 'var(--text-secondary)',
-                            width: '100%',
-                            boxSizing: 'border-box',
-                          }}
-                        >
-                          <option value="">{currentProvider ? '选择模型...' : '先选择提供商'}</option>
-                          {currentProvider?.models?.map((m) => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    {!currentModel && enabledProviders.length === 0 && (
-                      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warning-color)' }}>
-                        请先在"模型"标签页配置并启用一个提供商
-                      </div>
-                    )}
-
-                    {currentModel && (
-                      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
-                        当前: {currentProvider?.name} / {currentProvider?.models?.find(m => m.id === currentModel.model)?.name || currentModel.model}
-                      </div>
-                    )}
                   </div>
-                );
-              })}
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    {appConfigs[app.id]?.models?.[0]
+                      ? `${modes.providers.find(p => p.id === appConfigs[app.id].models![0].provider)?.name || appConfigs[app.id].models![0].provider} / ${appConfigs[app.id].models![0].model}`
+                      : '未配置模型'}
+                  </span>
+                </div>
+              ))}
+              {installedApps.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
+                  暂无应用
+                </div>
+              )}
             </div>
           </div>
         );

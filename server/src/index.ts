@@ -10,7 +10,10 @@ import conversationsRouter from './routes/conversations.js';
 import settingsRouter from './routes/settings.js';
 import mcpRouter from './routes/mcp.js';
 import { mcpClientRegistry } from './mcp/clientRegistry.js';
-import { ensureDir, APPS_DIR, CONFIGS_DIR } from './utils/file.js';
+import hermesRouter from './routes/hermes.js';
+import logsRouter from './routes/logs.js';
+import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR } from './utils/file.js';
+import { setupWebSocket } from './services/wsServer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -28,6 +31,7 @@ async function init() {
   await ensureDir(join(APPS_DIR, 'system'));
   await ensureDir(join(APPS_DIR, 'user'));
   await ensureDir(join(APPS_DIR, 'marketplace'));
+  await ensureDir(APPS_DATA_DIR);
   await ensureDir(CONFIGS_DIR);
   await ensureDir(join(CONFIGS_DIR, '..', 'public_data', 'skills'));
 
@@ -45,6 +49,8 @@ app.use('/api/apps', appsRouter);
 app.use('/api/apps/:appId/conversations', conversationsRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/mcp', mcpRouter);
+app.use('/api/hermes', hermesRouter);
+app.use('/api/logs', logsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -67,8 +73,9 @@ app.get('*', (req, res) => {
 
 // Start server
 init().then(() => {
-  app.listen(PORT, () => {
+  const httpServer = app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    setupWebSocket(httpServer);
   });
 }).catch((error) => {
   console.error('Failed to initialize:', error);

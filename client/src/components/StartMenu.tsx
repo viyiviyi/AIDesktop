@@ -3,7 +3,6 @@ import { useDesktop } from '../contexts/DesktopContext';
 import type { AppInfo, Message } from '../types';
 import * as api from '../services/api';
 
-// 默认图标（蓝色方块带字母A）
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#0078d4"/>
@@ -11,59 +10,98 @@ const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   </svg>
 `);
 
+const APP_ID = 'desktop-assistant';
+
 /**
  * 开始菜单组件
- * 显示桌面应用列表、搜索功能、内置对话助手
+ * - 每次打开时加载最新会话
+ * - 发送消息后更新会话列表
+ * - 点击应用图标启动应用
  */
 export function StartMenu() {
   const { state, openApp, openSystemApp, closeStartMenu, refreshApps } = useDesktop();
-  // 搜索关键词
   const [searchQuery, setSearchQuery] = useState('');
-  // 对话消息列表
   const [messages, setMessages] = useState<Message[]>([]);
-  // 输入框内容
   const [input, setInput] = useState('');
-  // 加载状态
   const [isLoading, setIsLoading] = useState(false);
-  // 当前会话ID
   const [conversationId, setConversationId] = useState<string | null>(null);
-  // 消息列表底部引用（用于自动滚动）
+  const [conversations, setConversations] = useState<{ id: string; title: string }[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 筛选桌面应用
   const desktopApps = state.installedApps.filter((app) => app.type === 'desktop');
 
-  // 打开菜单时初始化会话
+  // 每次打开菜单时加载会话数据
   useEffect(() => {
-    if (state.startMenuOpen && !conversationId) {
-      initConversation();
+    if (state.startMenuOpen) {
+      loadConversations();
     }
   }, [state.startMenuOpen]);
 
-  // 新消息时自动滚动
+  // 消息变更时自动滚动
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 初始化对话
-  const initConversation = async () => {
+  // 加载会话列表并打开最新会话
+  const loadConversations = async () => {
     try {
-      const conv = await api.createConversation('desktop-assistant', '开始菜单对话');
-      setConversationId(conv.id);
-      setMessages([
-        {
-          id: '1',
-          role: 'assistant',
-          content: [{ type: 'text', text: '你好！我是桌面助手。有什么可以帮助你的吗？' }],
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      const convs = await api.getConversations(APP_ID);
+      setConversations(convs);
+      if (convs.length > 0) {
+        // 加载最新会话
+        const latest = convs[convs.length - 1];
+        setConversationId(latest.id);
+        await loadMessages(latest.id);
+      } else {
+        // 无会话时创建新会话并显示欢迎语
+        const conv = await api.createConversation(APP_ID, '开始菜单对话');
+        setConversationId(conv.id);
+        setConversations([{ id: conv.id, title: conv.title }]);
+        setMessages([
+          {
+            id: 'welcome',
+            role: 'assistant',
+            content: [{ type: 'text', text: '你好！我是桌面助手。有什么可以帮助你的吗？' }],
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
     } catch (error) {
-      console.error('Failed to init conversation:', error);
+      console.error('Failed to load conversations:', error);
     }
   };
 
-  // 发送消息
+  // 加载指定会话的消息
+  const loadMessages = async (convId: string) => {
+    try {
+      const conv = await api.getConversation(APP_ID, convId);
+      setMessages(conv.messages);
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+    }
+  };
+
+  // 切换会话
+  const switchConversation = async (convId: string) => {
+    setConversationId(convId);
+    setIsLoading(true);
+    await loadMessages(convId);
+    setIsLoading(false);
+  };
+
+  // 创建新会话
+  const createNewConversation = async () => {
+    try {
+      const conv = await api.createConversation(APP_ID, `会话 ${conversations.length + 1}`);
+      setConversations([...conversations, { id: conv.id, title: conv.title }]);
+      setConversationId(conv.id);
+      setMessages([]);
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+    }
+  };
+
+  // 发送消息（非流式）
   const handleSend = async () => {
     if (!input.trim() || !conversationId || isLoading) return;
 
@@ -80,10 +118,11 @@ export function StartMenu() {
     setIsLoading(true);
 
     try {
-      const { message } = await api.sendMessage('desktop-assistant', conversationId, [
+      await api.sendMessage(APP_ID, conversationId, [
         { type: 'text', text: messageText },
       ]);
-      setMessages((prev) => [...prev.filter((m) => m.id !== userMessage.id), message]);
+      // 重新加载消息列表以确保同步
+      await loadMessages(conversationId);
     } catch (error) {
       console.error('Failed to send message:', error);
       setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
@@ -92,7 +131,6 @@ export function StartMenu() {
     }
   };
 
-  // 键盘事件处理
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -100,18 +138,15 @@ export function StartMenu() {
     }
   };
 
-  // 点击应用图标
   const handleAppClick = (app: AppInfo) => {
     openApp(app);
     closeStartMenu();
   };
 
-  // 点击遮罩层关闭菜单
   const handleOverlayClick = () => {
     closeStartMenu();
   };
 
-  // 提取消息文本
   const getMessageText = (msg: Message): string => {
     return msg.content
       .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
@@ -119,7 +154,6 @@ export function StartMenu() {
       .join('');
   };
 
-  // 根据搜索过滤应用
   const displayedApps = searchQuery
     ? desktopApps.filter((app) =>
         app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -160,6 +194,43 @@ export function StartMenu() {
               autoFocus
             />
           </div>
+          {/* 会话切换栏 */}
+          <div className="start-menu-conv-bar">
+            <select
+              value={conversationId || ''}
+              onChange={(e) => switchConversation(e.target.value)}
+              style={{
+                flex: 1,
+                padding: '2px 6px',
+                background: 'var(--bg-primary)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: 4,
+                color: 'var(--text-primary)',
+                fontSize: 11,
+              }}
+            >
+              {conversations.map((conv) => (
+                <option key={conv.id} value={conv.id}>
+                  {conv.title}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={createNewConversation}
+              style={{
+                padding: '2px 8px',
+                background: 'var(--bg-primary)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: 4,
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: 11,
+              }}
+              title="新会话"
+            >
+              +
+            </button>
+          </div>
           <div className="start-menu-conversation">
             {messages.map((msg) => (
               <div key={msg.id} className={`chat-message ${msg.role}`}>
@@ -189,17 +260,13 @@ export function StartMenu() {
             </button>
           </div>
           <div className="start-menu-footer">
-            <button title="刷新应用" onClick={async () => {
-              await refreshApps();
-            }}>
+            <button title="刷新应用" onClick={async () => { await refreshApps(); }}>
               🔄
             </button>
-            <button title="搜索">
-              🔍
-            </button>
+            <button title="搜索">🔍</button>
             <button title="文件" onClick={() => {
-              const fileManager = state.installedApps.find((a) => a.id === 'file-manager');
-              if (fileManager) handleAppClick(fileManager);
+              const fm = state.installedApps.find((a) => a.id === 'file-manager');
+              if (fm) handleAppClick(fm);
             }}>
               📁
             </button>
@@ -221,7 +288,7 @@ export function StartMenu() {
             }}>
               🗑️
             </button>
-            <button title="日志 (Ctrl+L)" onClick={() => {
+            <button title="日志" onClick={() => {
               openSystemApp('logs', '日志');
               closeStartMenu();
             }}>

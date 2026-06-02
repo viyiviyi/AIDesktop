@@ -1,6 +1,77 @@
 import type { App, AppInfo, AppSource, AppType, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel, ModelConfig, ContentType } from '../types';
 import { logger } from './logger';
 
+// ============ SSE 事件类型 ============
+export interface SSEStreamEvent {
+  /** 消息开始（AI 开始回复） */
+  type: 'message_start';
+  role: 'user' | 'assistant';
+  content: Content[];
+  id: string;
+}
+
+export interface SSEThinkingEvent {
+  type: 'thinking';
+  text: string;
+}
+
+export interface SSEToolCallEvent {
+  type: 'tool_call';
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+}
+
+export interface SSEToolResultEvent {
+  type: 'tool_result';
+  toolCallId: string;
+  toolName: string;
+  result: unknown;
+  isError: boolean;
+}
+
+export interface SSETextChunkEvent {
+  type: 'text_chunk';
+  text: string;
+}
+
+export interface SSEMessageUpdateEvent {
+  type: 'message_update';
+  content: Content[];
+}
+
+export interface SSEMessageEndEvent {
+  type: 'message_end';
+  id: string;
+  content: Content[];
+}
+
+export interface SSEDoneEvent {
+  type: 'done';
+}
+
+export interface SSEErrorEvent {
+  type: 'error';
+  message: string;
+}
+
+/** 发消息接口返回（新流式协议） */
+export interface SendMessageResult {
+  userMessage: Message;
+  streamUrl: string;
+}
+
+export type SSEEvent =
+  | SSEStreamEvent
+  | SSEThinkingEvent
+  | SSEToolCallEvent
+  | SSEToolResultEvent
+  | SSETextChunkEvent
+  | SSEMessageUpdateEvent
+  | SSEMessageEndEvent
+  | SSEDoneEvent
+  | SSEErrorEvent;
+
 // API基础URL
 const API_BASE = '/api';
 
@@ -12,7 +83,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const startTime = Date.now();
   const method = options?.method || 'GET';
 
-  logger.info(`API ${method}`, `→ ${url}`);
+  logger.info('api', `API ${method}`, `→ ${url}`);
 
   try {
     const response = await fetch(`${API_BASE}${url}`, {
@@ -34,7 +105,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
         errorBody = response.statusText;
       }
 
-      logger.error(`API ${method}`, `✗ ${url} - ${response.status} ${response.statusText}`, {
+      logger.error('api', `API ${method}`, `✗ ${url} - ${response.status} ${response.statusText}`, {
         status: response.status,
         duration,
         error: errorBody,
@@ -44,14 +115,14 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     }
 
     const data = await response.json();
-    logger.info(`API ${method}`, `✓ ${url}`, { status: response.status, duration });
+    logger.info('api', `API ${method}`, `✓ ${url}`, { status: response.status, duration });
     return data;
   } catch (error) {
     const duration = Date.now() - startTime;
     if ((error as Error).message.startsWith('API error:')) {
       throw error;
     }
-    logger.error(`API ${method}`, `✗ ${url} - ${(error as Error).message}`, {
+    logger.error('api', `API ${method}`, `✗ ${url} - ${(error as Error).message}`, {
       duration,
       error: (error as Error).message,
     });
@@ -177,13 +248,21 @@ export async function deleteConversation(appId: string, convId: string): Promise
   await fetchJson(`/apps/${appId}/conversations/${convId}`, { method: 'DELETE' });
 }
 
-// 发送消息（非流式）
+// 更新会话标题
+export async function updateConversationTitle(appId: string, convId: string, title: string): Promise<void> {
+  await fetchJson(`/apps/${appId}/conversations/${convId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ title }),
+  });
+}
+
+// 发送消息（事件驱动 — 只保存 user 消息并返回，agent 通过 WebSocket 推送事件）
 export async function sendMessage(
   appId: string,
   convId: string,
   content: Content[]
-): Promise<{ message: Message }> {
-  return fetchJson<{ message: Message }>(`/apps/${appId}/conversations/${convId}/messages`, {
+): Promise<{ userMessage: Message }> {
+  return fetchJson<{ userMessage: Message }>(`/apps/${appId}/conversations/${convId}/messages`, {
     method: 'POST',
     body: JSON.stringify({ content }),
   });
@@ -198,7 +277,7 @@ export async function* streamMessage(
   appId: string,
   convId: string,
   content: string
-): AsyncGenerator<Message | { success: boolean }, void, unknown> {
+): AsyncGenerator<string, void, unknown> {
   const response = await fetch(
     `${API_BASE}/apps/${appId}/conversations/${convId}/stream?content=${encodeURIComponent(content)}`
   );
@@ -231,10 +310,12 @@ export async function* streamMessage(
         const data = trimmed.slice(6);
         const parsed = JSON.parse(data);
 
-        if (parsed.event === 'message') {
-          yield parsed.data as Message;
-        } else if (parsed.event === 'done') {
+        if (parsed.type === 'text') {
+          yield parsed.text as string;
+        } else if (parsed.type === 'done') {
           return;
+        } else if (parsed.type === 'error') {
+          throw new Error(parsed.text);
         }
       }
     }
@@ -433,6 +514,27 @@ export async function updateSkillSettings(skills: { skills: Skill[]; globalEnabl
 }
 
 // ============ 其他API ============
+
+// 获取 MCP 服务列表
+export async function getMcpServices(): Promise<{ services: Array<{ name: string; description: string; methods: string[] }> }> {
+  return fetchJson('/mcp/services');
+}
+
+// 获取后端日志
+export async function getLogs(params?: { level?: string; category?: string; search?: string; limit?: number }): Promise<{ logs: Array<{id: string; timestamp: string; level: string; category: string; message: string; data?: unknown}>; total: number }> {
+  const query = new URLSearchParams();
+  if (params?.level) query.set('level', params.level);
+  if (params?.category) query.set('category', params.category);
+  if (params?.search) query.set('search', params.search);
+  if (params?.limit) query.set('limit', String(params.limit));
+  const qs = query.toString();
+  return fetchJson(`/logs${qs ? '?' + qs : ''}`);
+}
+
+// 清空后端日志
+export async function clearLogs(): Promise<void> {
+  await fetchJson('/logs/clear', { method: 'POST' });
+}
 
 // 健康检查
 export async function healthCheck(): Promise<{ status: string; timestamp: string }> {
