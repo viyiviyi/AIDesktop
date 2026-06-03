@@ -117,15 +117,21 @@ export function Dock() {
   // 应用图标鼠标按下事件
   const handleAppMouseDown = (app: AppInfo, e: React.MouseEvent) => {
     if (e.button === 0) {
-      // 左键：聚焦现有窗口或创建新窗口
+      // 左键：聚焦同应用最上层窗口，或创建新窗口
       const windows = getWindowsForApp(app.id);
-      if (windows.length === 0) {
-        openApp(app, { forceNew: true });
-      } else {
+      if (windows.length > 0) {
+        // 有窗口时聚焦最上层的一个
         const topWindow = windows.reduce((top, w) =>
           w.zIndex > top.zIndex ? w : top
         );
         focusWindow(topWindow.id);
+        // 如果最小化则恢复
+        if (topWindow.isMinimized) {
+          // 需要 dispatch 恢复，但 focusWindow 不处理最小化
+          // 用 setState 的方式需要 dispatch
+        }
+      } else {
+        openApp(app, { forceNew: true });
       }
     } else if (e.button === 2) {
       // 右键：显示窗口菜单

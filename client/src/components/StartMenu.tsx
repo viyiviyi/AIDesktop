@@ -139,7 +139,7 @@ export function StartMenu() {
   };
 
   const handleAppClick = (app: AppInfo) => {
-    openApp(app);
+    openApp(app, { forceNew: true });
     closeStartMenu();
   };
 

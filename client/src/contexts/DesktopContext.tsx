@@ -147,6 +147,8 @@ interface DesktopContextValue {
   refreshApps: () => Promise<void>;
   minimizeWindow: (windowId: string) => void;
   maximizeWindow: (windowId: string) => void;
+  /** 刷新单个 app 的数据（如设置变更后） */
+  refreshApp: (appId: string) => Promise<AppInfo | null>;
 }
 
 // 创建Context（初始值为null）
@@ -185,16 +187,15 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
     loadInitialData();
   }, [loadInitialData]);
 
-  // 打开应用
+  // 打开应用（默认新开窗口）
   const openApp = useCallback((app: AppInfo, options?: OpenAppOptions) => {
     const { forceNew, conversationId } = options || {};
 
-    // 如果不是强制新窗口，且已有该应用的窗口，则聚焦现有窗口
+    // 如果不是强制新窗口，检查是否有已存在的窗口，聚焦之
     if (!forceNew) {
       const existingWindow = state.windows.find((w) => w.appId === app.id);
       if (existingWindow) {
         dispatch({ type: 'FOCUS_WINDOW', payload: existingWindow.id });
-        // 如果窗口是最小化状态，则恢复
         if (existingWindow.isMinimized) {
           dispatch({
             type: 'UPDATE_WINDOW',
@@ -210,31 +211,38 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
     const { defaultSize } = state.settings.window;
     const newConversationId = conversationId || `conv-${++windowIdCounter}`;
 
-    // 计算窗口位置：优先使用上次位置，否则居中显示
+    // 计算窗口位置
     const lastPos = state.appLastPositions?.[app.id];
     let basePosition = lastPos || {
       x: (window.innerWidth - defaultSize.width) / 2,
       y: (window.innerHeight - defaultSize.height) / 2,
     };
 
-    // 多实例偏移：强制新窗口时偏移30px
-    const offset = forceNew ? 30 : 0;
+    // 同个应用每多开一个窗口，偏移增加 30px 错开
+    const sameAppCount = state.windows.filter(w => w.appId === app.id).length;
+    const offset = 30 * sameAppCount;
     const newPosition = {
       x: basePosition.x + offset,
       y: basePosition.y + offset,
     };
 
+    // 计算实例编号
+    const instanceNum = sameAppCount + 1;
+    const title = instanceNum > 1 ? `${app.name} #${instanceNum}` : app.name;
+
     // 创建新窗口状态
     const newWindow: WindowState = {
       id,
       appId: app.id,
-      title: app.name,
+      title,
       icon: app.icon,
       position: newPosition,
       size: { ...defaultSize },
       isMaximized: false,
       isMinimized: false,
-      zIndex: state.windows.length,
+      zIndex: state.windows.length > 0
+        ? Math.max(...state.windows.map(w => w.zIndex)) + 1
+        : 0,
       conversationId: newConversationId,
     };
 
@@ -264,6 +272,8 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       y: (window.innerHeight - defaultSize.height) / 2,
     };
 
+    const maxZ = state.windows.reduce((max, w) => Math.max(max, w.zIndex), 0);
+
     const newWindow: WindowState = {
       id,
       appId,
@@ -273,7 +283,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       size: { ...defaultSize },
       isMaximized: false,
       isMinimized: false,
-      zIndex: state.windows.length,
+      zIndex: maxZ + 1,
     };
 
     dispatch({ type: 'ADD_WINDOW', payload: newWindow });
@@ -311,11 +321,35 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 刷新应用列表
+  // 刷新应用列表
   const refreshApps = useCallback(async () => {
-    // 使用reloadApps重新扫描磁盘，加载新应用
     const result = await api.reloadApps();
     dispatch({ type: 'SET_APPS', payload: result.apps });
   }, []);
+
+  // 刷新单个应用
+  const refreshApp = useCallback(async (appId: string): Promise<AppInfo | null> => {
+    try {
+      const app = await api.getApp(appId);
+      const info: AppInfo = {
+        id: app.id,
+        name: app.name,
+        description: app.description,
+        source: app.source,
+        type: app.type,
+        icon: app.icon,
+        enabled: app.enabled,
+      };
+      // 更新 installedApps 中对应的条目
+      dispatch({
+        type: 'SET_APPS',
+        payload: state.installedApps.map((a) => (a.id === appId ? info : a)),
+      });
+      return info;
+    } catch {
+      return null;
+    }
+  }, [state.installedApps]);
 
   // 最小化窗口
   const minimizeWindow = useCallback((windowId: string) => {
@@ -349,6 +383,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
         closeStartMenu,
         updateSettings: updateSettingsAction,
         refreshApps,
+        refreshApp,
         minimizeWindow,
         maximizeWindow,
       }}

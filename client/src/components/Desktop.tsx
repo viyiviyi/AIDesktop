@@ -66,9 +66,9 @@ export function Desktop() {
     }
   };
 
-  // 双击图标打开应用
+  // 双击图标打开应用（多开：每次双击新开窗口）
   const handleIconDoubleClick = (app: AppInfo) => {
-    openApp(app);
+    openApp(app, { forceNew: true });
   };
 
   // 单击图标选中
