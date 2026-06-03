@@ -11,7 +11,7 @@ export function AppModelConfig({ app, providers, onUpdate }: AppModelConfigProps
   const currentProvider = currentModel
     ? providers.find((p) => p.id === currentModel.provider)
     : null;
-  const enabledProviders = providers.filter((p) => p.enabled && p.apiKey && p.models.length > 0);
+  const enabledProviders = providers.filter((p) => p.models.length > 0);
 
   function handleProviderChange(providerId: string) {
     const newModels: ModelConfig[] = [
@@ -134,7 +134,7 @@ interface AppModelConfigListProps {
 }
 
 export function AppModelConfigList({ apps, providers, onUpdate }: AppModelConfigListProps) {
-  const enabledProviders = providers.filter((p) => p.enabled && p.apiKey && p.models.length > 0);
+  const enabledProviders = providers.filter((p) => p.models.length > 0);
 
   return (
     <div className="app-model-config-list">

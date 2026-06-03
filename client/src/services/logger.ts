@@ -1,17 +1,40 @@
 // 日志级别类型
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+// 日志分类
+export type LogCategory = 'api' | 'ai' | 'system' | 'mcp' | 'agent' | 'app' | 'console' | 'other';
+
 // 单条日志条目结构
 export interface LogEntry {
-  id: string;           // 唯一标识
-  timestamp: string;    // ISO时间戳
-  level: LogLevel;      // 日志级别
-  source: string;       // 来源模块
-  message: string;      // 日志消息
-  data?: unknown;       // 附加数据（可选）
+  id: string;
+  timestamp: string;
+  level: LogLevel;
+  category: LogCategory;
+  source: string;
+  message: string;
+  data?: unknown;
 }
 
-// 日志级别优先级（数值越小级别越低）
+// 日志分类信息
+export interface LogCategoryInfo {
+  id: LogCategory;
+  label: string;
+  enabled: boolean;
+}
+
+// 默认分类启用状态
+const DEFAULT_CATEGORIES: Record<LogCategory, boolean> = {
+  api: true,
+  ai: true,
+  system: true,
+  mcp: true,
+  agent: true,
+  app: true,
+  console: true,
+  other: true,
+};
+
+// 日志级别优先级
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
@@ -21,103 +44,141 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
 
 /**
  * Logger类 - 前端日志系统
- * 支持日志记录、过滤、订阅、日志条数限制（最多1000条）
- * 自动捕获console输出
  */
 class Logger {
-  // 日志存储数组
   private logs: LogEntry[] = [];
-  // 最大日志条数
-  private maxLogs = 1000;
-  // 最小日志级别（低于此级别的日志被忽略）
-  private minLevel: LogLevel = 'info';
-  // 日志监听器集合
+  private maxLogs = 2000;
+  private minLevel: LogLevel = 'debug';
+  private enabledCategories: Record<LogCategory, boolean> = { ...DEFAULT_CATEGORIES };
   private listeners: Set<(entry: LogEntry) => void> = new Set();
 
   constructor() {
-    // 捕获console方法，将日志路由到Logger
     this.setupConsoleCapture();
+    // 从 localStorage 恢复分类配置
+    try {
+      const saved = localStorage.getItem('hermes_log_categories');
+      if (saved) {
+        this.enabledCategories = { ...this.enabledCategories, ...JSON.parse(saved) };
+      }
+    } catch {}
   }
 
-  // 设置最小日志级别
+  // 获取所有分类及其启用状态
+  getCategories(): LogCategoryInfo[] {
+    return (Object.keys(this.enabledCategories) as LogCategory[]).map(id => ({
+      id,
+      label: this.getCategoryLabel(id),
+      enabled: this.enabledCategories[id],
+    }));
+  }
+
+  // 切换分类启用状态
+  toggleCategory(id: LogCategory): void {
+    this.enabledCategories[id] = !this.enabledCategories[id];
+    try {
+      localStorage.setItem('hermes_log_categories', JSON.stringify(this.enabledCategories));
+    } catch {}
+  }
+
+  // 分类是否启用
+  isCategoryEnabled(category: LogCategory): boolean {
+    return this.enabledCategories[category] !== false;
+  }
+
+  private getCategoryLabel(category: LogCategory): string {
+    const labels: Record<LogCategory, string> = {
+      api: 'API',
+      ai: 'AI 模型',
+      system: '系统',
+      mcp: 'MCP',
+      agent: 'Agent',
+      app: '应用',
+      console: '控制台',
+      other: '其他',
+    };
+    return labels[category] || category;
+  }
+
   setMinLevel(level: LogLevel) {
     this.minLevel = level;
   }
 
-  // 添加日志监听器，返回取消订阅函数
   addListener(listener: (entry: LogEntry) => void) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  // 发送日志（添加并通知监听器）
   private emit(entry: LogEntry) {
     this.logs.push(entry);
-    // 超过最大条数时移除最早的日志
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
-    // 通知所有监听器
     this.listeners.forEach((listener) => listener(entry));
   }
 
-  // 创建日志条目
-  private createEntry(level: LogLevel, source: string, message: string, data?: unknown): LogEntry {
+  private createEntry(level: LogLevel, category: LogCategory, source: string, message: string, data?: unknown): LogEntry {
     return {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       timestamp: new Date().toISOString(),
       level,
+      category,
       source,
       message,
       data,
     };
   }
 
-  // 记录debug级别日志
-  debug(source: string, message: string, data?: unknown) {
-    if (LOG_LEVEL_PRIORITY[this.minLevel] > LOG_LEVEL_PRIORITY.debug) return;
-    const entry = this.createEntry('debug', source, message, data);
+  private shouldLog(level: LogLevel, category: LogCategory): boolean {
+    if (LOG_LEVEL_PRIORITY[this.minLevel] > LOG_LEVEL_PRIORITY[level]) return false;
+    if (!this.isCategoryEnabled(category)) return false;
+    return true;
+  }
+
+  debug(category: LogCategory, source: string, message: string, data?: unknown) {
+    if (!this.shouldLog('debug', category)) return;
+    const entry = this.createEntry('debug', category, source, message, data);
     this.emit(entry);
   }
 
-  // 记录info级别日志
-  info(source: string, message: string, data?: unknown) {
-    if (LOG_LEVEL_PRIORITY[this.minLevel] > LOG_LEVEL_PRIORITY.info) return;
-    const entry = this.createEntry('info', source, message, data);
+  info(category: LogCategory, source: string, message: string, data?: unknown) {
+    if (!this.shouldLog('info', category)) return;
+    const entry = this.createEntry('info', category, source, message, data);
     this.emit(entry);
   }
 
-  // 记录warn级别日志
-  warn(source: string, message: string, data?: unknown) {
-    if (LOG_LEVEL_PRIORITY[this.minLevel] > LOG_LEVEL_PRIORITY.warn) return;
-    const entry = this.createEntry('warn', source, message, data);
+  warn(category: LogCategory, source: string, message: string, data?: unknown) {
+    if (!this.shouldLog('warn', category)) return;
+    const entry = this.createEntry('warn', category, source, message, data);
     this.emit(entry);
   }
 
-  // 记录error级别日志（始终记录，不受minLevel限制）
-  error(source: string, message: string, data?: unknown) {
-    const entry = this.createEntry('error', source, message, data);
+  error(category: LogCategory, source: string, message: string, data?: unknown) {
+    const entry = this.createEntry('error', category, source, message, data);
     this.emit(entry);
   }
 
-  // 获取所有日志
+  /** AI 日志专用快捷方法 */
+  ai(source: string, message: string, data?: unknown) {
+    this.info('ai', source, message, data);
+  }
+
   getLogs(): LogEntry[] {
     return [...this.logs];
   }
 
-  // 获取过滤后的日志
   getFilteredLogs(options: {
     level?: LogLevel;
+    category?: LogCategory;
     source?: string;
     search?: string;
   }): LogEntry[] {
     return this.logs.filter((log) => {
       if (options.level && log.level !== options.level) return false;
+      if (options.category && log.category !== options.category) return false;
       if (options.source && log.source !== options.source) return false;
       if (options.search) {
-        const search = options.search.toLowerCase();
-        if (!log.message.toLowerCase().includes(search) &&
-            !log.source.toLowerCase().includes(search)) {
+        const s = options.search.toLowerCase();
+        if (!log.message.toLowerCase().includes(s) && !log.source.toLowerCase().includes(s)) {
           return false;
         }
       }
@@ -125,55 +186,46 @@ class Logger {
     });
   }
 
-  // 清空所有日志
   clear() {
     this.logs = [];
   }
 
-  // 设置console捕获 - 将console方法重定向到Logger
   private setupConsoleCapture() {
     const originalConsole = { ...console };
 
     console.debug = (message: string, ...args: unknown[]) => {
       originalConsole.debug(message, ...args);
-      this.debug('console', message, args.length > 0 ? args : undefined);
+      this.debug('console', 'console', message, args.length > 0 ? args : undefined);
     };
 
     console.log = (message: string, ...args: unknown[]) => {
       originalConsole.log(message, ...args);
-      this.info('console', message, args.length > 0 ? args : undefined);
+      this.info('console', 'console', message, args.length > 0 ? args : undefined);
     };
 
     console.warn = (message: string, ...args: unknown[]) => {
       originalConsole.warn(message, ...args);
-      this.warn('console', message, args.length > 0 ? args : undefined);
+      this.warn('console', 'console', message, args.length > 0 ? args : undefined);
     };
 
     console.error = (message: string, ...args: unknown[]) => {
       originalConsole.error(message, ...args);
-      this.error('console', message, args.length > 0 ? args : undefined);
+      this.error('console', 'console', message, args.length > 0 ? args : undefined);
     };
   }
 }
 
-// 单例导出
 export const logger = new Logger();
 
-// API日志辅助函数
+// API日志辅助
 export function logApi(method: string, url: string, options?: {
   status?: number;
   duration?: number;
   error?: string;
 }) {
   if (options?.error) {
-    logger.error(`API ${method}`, `${url} - ${options.error}`, {
-      status: options.status,
-      duration: options.duration,
-    });
+    logger.error('api', `API ${method}`, `${url} - ${options.error}`, { status: options.status, duration: options.duration });
   } else {
-    logger.info(`API ${method}`, `${url}`, {
-      status: options?.status,
-      duration: options?.duration,
-    });
+    logger.info('api', `API ${method}`, `${url}`, { status: options?.status, duration: options?.duration });
   }
 }

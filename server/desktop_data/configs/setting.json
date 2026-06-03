@@ -4,7 +4,7 @@
   "dock": {
     "position": "bottom",
     "magnification": true,
-    "autoHide": false
+    "autoHide": true
   },
   "window": {
     "defaultSize": {

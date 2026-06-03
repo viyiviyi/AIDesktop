@@ -1,11 +1,11 @@
 {
   "settings": {
-    "x": 258,
-    "y": 65
+    "x": 1037,
+    "y": 49
   },
   "desktop-assistant": {
-    "x": 290,
-    "y": 86
+    "x": 522,
+    "y": 154
   },
   "trash": {
     "x": 153,
@@ -16,19 +16,43 @@
     "y": 45
   },
   "settings-main": {
-    "x": 314,
-    "y": 33
+    "x": 375,
+    "y": 124
   },
   "app-detail:app-builder": {
     "x": 427,
     "y": 257
   },
   "app-settings:browser": {
-    "x": 224,
-    "y": 240
+    "x": 54,
+    "y": 49
   },
   "logs": {
-    "x": 385,
-    "y": 34
+    "x": 1022,
+    "y": 48
+  },
+  "app-builder": {
+    "x": 330,
+    "y": 118
+  },
+  "app-detail:browser": {
+    "x": 276,
+    "y": 280
+  },
+  "app-settings:app-builder": {
+    "x": 979,
+    "y": 105
+  },
+  "app-settings:desktop-assistant": {
+    "x": 247,
+    "y": 194
+  },
+  "app-settings:file-manager": {
+    "x": 537,
+    "y": 194
+  },
+  "nekogirl-chat": {
+    "x": 649,
+    "y": 241
   }
 }

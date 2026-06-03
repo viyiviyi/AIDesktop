@@ -216,10 +216,7 @@ class MCPServiceRegistry {
           throw new Error(`Conversation ${targetConvId} not found`);
         }
 
-        // Add user message to target conversation
-        await conversationService.addMessage(agentId, targetConvId, 'user', message);
-
-        // Process message with target agent
+        // Process message with target agent (engine adds user message internally)
         const { assistantMessage } = await agentEngine.processMessage(agentId, targetConvId, message);
 
         return {

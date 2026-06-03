@@ -78,15 +78,34 @@ router.put('/:appId', async (req: Request, res: Response) => {
     }
 
     if (app.meta.source === 'system') {
-      return res.status(403).json({ error: 'Cannot modify system apps' });
+      // 系统应用只允许更新工具/可见性/模型等运行时配置
+      const { models, visibleApps, visibleServices, tools } = req.body;
+      const updates: Partial<typeof app.meta> = {};
+      if (models !== undefined) updates.models = models;
+      if (visibleApps !== undefined) updates.visibleApps = visibleApps;
+      if (visibleServices !== undefined) updates.visibleServices = visibleServices;
+      if (tools !== undefined) updates.tools = tools;
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(403).json({ error: 'Cannot modify system app settings' });
+      }
+
+      const updated = await appLoader.updateApp(req.params.appId, updates);
+      return res.json(updated);
     }
 
-    // Handle flat structure from client - models comes at top level, need to merge into meta
-    const { models, ...rest } = req.body;
+    // Handle flat structure from client - extract known meta fields
+    const { models, enabled, backgroundImage, supportedInputs, inputDescription, outputDescription, visibleApps, visibleServices, tools, ...rest } = req.body;
     const updates: Partial<typeof app.meta> = { ...rest };
-    if (models !== undefined) {
-      updates.models = models;
-    }
+    if (models !== undefined) updates.models = models;
+    if (enabled !== undefined) updates.enabled = enabled;
+    if (backgroundImage !== undefined) updates.backgroundImage = backgroundImage;
+    if (supportedInputs !== undefined) updates.supportedInputs = supportedInputs;
+    if (inputDescription !== undefined) updates.inputDescription = inputDescription;
+    if (outputDescription !== undefined) updates.outputDescription = outputDescription;
+    if (visibleApps !== undefined) updates.visibleApps = visibleApps;
+    if (visibleServices !== undefined) updates.visibleServices = visibleServices;
+    if (tools !== undefined) updates.tools = tools;
 
     const updated = await appLoader.updateApp(req.params.appId, updates);
     res.json(updated);

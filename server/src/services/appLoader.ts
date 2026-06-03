@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { App, AppMeta, AppSource } from '../types/index.js';
 import {
   APPS_DIR,
+  APPS_DATA_DIR,
   SYSTEM_APPS_DIR,
   USER_APPS_DIR,
   MARKETPLACE_APPS_DIR,
@@ -152,8 +153,7 @@ class AppLoader {
     // 创建目录结构
     const appDir = path.join(sourceDir, id);
     await ensureDir(appDir);
-    await ensureDir(path.join(appDir, 'data'));
-    await ensureDir(path.join(appDir, 'data', 'conversations'));
+    await ensureDir(path.join(APPS_DATA_DIR, id, 'conversations'));
     await ensureDir(path.join(appDir, 'skills'));
 
     // 写入文件
@@ -176,7 +176,6 @@ class AppLoader {
   async updateApp(id: string, updates: Partial<AppMeta>): Promise<App | null> {
     const app = this.apps.get(id);
     if (!app) return null;
-    if (app.meta.source === 'system') return null; // 系统应用不可修改
 
     const updatedMeta = { ...app.meta, ...updates };
     const sourceDir = app.meta.source === 'user' ? USER_APPS_DIR : MARKETPLACE_APPS_DIR;

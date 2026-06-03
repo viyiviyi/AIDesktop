@@ -178,6 +178,12 @@ class SettingsService {
     return { providers: this.modes!.providers };
   }
 
+  // 获取Hermes Agent配置
+  async getHermesConfig(): Promise<ModelProvider | null> {
+    const modes = await this.getModes();
+    return modes.providers.find(p => p.id === 'hermes') || null;
+  }
+
   // 获取MCP连接配置
   async getMcp(): Promise<{ connections: MCPConnection[] }> {
     if (!this.mcp) {
