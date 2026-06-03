@@ -270,6 +270,21 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   // 跳转高亮消息 id
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const initRef = useRef(false);
+  const currentConvIdRef = useRef(currentConvId);
+  currentConvIdRef.current = currentConvId;
+
+  // 初始化：如果 conversationId 是临时 conv-xxx 格式，立即创建真正的会话
+  useEffect(() => {
+    if (initRef.current) return;
+    if (!conversationId || !conversationId.startsWith('conv-')) return;
+
+    initRef.current = true;
+    api.createConversation(appId, `窗口 ${Date.now()}`).then(conv => {
+      setCurrentConvId(conv.id);
+      loadConversations();
+    }).catch(() => {});
+  }, []);
 
   // WebSocket 事件处理器
   const handleAgentEvent = useCallback((event: WsConvEvent) => {
@@ -335,10 +350,10 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         break;
       }
       case 'done':
-        // 完成后重新加载同步
+        // 完成后重新加载当前会话消息同步
         setIsLoading(false);
-        loadConversations(currentConvId);
-        if (currentConvId) loadMessages(currentConvId);
+        const cId = currentConvIdRef.current;
+        if (cId) loadMessages(cId);
         break;
       case 'error':
         addToast('error', `AI 回复失败: ${event.data.message as string}`);
@@ -350,15 +365,12 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   // 连接 WebSocket 事件流
   useAgentEventStream(appId ?? undefined, currentConvId ?? undefined, handleAgentEvent);
 
-  // 加载会话列表
-  useEffect(() => {
-    loadConversations();
-  }, [appId]);
-
-  // 加载当前会话的消息
+  // 加载当前会话的消息（currentConvId 变化时重新加载）
   useEffect(() => {
     if (currentConvId) {
       loadMessages(currentConvId);
+      // 同时也加载会话列表（保持会话列表同步）
+      loadConversations(currentConvId);
     }
   }, [currentConvId]);
 
