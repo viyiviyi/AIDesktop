@@ -1,9 +1,9 @@
 {
   "id": "browser",
-  "name": "浏览器服务",
-  "description": "浏览器服务，提供网页导航、内容获取、页面交互等功能。此服务设计用于Agent批量查看网页场景，上下文只保留最新页面内容以防止溢出。",
+  "name": "浏览器",
+  "description": "网页浏览器，支持导航、查看页面内容",
   "source": "system",
-  "type": "background",
+  "type": "desktop",
   "icon": null,
   "models": [
     {

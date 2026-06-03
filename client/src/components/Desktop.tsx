@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
-import { Window, ChatApp, SettingsApp } from './Window';
+import { Window, ChatApp, SettingsApp, BrowserApp } from './Window';
 import { AppManagerWindow } from './AppManagerWindow';
 import { SettingsMainWindow } from './SettingsMainWindow';
 import { AppDetailWindow } from './AppDetailWindow';
@@ -103,6 +103,8 @@ export function Desktop() {
         return <LogWindow />;
       case 'desktop-assistant':
       case 'app-builder':
+      case 'browser':
+        return <BrowserApp appId={windowState.appId} />;
       default:
         return <ChatApp appId={windowState.appId} conversationId={windowState.conversationId} />;
     }
