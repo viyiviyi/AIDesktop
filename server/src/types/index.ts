@@ -40,6 +40,8 @@ export interface Message {
   content: Content[];
   timestamp: string;
   toolCalls?: ToolCall[];
+  replyTo?: string;
+  edited?: boolean;
 }
 
 export interface ToolCall {
@@ -73,6 +75,12 @@ export interface ModelConfig {
     temperature?: number;
     top_p?: number;
   };
+  /** When true, use app-level header/body params instead of provider defaults */
+  overrideParams?: boolean;
+  /** App-level extra header params (only used when overrideParams is true) */
+  headerParams?: ModelParam[];
+  /** App-level extra body params (only used when overrideParams is true) */
+  bodyParams?: ModelParam[];
 }
 
 export interface AppMeta {
@@ -190,6 +198,13 @@ export interface DesktopSettings {
 // Model
 export type ApiCompatType = 'openai' | 'anthropic' | 'custom';
 
+// Model parameter entry with enable toggle
+export interface ModelParam {
+  key: string;
+  value: string;
+  enabled: boolean;
+}
+
 export interface ProviderModel {
   id: string;
   name: string;
@@ -199,6 +214,10 @@ export interface ProviderModel {
     temperature?: number;
     top_p?: number;
   };
+  /** Provider-level extra parameters sent as HTTP headers */
+  headerParams?: ModelParam[];
+  /** Provider-level extra parameters sent as request body fields */
+  bodyParams?: ModelParam[];
 }
 
 export interface ModelProvider {

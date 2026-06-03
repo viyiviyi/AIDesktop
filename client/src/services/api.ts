@@ -260,10 +260,24 @@ export async function updateConversationTitle(appId: string, convId: string, tit
 export async function sendMessage(
   appId: string,
   convId: string,
-  content: Content[]
+  content: Content[],
+  replyTo?: string,
 ): Promise<{ userMessage: Message }> {
   return fetchJson<{ userMessage: Message }>(`/apps/${appId}/conversations/${convId}/messages`, {
     method: 'POST',
+    body: JSON.stringify({ content, replyTo }),
+  });
+}
+
+// 编辑消息（产生新分支）
+export async function editMessage(
+  appId: string,
+  convId: string,
+  msgId: string,
+  content: Content[],
+): Promise<{ message: Message }> {
+  return fetchJson<{ message: Message }>(`/apps/${appId}/conversations/${convId}/messages/${msgId}`, {
+    method: 'PUT',
     body: JSON.stringify({ content }),
   });
 }

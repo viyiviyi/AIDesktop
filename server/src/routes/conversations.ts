@@ -75,7 +75,7 @@ router.delete('/:convId', async (req: Request, res: Response) => {
 router.post('/:convId/messages', async (req: Request, res: Response) => {
   try {
     const { appId, convId } = req.params;
-    const { content } = req.body;
+    const { content, replyTo } = req.body;
 
     if (!content || !Array.isArray(content)) {
       return res.status(400).json({ error: 'Content is required and must be an array' });
@@ -87,8 +87,8 @@ router.post('/:convId/messages', async (req: Request, res: Response) => {
     const conversation = await conversationService.getConversation(appId, convId);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
 
-    // 1. 保存 user 消息
-    const savedUserMsg = await conversationService.addMessage(appId, convId, 'user', content);
+    // 1. 保存 user 消息（支持 replyTo）
+    const savedUserMsg = await conversationService.addMessage(appId, convId, 'user', content, undefined, replyTo);
     if (!savedUserMsg) throw new Error('Failed to save user message');
 
     // 2. 立即返回
@@ -191,6 +191,25 @@ router.put('/:convId', async (req: Request, res: Response) => {
     const updated = await conversationService.updateConversationTitle(appId, convId, title);
     if (!updated) return res.status(404).json({ error: 'Conversation not found' });
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// PUT /:convId/messages/:msgId — 编辑消息（产生新分支）
+router.put('/:convId/messages/:msgId', async (req: Request, res: Response) => {
+  try {
+    const { appId, convId, msgId } = req.params;
+    const { content } = req.body;
+
+    if (!content || !Array.isArray(content)) {
+      return res.status(400).json({ error: 'Content is required and must be an array' });
+    }
+
+    const branchMsg = await conversationService.editMessage(appId, convId, msgId, content);
+    if (!branchMsg) return res.status(404).json({ error: 'Message not found' });
+
+    res.json({ message: branchMsg });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }

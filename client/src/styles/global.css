@@ -2588,3 +2588,113 @@ button {
 .thinking-dots span:nth-child(2) { animation-delay:0.2s; }
 .thinking-dots span:nth-child(3) { animation-delay:0.4s; }
 @keyframes dot-blink { 0%,20%{opacity:0} 50%{opacity:1} 100%{opacity:0} }
+
+/* ============ 回复/编辑/分支/跳转样式 ============ */
+
+/* 引用条（回复了 xxx） */
+.reply-reference {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  margin-top: 8px;
+  margin-bottom: -4px;
+  font-size: 12px;
+  color: var(--accent-color);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  border-left: 2px solid var(--accent-color);
+  margin-left: 12px;
+}
+.reply-reference:hover { opacity: 1; }
+.reply-ref-icon { flex-shrink: 0; }
+.reply-ref-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 操作按钮 */
+.chat-message-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.chat-message:hover .chat-message-actions { opacity: 1; }
+.msg-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.msg-action-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+/* 已编辑标记 */
+.edited-badge { font-size: 11px; color: var(--text-secondary); font-style: italic; }
+
+/* 高亮消息 */
+.chat-message.highlight .chat-message-content {
+  animation: msg-highlight 2s ease-out;
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
+@keyframes msg-highlight {
+  0% { box-shadow: 0 0 0 3px var(--accent-color); background: rgba(0,120,212,0.1); }
+  100% { box-shadow: 0 0 0 2px var(--accent-color); }
+}
+
+/* 分支折叠 */
+.branch-header {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0;
+}
+.branch-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 4px 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.branch-toggle:hover { background: rgba(255,255,255,0.12); }
+.branch-label { font-size: 11px; }
+
+/* 回复提示条 */
+.reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgba(0,120,212,0.1);
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  color: var(--accent-color);
+}
+.reply-bar-icon { flex-shrink: 0; font-weight: 500; }
+.reply-bar-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.reply-bar-cancel {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+}

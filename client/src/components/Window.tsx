@@ -262,6 +262,14 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const [streamingText, setStreamingText] = useState<string>('');
   const [toolCalls, setToolCalls] = useState<Array<{ toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean }>>([]);
   const [thinkingText, setThinkingText] = useState<string>('');
+  // 回复 & 编辑 & 分支状态
+  const [replyToId, setReplyToId] = useState<string | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editInput, setEditInput] = useState('');
+  const [collapsedBranches, setCollapsedBranches] = useState<Set<string>>(new Set());
+  // 跳转高亮消息 id
+  const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // WebSocket 事件处理器
   const handleAgentEvent = useCallback((event: WsConvEvent) => {
@@ -463,7 +471,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   };
 
   // 发送消息 — WebSocket 事件驱动模式
-  const sendMessage = async () => {
+  const sendMessage = async (replyTo?: string) => {
     if (!input.trim() || !currentConvId || isLoading) return;
 
     const messageContent = input;
@@ -472,17 +480,15 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     setStreamingText('');
     setToolCalls([]);
     setThinkingText('');
+    setReplyToId(null);
 
     try {
-      // POST /messages — 保存 user 消息，后台异步 agent 处理
       const { userMessage } = await api.sendMessage(appId, currentConvId, [
         { type: 'text', text: messageContent },
-      ]);
+      ], replyTo);
 
-      // 立即把 userMessage 加入消息列表
       setMessages(prev => [...prev, userMessage]);
       setThinkingText('思考中...');
-
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '发送消息失败';
       setInput(messageContent);
@@ -491,11 +497,64 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
+  // 回复
+  const startReply = (msgId: string) => {
+    setReplyToId(msgId);
+    setEditingMsgId(null);
+  };
+  const cancelReply = () => setReplyToId(null);
+
+  // 编辑
+  const startEdit = (msg: Message) => {
+    setEditingMsgId(msg.id);
+    setEditInput(getMessageText(msg));
+    setReplyToId(null);
+  };
+  const submitEdit = async () => {
+    if (!editingMsgId || !currentConvId || !editInput.trim()) return;
+    try {
+      await api.editMessage(appId, currentConvId, editingMsgId, [{ type: 'text', text: editInput }]);
+      setEditingMsgId(null);
+      setEditInput('');
+      if (currentConvId) loadMessages(currentConvId);
+      addToast('success', '消息已编辑，生成了新分支');
+    } catch (error) {
+      addToast('error', '编辑失败');
+    }
+  };
+  const cancelEdit = () => { setEditingMsgId(null); setEditInput(''); };
+
+  // 分支折叠
+  const toggleBranch = (branchRootId: string) => {
+    setCollapsedBranches(prev => {
+      const next = new Set(prev);
+      if (next.has(branchRootId)) next.delete(branchRootId); else next.add(branchRootId);
+      return next;
+    });
+  };
+
+  // 跳转到消息
+  const scrollToMsg = (msgId: string) => {
+    const el = messageRefs.current.get(msgId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightMsgId(msgId);
+      setTimeout(() => setHighlightMsgId(null), 2000);
+    }
+  };
+
+  // 跳转引用
+  const handleReplyClick = (replyTo: string) => scrollToMsg(replyTo);
+
   // 键盘事件处理 - Enter发送消息
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (editingMsgId) {
+        submitEdit();
+      } else {
+        sendMessage(replyToId || undefined);
+      }
     }
   };
 
@@ -588,31 +647,113 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
       {/* 消息列表 */}
       <div className="chat-messages">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`chat-message ${msg.role}`}
-          >
-            <div className="chat-message-content">
-              {getMessageText(msg)}
-            </div>
-          </div>
-        ))}
+        {(() => {
+          // 计算分支信息：根据 replyTo 构建链
+          // 找到被回复的消息（replyTo 指向的消息）之后的所有消息，按 replyTo 链分组
+          // 主分支 = 没有 replyTo 或 replyTo 不在当前消息列表中的消息 + 从第一条回复链开始的最新链
+          // 逻辑：消息按顺序排列，replyTo 链形成分支。如果某个消息的 replyTo 指向列表中的某条消息，
+          // 它属于该消息的回复分支。分支起点是第一条有 replyTo 且指向列表中更早消息的消息。
+          // 折叠逻辑：从某条消息之后的 reply 链可以折叠。
+
+          const msgMap = new Map(messages.map(m => [m.id, m]));
+          // 构建分支：对于每条有 replyTo 的消息，找到它指向的消息
+          // 分支根节点 = 有 replyTo 且指向的消息也在列表中
+          let firstBranchIdx = -1;
+          for (let i = 0; i < messages.length; i++) {
+            if (messages[i].replyTo && msgMap.has(messages[i].replyTo!)) {
+              firstBranchIdx = i;
+              break;
+            }
+          }
+
+          return messages.map((msg, idx) => {
+            const isBranch = firstBranchIdx >= 0 && idx >= firstBranchIdx;
+            const isCollapsed = isBranch && collapsedBranches.has(messages[firstBranchIdx]?.id);
+            const isBranchStart = idx === firstBranchIdx;
+            const refCallback = (el: HTMLDivElement | null) => {
+              if (el) messageRefs.current.set(msg.id, el);
+              else messageRefs.current.delete(msg.id);
+            };
+
+            // 如果属于折叠分支，只显示分支的头部（第一条回复消息）
+            if (isCollapsed && !isBranchStart) return null;
+
+            const replyToMsg = msg.replyTo ? msgMap.get(msg.replyTo) : undefined;
+            const isHighlight = highlightMsgId === msg.id;
+
+            return (
+              <React.Fragment key={msg.id}>
+                {/* 分支折叠/展开按钮 */}
+                {isBranchStart && (
+                  <div className="branch-header">
+                    <button
+                      className="branch-toggle"
+                      onClick={() => toggleBranch(messages[firstBranchIdx].id)}
+                      title={collapsedBranches.has(messages[firstBranchIdx].id) ? '展开历史分支' : '折叠历史分支'}
+                    >
+                      {collapsedBranches.has(messages[firstBranchIdx].id) ? '↕' : '↑'}
+                      <span className="branch-label">历史分支 ({messages.length - firstBranchIdx} 条消息)</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* 引用条（回复了 xxx） */}
+                {replyToMsg && (
+                  <div
+                    className="reply-reference"
+                    onClick={() => handleReplyClick(msg.replyTo!)}
+                    title="点击跳转到被回复的消息"
+                  >
+                    <span className="reply-ref-icon">↩</span>
+                    <span className="reply-ref-text">
+                      回复了 {replyToMsg.role === 'user' ? 'user' : 'assistant'}
+                      : {getMessageText(replyToMsg).slice(0, 50)}
+                    </span>
+                  </div>
+                )}
+
+                {/* 消息主体 */}
+                <div
+                  ref={refCallback}
+                  className={`chat-message ${msg.role} ${isHighlight ? 'highlight' : ''} ${msg.edited ? 'edited' : ''}`}
+                >
+                  <div className="chat-message-content">
+                    {getMessageText(msg)}
+                    {msg.edited && <span className="edited-badge"> (已编辑)</span>}
+                  </div>
+
+                  {/* 操作按钮 */}
+                  <div className="chat-message-actions">
+                    <button
+                      className="msg-action-btn"
+                      onClick={() => startReply(msg.id)}
+                      title="回复此消息"
+                    >↩</button>
+                    {msg.role === 'user' && !msg.edited && (
+                      <button
+                        className="msg-action-btn"
+                        onClick={() => startEdit(msg)}
+                        title="编辑消息"
+                      >✎</button>
+                    )}
+                  </div>
+                </div>
+              </React.Fragment>
+            );
+          });
+        })()}
 
         {/* 流式加载中 — 显示 thinking / tool_call / tool_result / 流式文本 */}
         {isLoading && (
           <>
-            {/* thinking 指示器 */}
             {thinkingText && (
               <div className="chat-message assistant">
                 <div className="chat-message-thinking">
-                  <span className="thinking-icon">���</span>
+                  <span className="thinking-icon">◇</span>
                   {thinkingText}
                 </div>
               </div>
             )}
-
-            {/* tool calls 区块 */}
             {toolCalls.length > 0 && (
               <div className="chat-message assistant">
                 <div className="chat-message-toolcalls">
@@ -635,8 +776,6 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 </div>
               </div>
             )}
-
-            {/* 流式文本（正在生成的 AI 回复） */}
             {streamingText && (
               <div className="chat-message assistant">
                 <div className="chat-message-content streaming">
@@ -645,8 +784,6 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 </div>
               </div>
             )}
-
-            {/* 没有任何流式信息时的占位 */}
             {!streamingText && !thinkingText && toolCalls.length === 0 && (
               <div className="chat-message assistant">
                 <div className="chat-message-content">
@@ -661,17 +798,53 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
       {/* 输入区 */}
       <div className="chat-input-area">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="输入消息..."
-          disabled={!currentConvId || isLoading}
-        />
-        <button onClick={sendMessage} disabled={!currentConvId || isLoading || !input.trim()}>
-          发送
-        </button>
+        {/* 回复提示条 */}
+        {replyToId && (() => {
+          const replyMsg = messages.find(m => m.id === replyToId);
+          return (
+            <div className="reply-bar">
+              <span className="reply-bar-icon">↩ 回复</span>
+              <span className="reply-bar-text">{replyMsg ? getMessageText(replyMsg).slice(0, 60) : ''}</span>
+              <button className="reply-bar-cancel" onClick={cancelReply}>✕</button>
+            </div>
+          );
+        })()}
+
+        {/* 编辑提示条 */}
+        {editingMsgId && (
+          <div className="reply-bar">
+            <span className="reply-bar-icon">✎ 编辑消息</span>
+            <button className="reply-bar-cancel" onClick={cancelEdit}>取消</button>
+          </div>
+        )}
+
+        {editingMsgId ? (
+          <>
+            <input
+              type="text"
+              value={editInput}
+              onChange={(e) => setEditInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="编辑消息..."
+              autoFocus
+            />
+            <button onClick={submitEdit} disabled={!editInput.trim()}>保存</button>
+          </>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={replyToId ? '输入回复...' : '输入消息...'}
+              disabled={!currentConvId || isLoading}
+            />
+            <button onClick={() => sendMessage(replyToId || undefined)} disabled={!currentConvId || isLoading || !input.trim()}>
+              发送
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type { Conversation, Message, Content } from '../types/index.js';
 import {
-  APPS_DIR,
+  APPS_DATA_DIR,
   readJsonFile,
   writeJsonFile,
   readDir,
@@ -20,7 +20,7 @@ class ConversationService {
 
   // 获取会话目录路径
   private getConversationsDir(appId: string): string {
-    return path.join(APPS_DIR, appId, 'data', 'conversations');
+    return path.join(APPS_DATA_DIR, appId, 'conversations');
   }
 
   // 获取应用的所有会话
@@ -92,7 +92,8 @@ class ConversationService {
     convId: string,
     role: 'user' | 'assistant' | 'system',
     content: Content[],
-    toolCalls?: { id: string; tool: string; method: string; args: Record<string, unknown> }[]
+    toolCalls?: { id: string; tool: string; method: string; args: Record<string, unknown> }[],
+    replyTo?: string,
   ): Promise<Message | null> {
     const conv = await this.getConversation(appId, convId);
     if (!conv) return null;
@@ -102,7 +103,8 @@ class ConversationService {
       role,
       content,
       timestamp: new Date().toISOString(),
-      toolCalls
+      toolCalls,
+      replyTo,
     };
 
     conv.messages.push(message);
@@ -112,6 +114,43 @@ class ConversationService {
     await writeJsonFile(path.join(convDir, `${convId}.json`), conv);
 
     return message;
+  }
+
+  // 编辑指定消息的内容
+  async editMessage(
+    appId: string,
+    convId: string,
+    msgId: string,
+    content: Content[],
+  ): Promise<Message | null> {
+    const conv = await this.getConversation(appId, convId);
+    if (!conv) return null;
+
+    const idx = conv.messages.findIndex(m => m.id === msgId);
+    if (idx === -1) return null;
+
+    const oldMsg = conv.messages[idx];
+
+    // 标记原消息为已编辑
+    oldMsg.edited = true;
+
+    // 在原消息之后创建一个新的 user 消息作为新分支
+    const branchMsg: Message = {
+      id: uuidv4(),
+      role: oldMsg.role,
+      content,
+      timestamp: new Date().toISOString(),
+      replyTo: oldMsg.replyTo, // 保持同样的回复链
+    };
+
+    // 插入到原消息之后
+    conv.messages.splice(idx + 1, 0, branchMsg);
+    conv.updatedAt = new Date().toISOString();
+
+    const convDir = this.getConversationsDir(appId);
+    await writeJsonFile(path.join(convDir, `${convId}.json`), conv);
+
+    return branchMsg;
   }
 
   // 更新会话标题

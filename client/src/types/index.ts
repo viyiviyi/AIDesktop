@@ -40,6 +40,10 @@ export interface Message {
   content: Content[];
   timestamp: string;
   toolCalls?: ToolCall[];
+  /** 被回复的消息 id */
+  replyTo?: string;
+  /** 是否已被编辑（编辑后产生新分支） */
+  edited?: boolean;
 }
 
 export interface ToolCall {
@@ -63,6 +67,13 @@ export interface Conversation {
 export type AppSource = 'system' | 'user' | 'marketplace';
 export type AppType = 'desktop' | 'background';
 
+// Model parameter entry with enable toggle
+export interface ModelParam {
+  key: string;
+  value: string;
+  enabled: boolean;
+}
+
 export interface ModelConfig {
   provider: string;
   model: string;
@@ -73,6 +84,9 @@ export interface ModelConfig {
     temperature?: number;
     top_p?: number;
   };
+  overrideParams?: boolean;
+  headerParams?: ModelParam[];
+  bodyParams?: ModelParam[];
 }
 
 export interface AppInfo {
@@ -156,6 +170,8 @@ export interface ProviderModel {
     temperature?: number;
     top_p?: number;
   };
+  headerParams?: ModelParam[];
+  bodyParams?: ModelParam[];
 }
 
 // Model Provider
