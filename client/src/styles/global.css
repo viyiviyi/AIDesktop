@@ -2698,3 +2698,51 @@ button {
   padding: 2px 6px;
   font-size: 14px;
 }
+
+/* ============ 确认对话框 ============ */
+.confirm-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+.confirm-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  padding: 24px;
+  min-width: 320px;
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.confirm-message {
+  font-size: 15px;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.confirm-btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.confirm-btn:hover { opacity: 0.85; }
+.confirm-cancel {
+  background: rgba(255,255,255,0.1);
+  color: var(--text-primary);
+}
+.confirm-ok {
+  background: var(--accent-color);
+  color: white;
+}

@@ -246,7 +246,7 @@ interface ChatAppProps {
  * 支持：多会话切换、新建、删除、重命名、消息发送与接收
  */
 export function ChatApp({ appId, conversationId }: ChatAppProps) {
-  const { addToast } = useToast();
+  const { addToast, confirm } = useToast();
   const [conversations, setConversations] = useState<{ id: string; title: string; preview?: string }[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(
     conversationId && !conversationId.startsWith('conv-') ? conversationId : null
@@ -439,12 +439,12 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       addToast('warning', '不能删除当前活跃的会话');
       return;
     }
-    if (!confirm('确定要删除这个会话吗？')) return;
+    const ok = await confirm('确定要删除这个会话吗？');
+    if (!ok) return;
     try {
       await api.deleteConversation(appId, convId);
       const updated = conversations.filter((c) => c.id !== convId);
       setConversations(updated);
-      setShowConvList(false);
       addToast('success', '会话已删除');
     } catch (error) {
       addToast('error', '删除会话失败');

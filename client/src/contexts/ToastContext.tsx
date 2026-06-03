@@ -9,16 +9,25 @@ export interface Toast {
   duration?: number;
 }
 
+export interface ConfirmDialog {
+  message: string;
+  onConfirm: () => void;
+  onCancel?: () => void;
+}
+
 interface ToastContextValue {
   toasts: Toast[];
   addToast: (type: ToastType, message: string, duration?: number) => void;
   removeToast: (id: string) => void;
+  confirm: (message: string) => Promise<boolean>;
+  confirmDialog: ConfirmDialog | null;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog | null>(null);
 
   const addToast = useCallback((type: ToastType, message: string, duration = 5000) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -35,8 +44,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const confirm = useCallback((message: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setConfirmDialog({
+        message,
+        onConfirm: () => { setConfirmDialog(null); resolve(true); },
+        onCancel: () => { setConfirmDialog(null); resolve(false); },
+      });
+    });
+  }, []);
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
+    <ToastContext.Provider value={{ toasts, addToast, removeToast, confirm, confirmDialog }}>
       {children}
     </ToastContext.Provider>
   );
