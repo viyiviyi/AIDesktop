@@ -648,54 +648,85 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       {/* 消息列表 */}
       <div className="chat-messages">
         {(() => {
-          // 计算分支信息：根据 replyTo 构建链
-          // 找到被回复的消息（replyTo 指向的消息）之后的所有消息，按 replyTo 链分组
-          // 主分支 = 没有 replyTo 或 replyTo 不在当前消息列表中的消息 + 从第一条回复链开始的最新链
-          // 逻辑：消息按顺序排列，replyTo 链形成分支。如果某个消息的 replyTo 指向列表中的某条消息，
-          // 它属于该消息的回复分支。分支起点是第一条有 replyTo 且指向列表中更早消息的消息。
-          // 折叠逻辑：从某条消息之后的 reply 链可以折叠。
+          // 分支折叠逻辑：
+          // 消息列表 [A, B, C, D]，如果 D 回复了 A，那么 B~C 是历史分支可折叠
+          // 折叠范围 = (被回复消息的下一条, 回复消息的上一条)
+          // 如果有多个回复链，每条回复链的历史分支独立折叠
 
           const msgMap = new Map(messages.map(m => [m.id, m]));
-          // 构建分支：对于每条有 replyTo 的消息，找到它指向的消息
-          // 分支根节点 = 有 replyTo 且指向的消息也在列表中
-          let firstBranchIdx = -1;
+
+          // 对于每条有 replyTo 的消息，计算其历史分支的范围 [startIdx, endIdx]
+          // startIdx = 被回复消息的 index + 1
+          // endIdx = 本条回复消息的 index - 1
+          // 如果 startIdx <= endIdx，就是可折叠的历史分支
+          const branchRanges: Array<{ start: number; end: number; key: string }> = [];
           for (let i = 0; i < messages.length; i++) {
-            if (messages[i].replyTo && msgMap.has(messages[i].replyTo!)) {
-              firstBranchIdx = i;
-              break;
+            const msg = messages[i];
+            if (msg.replyTo && msgMap.has(msg.replyTo!)) {
+              const repliedIdx = messages.findIndex(m => m.id === msg.replyTo);
+              if (repliedIdx >= 0 && repliedIdx + 1 <= i - 1) {
+                branchRanges.push({
+                  start: repliedIdx + 1,
+                  end: i - 1,
+                  key: `branch-${msg.id}`,
+                });
+              }
             }
           }
 
+          // 判断某条消息是否在某个折叠的范围内
+          const isInCollapsedRange = (idx: number): string | null => {
+            for (const range of branchRanges) {
+              if (collapsedBranches.has(range.key) && idx >= range.start && idx <= range.end) {
+                return range.key;
+              }
+            }
+            return null;
+          };
+
+          // 检查某个 range 是否应该显示折叠/展开按钮（至少有一个折叠的）
+          const renderedRanges = new Set<string>();
+
           return messages.map((msg, idx) => {
-            const isBranch = firstBranchIdx >= 0 && idx >= firstBranchIdx;
-            const isCollapsed = isBranch && collapsedBranches.has(messages[firstBranchIdx]?.id);
-            const isBranchStart = idx === firstBranchIdx;
             const refCallback = (el: HTMLDivElement | null) => {
               if (el) messageRefs.current.set(msg.id, el);
               else messageRefs.current.delete(msg.id);
             };
 
-            // 如果属于折叠分支，只显示分支的头部（第一条回复消息）
-            if (isCollapsed && !isBranchStart) return null;
+            // 如果在折叠范围内，跳过
+            const rangeKey = isInCollapsedRange(idx);
+            if (rangeKey) return null;
 
             const replyToMsg = msg.replyTo ? msgMap.get(msg.replyTo) : undefined;
             const isHighlight = highlightMsgId === msg.id;
 
+            // 检查当前 idx 是否是一个折叠范围的结束位置+1（需要在之前显示折叠按钮）
+            const foldButton = (() => {
+              for (const range of branchRanges) {
+                if (range.end === idx - 1 && !renderedRanges.has(range.key)) {
+                  renderedRanges.add(range.key);
+                  const count = range.end - range.start + 1;
+                  const isCollapsed = collapsedBranches.has(range.key);
+                  return (
+                    <div className="branch-header" key={`fold-${range.key}`}>
+                      <button
+                        className="branch-toggle"
+                        onClick={() => toggleBranch(range.key)}
+                        title={isCollapsed ? '展开历史分支' : '折叠历史分支'}
+                      >
+                        {isCollapsed ? '↕' : '↑'}
+                        <span className="branch-label">历史分支 ({count} 条消息)</span>
+                      </button>
+                    </div>
+                  );
+                }
+              }
+              return null;
+            })();
+
             return (
               <React.Fragment key={msg.id}>
-                {/* 分支折叠/展开按钮 */}
-                {isBranchStart && (
-                  <div className="branch-header">
-                    <button
-                      className="branch-toggle"
-                      onClick={() => toggleBranch(messages[firstBranchIdx].id)}
-                      title={collapsedBranches.has(messages[firstBranchIdx].id) ? '展开历史分支' : '折叠历史分支'}
-                    >
-                      {collapsedBranches.has(messages[firstBranchIdx].id) ? '↕' : '↑'}
-                      <span className="branch-label">历史分支 ({messages.length - firstBranchIdx} 条消息)</span>
-                    </button>
-                  </div>
-                )}
+                {foldButton}
 
                 {/* 引用条（回复了 xxx） */}
                 {replyToMsg && (
@@ -797,27 +828,24 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       </div>
 
       {/* 输入区 */}
-      <div className="chat-input-area">
-        {/* 回复提示条 */}
-        {replyToId && (() => {
-          const replyMsg = messages.find(m => m.id === replyToId);
-          return (
-            <div className="reply-bar">
-              <span className="reply-bar-icon">↩ 回复</span>
-              <span className="reply-bar-text">{replyMsg ? getMessageText(replyMsg).slice(0, 60) : ''}</span>
-              <button className="reply-bar-cancel" onClick={cancelReply}>✕</button>
-            </div>
-          );
-        })()}
-
-        {/* 编辑提示条 */}
-        {editingMsgId && (
+      {/* 回复/编辑提示条 — 放在输入框上面 */}
+      {replyToId && (() => {
+        const replyMsg = messages.find(m => m.id === replyToId);
+        return (
           <div className="reply-bar">
-            <span className="reply-bar-icon">✎ 编辑消息</span>
-            <button className="reply-bar-cancel" onClick={cancelEdit}>取消</button>
+            <span className="reply-bar-icon">↩ 回复</span>
+            <span className="reply-bar-text">{replyMsg ? getMessageText(replyMsg).slice(0, 60) : ''}</span>
+            <button className="reply-bar-cancel" onClick={cancelReply}>✕</button>
           </div>
-        )}
-
+        );
+      })()}
+      {editingMsgId && (
+        <div className="reply-bar">
+          <span className="reply-bar-icon">✎ 编辑消息</span>
+          <button className="reply-bar-cancel" onClick={cancelEdit}>取消</button>
+        </div>
+      )}
+      <div className="chat-input-area">
         {editingMsgId ? (
           <>
             <input
