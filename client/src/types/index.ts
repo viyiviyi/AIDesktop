@@ -40,9 +40,9 @@ export interface Message {
   content: Content[];
   timestamp: string;
   toolCalls?: ToolCall[];
-  /** 被回复的消息 id */
+  /** 工具调用记录（用于保留在消息历史中） */
+  toolCallsData?: Array<{ toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean }>;
   replyTo?: string;
-  /** 是否已被编辑（编辑后产生新分支） */
   edited?: boolean;
 }
 
@@ -61,6 +61,9 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   messages: Message[];
+  source?: 'user' | 'agent' | 'system';
+  callChain?: Array<{ callerAppId: string; callerConvId?: string; timestamp: string }>;
+  pendingUserInput?: string | null;
 }
 
 // App types

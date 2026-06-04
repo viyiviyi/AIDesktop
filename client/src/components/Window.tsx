@@ -327,6 +327,29 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
           )
         );
         break;
+      case 'message_start': {
+        // 开始新消息，重置累积
+        setThinkingText('');
+        setStreamingText('');
+        // 新消息开始时如果还有未清的 toolCalls，压入消息列表作为独立的 tool 记录
+        setToolCalls(prev => {
+          if (prev.length > 0) {
+            const toolLogMsg: Message = {
+              id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              role: 'assistant',
+              content: prev.map(tc => ({
+                type: 'text' as const,
+                text: `🔧 ${tc.toolName}${tc.isError ? ' ✗' : tc.result ? ' ✓' : ''}`,
+              })),
+              timestamp: new Date().toISOString(),
+              toolCallsData: prev,
+            };
+            setMessages(prevMsgs => [...prevMsgs, toolLogMsg]);
+          }
+          return [];
+        });
+        break;
+      }
       case 'message_end': {
         const content = event.data.content as any[] || [];
         const text = content.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('');
@@ -758,10 +781,22 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 {/* 消息主体 */}
                 <div
                   ref={refCallback}
-                  className={`chat-message ${msg.role} ${isHighlight ? 'highlight' : ''} ${msg.edited ? 'edited' : ''}`}
+                  className={`chat-message ${msg.role} ${isHighlight ? 'highlight' : ''} ${msg.edited ? 'edited' : ''} ${msg.toolCallsData ? 'tool-log' : ''}`}
                 >
                   <div className="chat-message-content">
-                    {getMessageText(msg)}
+                    {msg.toolCallsData ? (
+                      <div className="tool-log-list">
+                        {msg.toolCallsData.map((tc, tci) => (
+                          <div key={tc.toolCallId || tci} className={`tool-log-item ${tc.isError ? 'tool-log-error' : ''}`}>
+                            <span className="tool-log-icon">{tc.isError ? '✗' : '✓'}</span>
+                            <span className="tool-log-name">{tc.toolName}</span>
+                            <span className="tool-log-args">{tc.args ? ' ' + JSON.stringify(tc.args).slice(0, 100) : ''}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      getMessageText(msg)
+                    )}
                     {msg.edited && <span className="edited-badge"> (已编辑)</span>}
                   </div>
 

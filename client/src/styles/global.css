@@ -2746,3 +2746,53 @@ button {
   background: var(--accent-color);
   color: white;
 }
+
+/* ============ MCP 工具调用记录样式 ============ */
+.chat-message.tool-log {
+  max-width: 100% !important;
+  margin: 2px 0;
+}
+.chat-message.tool-log .chat-message-content {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: monospace;
+  border-left: 3px solid var(--accent-color);
+  color: var(--text-secondary);
+}
+.tool-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tool-log-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.6;
+}
+.tool-log-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+}
+.tool-log-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+.tool-log-args {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.tool-log-item.tool-log-error .tool-log-name {
+  color: var(--error-color);
+}
+.tool-log-item.tool-log-error .tool-log-icon {
+  color: var(--error-color);
+}
