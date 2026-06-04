@@ -172,7 +172,7 @@ export function Window({ windowState, children }: WindowProps) {
         width: windowState.size.width,
         height: windowState.size.height,
         zIndex: windowState.zIndex,
-        opacity: isFocused ? 1 : 0.9,
+        opacity: isFocused ? 1 : 1,
       }}
       onMouseDown={handleMouseDown}
     >

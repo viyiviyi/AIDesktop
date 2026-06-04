@@ -1,9 +1,9 @@
 /* Dark Theme (default) */
 .theme-dark, :root {
   --desktop-bg: #1e1e2e;
-  --menu-bar-bg: rgba(30, 30, 46, 0.85);
+  --menu-bar-bg: rgb(30, 30, 46);
   --dock-bg: rgba(255, 255, 255, 0.15);
-  --window-bg: rgba(40, 40, 60, 0.95);
+  --window-bg: rgb(40, 40, 60);
   --window-title-bg: rgba(60, 60, 80, 1);
   --text-primary: #ffffff;
   --text-secondary: #b0b0b0;
@@ -2710,7 +2710,7 @@ button {
   z-index: 10000;
 }
 .confirm-dialog {
-  background: var(--bg-primary);
+  background: var(--window-bg);
   border: 1px solid var(--border-primary);
   border-radius: 12px;
   padding: 24px;
