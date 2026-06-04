@@ -1,6 +1,6 @@
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import type { Conversation, Message, Content } from '../types/index.js';
+import type { Conversation, Message, Content, ConversationSource } from '../types/index.js';
 import {
   APPS_DATA_DIR,
   readJsonFile,
@@ -62,7 +62,7 @@ class ConversationService {
   }
 
   // 创建新会话
-  async createConversation(appId: string, title?: string): Promise<Conversation> {
+  async createConversation(appId: string, title?: string, source?: ConversationSource, callChain?: Conversation['callChain']): Promise<Conversation> {
     const convDir = this.getConversationsDir(appId);
     await ensureDir(convDir);
 
@@ -73,7 +73,9 @@ class ConversationService {
       title: title || '新会话',
       createdAt: now,
       updatedAt: now,
-      messages: []
+      messages: [],
+      source,
+      callChain,
     };
 
     await writeJsonFile(path.join(convDir, `${conv.id}.json`), conv);

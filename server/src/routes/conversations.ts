@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { conversationService } from '../services/conversation.js';
 import { appLoader } from '../services/appLoader.js';
 import { agentEngine } from '../agents/engine.js';
-import { piAgentManager } from '../agents/pi-agent-session.js';
+import { piAgentManager, runAgentAsync } from '../agents/pi-agent-session.js';
 import { eventBus } from '../services/eventBus.js';
 import { serverLogger } from '../utils/logger.js';
 
@@ -102,85 +102,6 @@ router.post('/:convId/messages', async (req: Request, res: Response) => {
     res.status(500).json({ error: (error as Error).message });
   }
 });
-
-/** 后台异步运行 agent，所有事件推送到 EventBus */
-async function runAgentAsync(
-  appId: string,
-  convId: string,
-  app: any,
-  existingMessages: any[],
-  userContent: any[],
-): Promise<void> {
-  const fullHistory = [...existingMessages, { role: 'user', content: userContent }];
-  const session = await piAgentManager.getOrCreate(appId, app);
-
-  // 订阅 agent 事件 → 推送到 EventBus
-  const unsub = session.agent.subscribe((event: any) => {
-    const emit = (type: string, data: Record<string, unknown>) => {
-      eventBus.emit({ type: type as any, appId, convId, data });
-    };
-
-    switch (event.type) {
-      case 'turn_start':
-        emit('thinking', { text: '思考中...' });
-        break;
-      case 'message_start':
-        emit('message_start', { role: event.message.role, content: event.message.content, id: String(event.message.id) });
-        break;
-      case 'message_update':
-        emit('message_update', { content: event.message.content });
-        break;
-      case 'message_end':
-        emit('message_end', { id: String(event.message.id), content: event.message.content });
-        break;
-      case 'tool_execution_start':
-        emit('tool_call', { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
-        break;
-      case 'tool_execution_end':
-        emit('tool_result', { toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError });
-        break;
-      case 'agent_end':
-        // agent 结束 — 保存 assistant 消息
-        break;
-    }
-  });
-
-  // 逐 token 文本回调 → EventBus
-  const unsub2 = session.onText((text: string) => {
-    eventBus.emit({ type: 'text_chunk', appId, convId, data: { text } });
-  });
-
-  try {
-    session.syncHistory(fullHistory);
-    const userText = userContent
-      .filter((c: any): c is { type: 'text'; text: string } => c.type === 'text')
-      .map((c: any) => c.text)
-      .join('\n');
-    if (!userText.trim()) throw new Error('No text in user message');
-
-    await session.agent.prompt(userText);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
-  } finally {
-    unsub();
-    unsub2();
-  }
-
-  // 保存 assistant 消息
-  const lastMsg = session.agent.state.messages[session.agent.state.messages.length - 1] as any;
-  if (lastMsg && lastMsg.role === 'assistant') {
-    const text = (lastMsg.content || [])
-      .filter((c: any) => c.type === 'text')
-      .map((c: any) => c.text)
-      .join('');
-    if (text) {
-      await conversationService.addMessage(appId, convId, 'assistant', [{ type: 'text', text }]);
-    }
-  }
-
-  eventBus.emit({ type: 'done', appId, convId, data: {} });
-}
 
 // Update conversation title
 router.put('/:convId', async (req: Request, res: Response) => {

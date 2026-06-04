@@ -14,7 +14,11 @@ export type ConvEventType =
   | 'tool_call'
   | 'tool_result'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'user_input_request'
+  | 'user_input_response'
+  | 'agent_call_start'
+  | 'agent_call_end';
 
 export interface ConvEvent {
   type: ConvEventType;

@@ -169,3 +169,83 @@ export class PiAgentManager {
 }
 
 export const piAgentManager = new PiAgentManager();
+
+/**
+ * 后台异步运行 agent，所有事件推送到 EventBus
+ * 供 conversations.ts 和 mcp/service.ts 共享使用
+ */
+export async function runAgentAsync(
+  appId: string,
+  convId: string,
+  app: any,
+  existingMessages: any[],
+  userContent: any[],
+): Promise<void> {
+  const { eventBus } = await import('../services/eventBus.js');
+  const { conversationService } = await import('../services/conversation.js');
+
+  const fullHistory = [...existingMessages, { role: 'user', content: userContent }];
+  const session = await piAgentManager.getOrCreate(appId, app);
+
+  const unsub = session.agent.subscribe((event: any) => {
+    const emit = (type: string, data: Record<string, unknown>) => {
+      eventBus.emit({ type: type as any, appId, convId, data });
+    };
+
+    switch (event.type) {
+      case 'turn_start':
+        emit('thinking', { text: '思考中...' });
+        break;
+      case 'message_start':
+        emit('message_start', { role: event.message.role, content: event.message.content, id: String(event.message.id) });
+        break;
+      case 'message_update':
+        emit('message_update', { content: event.message.content });
+        break;
+      case 'message_end':
+        emit('message_end', { id: String(event.message.id), content: event.message.content });
+        break;
+      case 'tool_execution_start':
+        emit('tool_call', { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+        break;
+      case 'tool_execution_end':
+        emit('tool_result', { toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError });
+        break;
+    }
+  });
+
+  const unsub2 = session.onText((text: string) => {
+    eventBus.emit({ type: 'text_chunk', appId, convId, data: { text } });
+  });
+
+  try {
+    session.syncHistory(fullHistory);
+    const userText = userContent
+      .filter((c: any): c is { type: 'text'; text: string } => c.type === 'text')
+      .map((c: any) => c.text)
+      .join('\n');
+    if (!userText.trim()) throw new Error('No text in user message');
+
+    await session.agent.prompt(userText);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
+  } finally {
+    unsub();
+    unsub2();
+  }
+
+  // 保存 assistant 消息
+  const lastMsg = session.agent.state.messages[session.agent.state.messages.length - 1] as any;
+  if (lastMsg && lastMsg.role === 'assistant') {
+    const text = (lastMsg.content || [])
+      .filter((c: any) => c.type === 'text')
+      .map((c: any) => c.text)
+      .join('');
+    if (text) {
+      await conversationService.addMessage(appId, convId, 'assistant', [{ type: 'text', text }]);
+    }
+  }
+
+  eventBus.emit({ type: 'done', appId, convId, data: {} });
+}

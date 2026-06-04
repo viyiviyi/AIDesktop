@@ -51,6 +51,8 @@ export interface ToolCall {
   args: Record<string, unknown>;
 }
 
+export type ConversationSource = 'user' | 'agent' | 'system';
+
 // Conversation
 export interface Conversation {
   id: string;
@@ -59,6 +61,11 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   messages: Message[];
+  source?: ConversationSource;
+  /** Agent 调用链：记录谁发起了这次会话 */
+  callChain?: Array<{ callerAppId: string; callerConvId?: string; timestamp: string }>;
+  /** 等待用户输入的请求 ID */
+  pendingUserInput?: string | null;
 }
 
 // App types

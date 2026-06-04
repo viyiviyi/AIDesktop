@@ -1,6 +1,8 @@
 import type { MCPService, Content } from '../types/index.js';
 import { mcpClientRegistry } from './clientRegistry.js';
 import { logger } from '../utils/logger.js';
+import { eventBus } from '../services/eventBus.js';
+import { runAgentAsync } from '../agents/pi-agent-session.js';
 
 // 内置MCP服务定义
 const builtInServices: Record<string, MCPService> = {
@@ -160,70 +162,112 @@ class MCPServiceRegistry {
         };
       }
       case 'call': {
-        // args: { agentId: string, message: Content[], convId?: string }
+        // args: { agentId: string, message: Content[], convId?: string, callerConvId?: string }
         const agentId = args.agentId as string;
         const message = args.message as Content[];
         const convId = args.convId as string | undefined;
+        const callerConvId = args.callerConvId as string | undefined;
 
-        if (!agentId) {
-          throw new Error('agentId is required');
-        }
-        if (!message || !Array.isArray(message) || message.length === 0) {
-          throw new Error('message is required and must be a non-empty array');
-        }
+        if (!agentId) throw new Error('agentId is required');
+        if (!message || !Array.isArray(message) || message.length === 0) throw new Error('message is required');
+        if (agentId === context.appId) throw new Error('Cannot call yourself');
 
-        // 不能调用自己
-        if (agentId === context.appId) {
-          throw new Error('Cannot call yourself');
-        }
-
-        // Validate target agent exists
         const targetApp = appLoader.getApp(agentId);
-        if (!targetApp) {
-          throw new Error(`Agent ${agentId} not found`);
-        }
+        if (!targetApp) throw new Error(`Agent ${agentId} not found`);
         if (targetApp.meta.type !== 'desktop' && targetApp.meta.type !== 'background') {
-          throw new Error(`Agent ${agentId} is not a callable agent`);
+          throw new Error(`Agent ${agentId} is not callable`);
         }
 
-        // 检查可见性：调用者的 visibleApps 控制可以调用哪些 agent
+        // 可见性检查
         if (context.appId) {
           const callerApp = appLoader.getApp(context.appId);
-          if (callerApp && callerApp.meta.visibleApps.length > 0) {
-            if (!callerApp.meta.visibleApps.includes(agentId)) {
-              throw new Error(`Agent ${agentId} is not visible to ${context.appId}`);
-            }
+          if (callerApp && callerApp.meta.visibleApps.length > 0 && !callerApp.meta.visibleApps.includes(agentId)) {
+            throw new Error(`Agent ${agentId} is not visible`);
           }
         }
 
-        // Get or create conversation
+        // 获取或创建会话（标记 source=agent + 记录调用链）
         let targetConvId = convId;
+        let conversation;
         if (!targetConvId) {
-          // Create new conversation for target agent
-          const conversations = await conversationService.getConversations(agentId);
-          if (conversations.length > 0) {
-            // Use most recent conversation
-            targetConvId = conversations[conversations.length - 1].id;
-          } else {
-            const newConv = await conversationService.createConversation(agentId, '新会话');
-            targetConvId = newConv.id;
-          }
+          const callChain = context.appId ? [{ callerAppId: context.appId, callerConvId: callerConvId, timestamp: new Date().toISOString() }] : undefined;
+          const newConv = await conversationService.createConversation(agentId, `来自 ${context.appId || '未知'} 的调用`, 'agent', callChain);
+          targetConvId = newConv.id;
+          conversation = newConv;
+        } else {
+          conversation = await conversationService.getConversation(agentId, targetConvId);
+          if (!conversation) throw new Error(`Conversation ${targetConvId} not found`);
         }
 
-        // Validate conversation exists
-        const conversation = await conversationService.getConversation(agentId, targetConvId);
-        if (!conversation) {
-          throw new Error(`Conversation ${targetConvId} not found`);
-        }
+        // 通知前端：agent 调用开始
+        eventBus.emit({ type: 'agent_call_start', appId: agentId, convId: targetConvId, data: {
+          callerAppId: context.appId,
+          callerConvId,
+          message: JSON.stringify(message),
+          timestamp: new Date().toISOString(),
+        }});
 
-        // Process message with target agent (engine adds user message internally)
-        const { assistantMessage } = await agentEngine.processMessage(agentId, targetConvId, message);
+        // 保存 user 消息（标记来源为调用方）
+        const savedUserMsg = await conversationService.addMessage(agentId, targetConvId, 'user', message);
+        if (!savedUserMsg) throw new Error('Failed to save message');
+
+        // 异步处理 agent（不阻塞返回）
+        runAgentAsync(agentId, targetConvId, targetApp, conversation.messages, message)
+          .catch(err => logger.error('MCPServiceRegistry', `Agent async call error: ${err.message}`));
 
         return {
           success: true,
           conversationId: targetConvId,
-          message: assistantMessage
+          message: 'Agent 已开始处理，结果将通过 EventBus 推送',
         };
+      }
+
+      case 'reply': {
+        // args: { result: string, conversationId: string }
+        // 将结果回复给调用方 agent
+        const result = args.result as string;
+        const replyConvId = args.conversationId as string;
+        if (!replyConvId || !result) throw new Error('conversationId and result are required');
+
+        const replyConv = await conversationService.getConversation(context.appId || '', replyConvId);
+        if (!replyConv) throw new Error(`Conversation ${replyConvId} not found`);
+
+        const saved = await conversationService.addMessage(context.appId || '', replyConvId, 'assistant', [{ type: 'text', text: result }]);
+        eventBus.emit({ type: 'message_end', appId: context.appId || '', convId: replyConvId, data: { id: saved?.id || '', content: saved?.content || [] }});
+        eventBus.emit({ type: 'done', appId: context.appId || '', convId: replyConvId, data: {} });
+
+        return { success: true };
+      }
+
+      case 'requestInput': {
+        // args: { prompt: string, inputType: 'text'|'choice'|'confirm'|'file', choices?: string[] }
+        const prompt = args.prompt as string;
+        const inputType = (args.inputType as string) || 'text';
+        const choices = args.choices as string[] | undefined;
+        const requestConvId = args.conversationId as string || context.appId;
+
+        if (!prompt) throw new Error('prompt is required');
+
+        const requestId = `input-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        // 更新会话状态为等待输入
+        if (context.appId && requestConvId) {
+          try {
+            const conv = await conversationService.getConversation(context.appId, requestConvId);
+            if (conv) {
+              (conv as any).pendingUserInput = requestId;
+            }
+          } catch {}
+        }
+
+        eventBus.emit({ type: 'user_input_request', appId: context.appId || '', convId: requestConvId || '', data: {
+          requestId,
+          prompt,
+          inputType,
+          choices,
+        }});
+
+        return { success: true, requestId, message: '等待用户输入...' };
       }
       default:
         throw new Error(`Unknown method: ${method}`);
