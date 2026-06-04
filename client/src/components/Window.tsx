@@ -593,6 +593,13 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
+  // textarea 自适应高度
+  const autoResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const el = e.target;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  };
+
   // 提取消息文本内容
   const getMessageText = (msg: Message): string => {
     return msg.content
@@ -895,25 +902,25 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       <div className="chat-input-area">
         {editingMsgId ? (
           <>
-            <input
-              type="text"
+            <textarea
               value={editInput}
-              onChange={(e) => setEditInput(e.target.value)}
+              onChange={(e) => { setEditInput(e.target.value); autoResize(e); }}
               onKeyDown={handleKeyDown}
               placeholder="编辑消息..."
               autoFocus
+              rows={1}
             />
             <button onClick={submitEdit} disabled={!editInput.trim()}>保存</button>
           </>
         ) : (
           <>
-            <input
-              type="text"
+            <textarea
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => { setInput(e.target.value); autoResize(e); }}
               onKeyDown={handleKeyDown}
               placeholder={replyToId ? '输入回复...' : '输入消息...'}
               disabled={!currentConvId || isLoading}
+              rows={1}
             />
             <button onClick={() => sendMessage(replyToId || undefined)} disabled={!currentConvId || isLoading || !input.trim()}>
               发送
