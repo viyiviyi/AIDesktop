@@ -136,4 +136,41 @@ router.put('/:convId/messages/:msgId', async (req: Request, res: Response) => {
   }
 });
 
+// POST /:convId/abort — 终止 agent 处理
+router.post('/:convId/abort', async (req: Request, res: Response) => {
+  const { appId, convId } = req.params;
+  const session = piAgentManager.get(appId);
+  if (session && session.agent) {
+    session.agent.abort();
+    eventBus.emit({ type: 'done', appId, convId, data: { aborted: true } });
+    res.json({ success: true, message: 'Agent 已终止' });
+  } else {
+    res.json({ success: false, message: '没有活跃的 agent 处理' });
+  }
+});
+
+// DELETE /:convId/messages/:msgId — 删除单条消息
+router.delete('/:convId/messages/:msgId', async (req: Request, res: Response) => {
+  try {
+    const { appId, convId, msgId } = req.params;
+    const conversation = await conversationService.getConversation(appId, convId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+    const idx = conversation.messages.findIndex(m => m.id === msgId);
+    if (idx === -1) return res.status(404).json({ error: 'Message not found' });
+
+    conversation.messages.splice(idx, 1);
+    conversation.updatedAt = new Date().toISOString();
+
+    const { writeJsonFile } = await import('../utils/file.js');
+    const path = await import('path');
+    const { APPS_DATA_DIR } = await import('../utils/file.js');
+    await writeJsonFile(path.join(APPS_DATA_DIR, appId, 'conversations', `${convId}.json`), conversation);
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 export default router;

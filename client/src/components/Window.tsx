@@ -581,6 +581,34 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   // 跳转引用
   const handleReplyClick = (replyTo: string) => scrollToMsg(replyTo);
 
+  // 删除消息
+  const deleteMsg = async (msgId: string) => {
+    if (!currentConvId) return;
+    const ok = await confirm('确定要删除这条消息吗？');
+    if (!ok) return;
+    try {
+      await api.deleteMessage(appId, currentConvId, msgId);
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      addToast('success', '消息已删除');
+    } catch {
+      addToast('error', '删除失败');
+    }
+  };
+
+  // 终止 AI 回复
+  const handleAbort = async () => {
+    if (!currentConvId) return;
+    try {
+      await api.abortConversation(appId, currentConvId);
+      setIsLoading(false);
+      setThinkingText('');
+      setStreamingText('');
+      addToast('info', '已终止');
+    } catch {
+      addToast('error', '终止失败');
+    }
+  };
+
   // 键盘事件处理 - Enter发送消息
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -821,6 +849,11 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                         title="编辑消息"
                       >✎</button>
                     )}
+                    <button
+                      className="msg-action-btn msg-action-delete"
+                      onClick={() => deleteMsg(msg.id)}
+                      title="删除此消息"
+                    >🗑</button>
                   </div>
                 </div>
               </React.Fragment>
@@ -882,6 +915,14 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       </div>
 
       {/* 输入区 */}
+      {/* 停止按钮 — 浮动在发送按钮上方 */}
+      {isLoading && (
+        <div className="stop-bar">
+          <button className="stop-btn" onClick={handleAbort}>
+            ■ 停止
+          </button>
+        </div>
+      )}
       {/* 回复/编辑提示条 — 放在输入框上面 */}
       {replyToId && (() => {
         const replyMsg = messages.find(m => m.id === replyToId);

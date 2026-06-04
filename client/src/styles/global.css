@@ -2640,6 +2640,8 @@ button {
   transition: background 0.15s;
 }
 .msg-action-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+.msg-action-delete { color: var(--error-color); opacity:0.6; }
+.msg-action-delete:hover { opacity:1; color: var(--error-color); }
 
 /* 已编辑标记 */
 .edited-badge { font-size: 11px; color: var(--text-secondary); font-style: italic; }
@@ -2703,6 +2705,27 @@ button {
   padding: 2px 6px;
   font-size: 14px;
 }
+
+/* ============ 停止按钮 ============ */
+.stop-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 16px 0;
+}
+.stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: var(--error-color);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.stop-btn:hover { background: rgba(239, 68, 68, 0.25); }
 
 /* ============ 确认对话框 ============ */
 .confirm-overlay {

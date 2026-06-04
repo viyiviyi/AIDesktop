@@ -282,6 +282,20 @@ export async function editMessage(
   });
 }
 
+// 终止 agent 处理
+export async function abortConversation(appId: string, convId: string): Promise<{ success: boolean; message: string }> {
+  return fetchJson<{ success: boolean; message: string }>(`/apps/${appId}/conversations/${convId}/abort`, {
+    method: 'POST',
+  });
+}
+
+// 删除单条消息
+export async function deleteMessage(appId: string, convId: string, msgId: string): Promise<{ success: boolean }> {
+  return fetchJson<{ success: boolean }>(`/apps/${appId}/conversations/${convId}/messages/${msgId}`, {
+    method: 'DELETE',
+  });
+}
+
 /**
  * 流式发送消息
  * 使用SSE（Server-Sent Events）接收实时响应
