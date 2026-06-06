@@ -2568,23 +2568,39 @@ button {
 @keyframes thinking-pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
 .chat-message-toolcalls { display: flex; flex-direction: column; gap: 4px; }
 .tool-call-item {
+  display: flex; flex-direction: column;
   background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
+  border-radius: 6px;
   border-left: 3px solid rgba(255, 255, 255, 0.2);
 }
 .tool-call-item.tool-error { border-left-color: #f44336; background: rgba(244, 67, 54, 0.1); }
-.tool-call-header { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
-.tool-call-icon { font-size: 12px; width: 16px; text-align: center; }
-.tool-call-name { font-weight: 500; font-family: monospace; color: var(--text-primary); }
-.tool-call-args {
-  margin: 4px 0 0; padding: 4px 8px; background: rgba(0,0,0,0.2);
-  border-radius: 4px; font-size: 11px; overflow-x: auto; max-height: 100px; color: var(--text-secondary);
+.tool-call-header {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 10px;
+  user-select: none;
 }
-.tool-call-result {
-  margin: 4px 0 0; padding: 4px 8px; background: rgba(0,0,0,0.15);
-  border-radius: 4px; font-size: 11px; overflow-x: auto; max-height: 80px; color: #999;
+.tool-call-header:hover { background: rgba(255,255,255,0.03); border-radius: 4px; }
+.tool-call-text-block { margin-bottom: 4px; }
+.tool-call-icon { font-size: 12px; width: 16px; text-align: center; flex-shrink: 0; }
+.tool-call-name { font-weight: 500; font-family: monospace; color: var(--text-primary); flex-shrink: 0; }
+.tool-call-args-preview {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-secondary); font-size: 11px;
+  flex: 1; min-width: 0;
+}
+.tool-call-expand { font-size: 10px; color: var(--text-secondary); flex-shrink: 0; }
+.tool-call-detail {
+  padding: 0 10px 8px;
+}
+.tool-call-section { margin-top: 6px; }
+.tool-call-section-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; font-weight: 500; }
+.tool-call-section-content {
+  margin: 0; padding: 6px 8px; background: rgba(0,0,0,0.2);
+  border-radius: 4px; font-size: 11px; overflow-x: auto; max-height: 200px;
+  color: var(--text-secondary); white-space: pre-wrap; word-break: break-all;
+  line-height: 1.4;
 }
 .chat-message-content.streaming { border: 1px solid rgba(255,255,255,0.08); }
 .streaming-cursor { animation: cursor-blink 0.8s step-end infinite; color: var(--accent-color); font-weight: bold; margin-left: 2px; }
@@ -2794,33 +2810,171 @@ button {
   flex-direction: column;
   gap: 2px;
 }
-.tool-log-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+
+/* ============ Markdown 渲染 ============ */
+
+.markdown-body {
+  font-size: 14px;
   line-height: 1.6;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
-.tool-log-icon {
-  flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  font-size: 11px;
+
+.markdown-body p {
+  margin: 0 0 8px;
 }
-.tool-log-name {
-  font-weight: 500;
-  color: var(--text-primary);
-  flex-shrink: 0;
+.markdown-body p:last-child {
+  margin-bottom: 0;
 }
-.tool-log-args {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 12px 0 8px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.markdown-body h1 { font-size: 1.4em; }
+.markdown-body h2 { font-size: 1.25em; }
+.markdown-body h3 { font-size: 1.1em; }
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.markdown-body li {
+  margin: 2px 0;
+}
+
+.markdown-body blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--accent-color);
   color: var(--text-secondary);
-  font-size: 11px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 0 4px 4px 0;
 }
-.tool-log-item.tool-log-error .tool-log-name {
-  color: var(--error-color);
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  margin: 12px 0;
 }
-.tool-log-item.tool-log-error .tool-log-icon {
-  color: var(--error-color);
+
+.markdown-body strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body em {
+  font-style: italic;
+}
+
+/* 行内代码 */
+.markdown-body code.inline-code {
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.9em;
+  color: #e6db74;
+}
+
+/* 代码块 */
+.markdown-body .code-block-wrapper {
+  position: relative;
+  margin: 8px 0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.markdown-body .code-block-wrapper pre {
+  margin: 0;
+  padding: 12px 14px;
+  background: #1e1e1e;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.code-copy-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(255,255,255,0.08);
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.code-block-wrapper:hover .code-copy-btn {
+  opacity: 1;
+}
+.code-copy-btn:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+/* 表格 */
+.markdown-body .table-wrapper {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  text-align: left;
+}
+
+.markdown-body th {
+  background: rgba(255,255,255,0.05);
+  font-weight: 600;
+}
+
+.markdown-body tr:nth-child(even) {
+  background: rgba(255,255,255,0.02);
+}
+
+/* 链接 */
+.markdown-body a {
+  color: var(--accent-color);
+  text-decoration: none;
+}
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+/* 图片 */
+.markdown-body .markdown-image {
+  max-width: 100%;
+  border-radius: 6px;
+  cursor: zoom-in;
+  margin: 8px 0;
+}
+
+/* 任务列表 */
+.markdown-body input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+/* 流式文本中的 markdown */
+.chat-message-content.streaming .markdown-body {
+  display: inline;
 }

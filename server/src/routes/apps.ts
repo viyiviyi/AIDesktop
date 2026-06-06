@@ -95,7 +95,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
     }
 
     // Handle flat structure from client - extract known meta fields
-    const { models, enabled, backgroundImage, supportedInputs, inputDescription, outputDescription, visibleApps, visibleServices, tools, ...rest } = req.body;
+    const { models, enabled, backgroundImage, supportedInputs, inputDescription, outputDescription, visibleApps, visibleServices, tools, headerParams, bodyParams, ...rest } = req.body;
     const updates: Partial<typeof app.meta> = { ...rest };
     if (models !== undefined) updates.models = models;
     if (enabled !== undefined) updates.enabled = enabled;
@@ -179,7 +179,8 @@ router.post('/reload', async (req: Request, res: Response) => {
         description: a.meta.description,
         source: a.meta.source,
         type: a.meta.type,
-        icon: a.meta.icon
+        icon: a.meta.icon,
+        enabled: a.meta.enabled !== false
       }))
     });
   } catch (error) {
