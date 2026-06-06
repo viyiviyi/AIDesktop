@@ -131,7 +131,7 @@ class ConversationService {
     conv.updatedAt = new Date().toISOString();
 
     const convDir = this.getConversationsDir(appId);
-    await writeJsonFile(path.join(convDir, `convFileName(conv)`), conv);
+    await writeJsonFile(path.join(convDir, `${convFileName(conv)}`), conv);
 
     return message;
   }
@@ -168,7 +168,7 @@ class ConversationService {
     conv.updatedAt = new Date().toISOString();
 
     const convDir = this.getConversationsDir(appId);
-    await writeJsonFile(path.join(convDir, `convFileName(conv)`), conv);
+    await writeJsonFile(path.join(convDir, `${convFileName(conv)}`), conv);
 
     return branchMsg;
   }
@@ -182,7 +182,7 @@ class ConversationService {
     conv.updatedAt = new Date().toISOString();
 
     const convDir = this.getConversationsDir(appId);
-    await writeJsonFile(path.join(convDir, `convFileName(conv)`), conv);
+    await writeJsonFile(path.join(convDir, `${convFileName(conv)}`), conv);
 
     return true;
   }
@@ -213,7 +213,7 @@ class ConversationService {
     conv.updatedAt = new Date().toISOString();
 
     const convDir = this.getConversationsDir(appId);
-    await writeJsonFile(path.join(convDir, `convFileName(conv)`), conv);
+    await writeJsonFile(path.join(convDir, `${convFileName(conv)}`), conv);
 
     return true;
   }
