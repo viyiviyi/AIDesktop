@@ -52,7 +52,13 @@ export interface FileRef {
   _originalSize: number;
 }
 
-export type Content = TextContent | ImageContent | AudioContent | VideoContent | FileContent | ToolCallBlock | ToolResultContent;
+/** AI 思考过程内容块 */
+export interface ThinkingContent {
+  type: 'thinking';
+  text: string;
+}
+
+export type Content = TextContent | ImageContent | AudioContent | VideoContent | FileContent | ToolCallBlock | ToolResultContent | ThinkingContent;
 
 // Message
 export type MessageRole = 'user' | 'assistant' | 'system' | 'toolResult';

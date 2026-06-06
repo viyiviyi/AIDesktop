@@ -162,14 +162,20 @@ class MCPServiceRegistry {
         };
       }
       case 'call': {
-        // args: { agentId: string, message: Content[], convId?: string, callerConvId?: string }
+        // args: { agentId: string, message: Content[] | string, convId?: string, callerConvId?: string }
         const agentId = args.agentId as string;
-        const message = args.message as Content[];
+        let message = args.message as Content[] | string;
         const convId = args.convId as string | undefined;
         const callerConvId = args.callerConvId as string | undefined;
 
         if (!agentId) throw new Error('agentId is required');
-        if (!message || !Array.isArray(message) || message.length === 0) throw new Error('message is required');
+        if (!message) throw new Error('message is required');
+
+        // 兼容字符串 message → 自动转为 Content[]
+        if (typeof message === 'string') {
+          message = [{ type: 'text', text: message }];
+        }
+        if (!Array.isArray(message) || message.length === 0) throw new Error('message is required');
         if (agentId === context.appId) throw new Error('Cannot call yourself');
 
         const targetApp = appLoader.getApp(agentId);

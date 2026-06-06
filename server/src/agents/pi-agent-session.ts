@@ -313,7 +313,7 @@ async function saveNewMessages(
         if (block.type === "text") {
           content.push({ type: "text", text: block.text });
         } else if (block.type === "thinking") {
-          content.push({ type: "text", text: block.thinking || block.text || "" });
+          content.push({ type: "thinking", text: block.thinking || block.text || "" });
         } else if (block.type === "toolCall") {
           const processedArgs = await replaceLargeContentWithFileRef(block.arguments, appId, convId);
           content.push({
