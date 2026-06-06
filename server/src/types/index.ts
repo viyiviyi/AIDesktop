@@ -29,10 +29,40 @@ export interface FileContent {
   size: number;
 }
 
-export type Content = TextContent | ImageContent | AudioContent | VideoContent | FileContent;
+/** Assistant 消息中的 ToolCall 块（映射 pi-ai 的 ToolCall） */
+export interface ToolCallBlock {
+  type: 'toolCall';
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+/** 工具调用结果记录（独立消息类型） */
+export interface ToolResultContent {
+  type: 'tool_result';
+  toolCallId: string;
+  toolName: string;
+  result: unknown;
+  isError: boolean;
+}
+
+/** 文件引用类型 */
+export interface FileRef {
+  _fileRef: string;
+  _originalSize: number;
+}
+
+export type Content = TextContent | ImageContent | AudioContent | VideoContent | FileContent | ToolCallBlock | ToolResultContent;
 
 // Message
-export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'toolResult';
+
+/** toolResult 消息中携带的额外信息 */
+export interface ToolResultMeta {
+  toolCallId: string;
+  toolName: string;
+  isError: boolean;
+}
 
 export interface Message {
   id: string;
@@ -40,6 +70,8 @@ export interface Message {
   content: Content[];
   timestamp: string;
   toolCalls?: ToolCall[];
+  /** toolResult 消息专属元信息 */
+  toolResultMeta?: ToolResultMeta;
   replyTo?: string;
   edited?: boolean;
 }

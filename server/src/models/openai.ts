@@ -34,6 +34,9 @@ export class OpenAIAdapter {
       .map(c => (c as { type: 'text'; text: string }).text)
       .join('\n');
 
+    // toolResult 消息不发送给模型
+    if (msg.role === 'toolResult') return { role: 'user' as const, content: textContent };
+
     return {
       role: msg.role,
       content: textContent

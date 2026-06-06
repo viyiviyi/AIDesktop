@@ -42,6 +42,9 @@ export class HermesAdapter {
       .map(c => (c as { type: 'text'; text: string }).text)
       .join('\n');
 
+    // toolResult 消息不发送给模型
+    if (msg.role === 'toolResult') return { role: 'user' as const, content: textContent };
+
     const role = msg.role === 'system' ? 'developer' : msg.role;
 
     return {

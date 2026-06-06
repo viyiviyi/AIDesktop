@@ -29,10 +29,33 @@ export interface FileContent {
   size: number;
 }
 
-export type Content = TextContent | ImageContent | AudioContent | VideoContent | FileContent;
+/** Assistant 消息中的 ToolCall 块（映射 pi-ai 的 ToolCall） */
+export interface ToolCallBlock {
+  type: 'toolCall';
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+/** 工具调用结果记录（存储会话时使用） */
+export interface ToolResultContent {
+  type: 'tool_result';
+  toolCallId: string;
+  toolName: string;
+  result: unknown;
+  isError: boolean;
+}
+
+export type Content = TextContent | ImageContent | AudioContent | VideoContent | FileContent | ToolCallBlock | ToolResultContent;
 
 // Message
-export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'toolResult';
+
+export interface ToolResultMeta {
+  toolCallId: string;
+  toolName: string;
+  isError: boolean;
+}
 
 export interface Message {
   id: string;
@@ -40,8 +63,7 @@ export interface Message {
   content: Content[];
   timestamp: string;
   toolCalls?: ToolCall[];
-  /** 工具调用记录（用于保留在消息历史中） */
-  toolCallsData?: Array<{ toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean }>;
+  toolResultMeta?: ToolResultMeta;
   replyTo?: string;
   edited?: boolean;
 }
@@ -99,48 +121,77 @@ export interface AppInfo {
   source: AppSource;
   type: AppType;
   icon: string;
-  enabled?: boolean;
-}
-
-export interface App {
-  id: string;
-  name: string;
-  description: string;
-  source: AppSource;
-  type: AppType;
-  icon: string;
-  enabled?: boolean;
   backgroundImage?: string;
-  models?: ModelConfig[];
+  models: ModelConfig[];
   supportedInputs: ContentType[];
   inputDescription: string;
   outputDescription: string;
   visibleApps: string[];
   visibleServices: string[];
   tools: string[];
-  appMd?: string;
+  enabled?: boolean;
 }
 
-export interface AppWithDetails {
+export interface App {
   meta: AppInfo;
-  backgroundImage?: string;
   appMd: string;
   mcpServices: string[];
   skills: string[];
-  models: ModelConfig[];
 }
 
-// Desktop Settings
-export interface DockSettings {
-  position: 'bottom' | 'left' | 'right';
-  magnification: boolean;
-  autoHide: boolean;
+// Skills
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
 }
 
+// Settings
+export interface MCPConnection {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+  services: Array<{ name: string; description: string; methods: string[] }>;
+}
+
+export interface ProviderModel {
+  id: string;
+  name: string;
+  maxTokens: number;
+  supports: ContentType[];
+  params: {
+    temperature?: number;
+    top_p?: number;
+  };
+  headerParams?: ModelParam[];
+  bodyParams?: ModelParam[];
+}
+
+export interface ModelProvider {
+  id: string;
+  name: string;
+  apiType: string;
+  apiKey?: string;
+  baseUrl?: string;
+  enabled: boolean;
+  models: ProviderModel[];
+}
+
+// Desktop settings
 export interface WindowSettings {
   defaultSize: { width: number; height: number };
   minSize: { width: number; height: number };
   maximized: boolean;
+}
+
+export interface DockSettings {
+  position: 'bottom' | 'left' | 'right';
+  magnification: boolean;
+  autoHide: boolean;
 }
 
 export interface MenuBarSettings {
@@ -161,80 +212,16 @@ export interface DesktopSettings {
   startMenu: StartMenuSettings;
 }
 
-// Model
-export type ApiCompatType = 'openai' | 'anthropic' | 'custom';
-
-export interface ProviderModel {
-  id: string;
-  name: string;
-  maxTokens: number;
-  supports: ContentType[];
-  params: {
-    temperature?: number;
-    top_p?: number;
-  };
-  headerParams?: ModelParam[];
-  bodyParams?: ModelParam[];
-}
-
-// Model Provider
-export interface ModelProvider {
-  id: string;
-  name: string;
-  apiType: ApiCompatType;
-  apiKey?: string;
-  baseUrl?: string;
-  enabled: boolean;
-  models: ProviderModel[];
-}
-
-// MCP
-export interface MCPService {
-  name: string;
-  description: string;
-  methods: string[];
-}
-
-export interface MCPConnection {
-  id: string;
-  name: string;
-  command: string;
-  args: string[];
-  enabled: boolean;
-  services: MCPService[];
-}
-
-// Skill
-export interface Skill {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  config: Record<string, unknown>;
-}
-
-// Window State
 export interface WindowState {
   id: string;
-  appId: string;
   title: string;
+  app?: AppInfo;
   icon: string;
+  isMinimized: boolean;
+  isMaximized: boolean;
+  zIndex: number;
   position: { x: number; y: number };
   size: { width: number; height: number };
-  isMaximized: boolean;
-  isMinimized: boolean;
-  zIndex: number;
-  conversationId?: string;
-}
-
-// Desktop State
-export interface DesktopState {
-  settings: DesktopSettings;
-  installedApps: AppInfo[];
-  windows: WindowState[];
-  focusedWindowId: string | null;
-  startMenuOpen: boolean;
-  startMenuMode: 'click' | 'voice';
-  taskbarApps: string[];
-  appLastPositions: Record<string, { x: number; y: number }>;
+  minSize: { width: number; height: number };
+  type?: 'startMenu' | 'settings' | 'app';
 }

@@ -1,5 +1,6 @@
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { readFileSync } from 'fs';
 import type { Conversation, Message, Content, ConversationSource } from '../types/index.js';
 import {
   APPS_DATA_DIR,
@@ -8,6 +9,23 @@ import {
   readDir,
   ensureDir
 } from '../utils/file.js';
+
+const SERVER_VERSION: string = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'));
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
+
+/** 根据会话对象生成文件名：yyyyMMddHHmmss-serverVersion.json */
+function convFileName(conv: Conversation): string {
+  const d = new Date(conv.createdAt);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `${ts}-${SERVER_VERSION}.json`;
+}
 
 /**
  * ConversationService - 会话服务
@@ -78,7 +96,7 @@ class ConversationService {
       callChain,
     };
 
-    await writeJsonFile(path.join(convDir, `${conv.id}.json`), conv);
+    await writeJsonFile(path.join(convDir, convFileName(conv)), conv);
 
     if (!this.cache.has(appId)) {
       this.cache.set(appId, new Map());
@@ -113,7 +131,7 @@ class ConversationService {
     conv.updatedAt = new Date().toISOString();
 
     const convDir = this.getConversationsDir(appId);
-    await writeJsonFile(path.join(convDir, `${convId}.json`), conv);
+    await writeJsonFile(path.join(convDir, `convFileName(conv)`), conv);
 
     return message;
   }
@@ -150,7 +168,7 @@ class ConversationService {
     conv.updatedAt = new Date().toISOString();
 
     const convDir = this.getConversationsDir(appId);
-    await writeJsonFile(path.join(convDir, `${convId}.json`), conv);
+    await writeJsonFile(path.join(convDir, `convFileName(conv)`), conv);
 
     return branchMsg;
   }
@@ -164,7 +182,7 @@ class ConversationService {
     conv.updatedAt = new Date().toISOString();
 
     const convDir = this.getConversationsDir(appId);
-    await writeJsonFile(path.join(convDir, `${convId}.json`), conv);
+    await writeJsonFile(path.join(convDir, `convFileName(conv)`), conv);
 
     return true;
   }
@@ -175,7 +193,7 @@ class ConversationService {
     if (!conv) return false;
 
     const { rm } = await import('fs/promises');
-    const filePath = path.join(this.getConversationsDir(appId), `${convId}.json`);
+    const filePath = path.join(this.getConversationsDir(appId), convFileName(conv));
 
     try {
       await rm(filePath);
@@ -184,6 +202,20 @@ class ConversationService {
     } catch {
       return false;
     }
+  }
+
+  // 更新会话（全量替换，用于更新 messages 等复杂字段）
+  async updateConversation(appId: string, convId: string, updates: Partial<Conversation>): Promise<boolean> {
+    const conv = await this.getConversation(appId, convId);
+    if (!conv) return false;
+
+    Object.assign(conv, updates);
+    conv.updatedAt = new Date().toISOString();
+
+    const convDir = this.getConversationsDir(appId);
+    await writeJsonFile(path.join(convDir, `convFileName(conv)`), conv);
+
+    return true;
   }
 
   // 清空缓存
