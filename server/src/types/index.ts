@@ -144,6 +144,8 @@ export interface AppMeta {
   visibleServices: string[];
   tools: string[];
   enabled?: boolean;
+  /** 是否实现返回结果工具，没有该能力的 agent 不可被调用 */
+  hasReply?: boolean;
 }
 
 export interface App {

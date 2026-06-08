@@ -312,10 +312,15 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
                 <input
                   type="checkbox"
                   checked={formData.visibleApps.includes(a.id)}
-                  onChange={() => canModifyAll && toggleVisibleApp(a.id)}
-                  disabled={!canModifyAll}
+                  onChange={() => canModifyAll && (a.hasReply !== false) && toggleVisibleApp(a.id)}
+                  disabled={!canModifyAll || a.hasReply === false}
                 />
                 {a.name}
+                {a.hasReply === false && (
+                  <span style={{ fontSize: 11, color: 'var(--danger)', marginLeft: 8 }}>
+                    未定义返回结果
+                  </span>
+                )}
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
                   {a.source === 'system' ? '系统' : '用户'}
                 </span>
@@ -336,10 +341,15 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
                 <input
                   type="checkbox"
                   checked={formData.visibleServices.includes(a.id)}
-                  onChange={() => canModifyAll && toggleVisibleService(a.id)}
-                  disabled={!canModifyAll}
+                  onChange={() => canModifyAll && (a.hasReply !== false) && toggleVisibleService(a.id)}
+                  disabled={!canModifyAll || a.hasReply === false}
                 />
                 {a.name}
+                {a.hasReply === false && (
+                  <span style={{ fontSize: 11, color: 'var(--danger)', marginLeft: 8 }}>
+                    未定义返回结果
+                  </span>
+                )}
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
                   {a.source === 'system' ? '系统' : '用户'}
                 </span>

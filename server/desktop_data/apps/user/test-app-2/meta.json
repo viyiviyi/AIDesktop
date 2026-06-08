@@ -1,0 +1,59 @@
+{
+  "id": "test-app-2",
+  "name": "测试应用2",
+  "description": "测试应用2",
+  "source": "user",
+  "type": "desktop",
+  "icon": "/public_icons/assistant.svg",
+  "models": [
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "priority": 1,
+      "maxTokens": 256,
+      "supports": [
+        "text"
+      ],
+      "params": {
+        "temperature": 0.1,
+        "top_p": 0.1
+      },
+      "overrideParams": true,
+      "headerParams": [],
+      "bodyParams": [
+        {
+          "key": "thinking",
+          "value": "{\"type\":\"disabled\"}",
+          "hasReply: true,
+  "enabled"": true
+        }
+      ]
+    }
+  ],
+  "supportedInputs": [
+    "text"
+  ],
+  "inputDescription": "输入任何消息",
+  "outputDescription": "测试应用2的回复",
+  "visibleApps": [
+    "test-app"
+  ],
+  "visibleServices": [],
+  "tools": [],
+  "headerParams": [
+    {
+      "key": "system_prompt",
+      "value": "你是一个测试应用，名称为测试应用2。你的说明就是：测试应用2。请根据用户输入进行回复。",
+      "enabled": true
+    }
+  ],
+  "bodyParams": [
+    {
+      "key": "thinking",
+      "value": "{\"type\":\"disabled\"}",
+      "enabled": true
+    }
+  ],
+  "enabled": true,
+  "backgroundImage": ""
+}

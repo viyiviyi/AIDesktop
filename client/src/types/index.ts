@@ -136,6 +136,7 @@ export interface AppInfo {
   visibleServices: string[];
   tools: string[];
   enabled?: boolean;
+  hasReply?: boolean;
 }
 
 export interface App {

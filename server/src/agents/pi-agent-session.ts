@@ -92,6 +92,10 @@ export class PiAgentSession {
   model!: Model<Api>;
   private apiKey: string | undefined;
   private textStreamCbs: TextStreamCallback[] = [];
+  /** 当前运行的会话 ID，由 runAgentAsync 设置 */
+  currentConvId: string = '';
+  /** 是否已调用 mcp.agent.reply */
+  hasReplied: boolean = false;
 
   constructor(appId: string) {
     this.appId = appId;
@@ -222,6 +226,22 @@ export async function runAgentAsync(
 
   const fullHistory = [...existingMessages, { role: 'user', content: userContent }];
   const session = await piAgentManager.getOrCreate(appId, app);
+  session.currentConvId = convId;
+
+  // 注入 convId 到 mcp_agent_reply 工具的 context 中
+  if (session.agent.state.tools) {
+    const tools = session.agent.state.tools as any[];
+    for (const tool of tools) {
+      if (tool.name === 'mcp_agent_reply') {
+        const origExecute = tool.execute;
+        tool.execute = async (toolCallId: string, params: any, signal: any, onUpdate: any) => {
+          session.hasReplied = true;
+          return origExecute(toolCallId, { ...params, _convId: convId }, signal, onUpdate);
+        };
+        break;
+      }
+    }
+  }
 
   const unsub = session.agent.subscribe((event: any) => {
     const emit = (type: string, data: Record<string, unknown>) => {
@@ -283,6 +303,22 @@ export async function runAgentAsync(
   const newPiMessages = piMessages.slice(existingCount);
 
   await saveNewMessages(appId, convId, newPiMessages, conversationService);
+
+  // 如果被调 agent 没有调用 reply，注入提示
+  const conversation = await conversationService.getConversation(appId, convId);
+  if (conversation?.source === 'agent' && !session.hasReplied && !conversation.callChain?.some(c => c.callerAppId === '_injected_')) {
+    const promptText = '你被调用来完成任务。请使用 mcp.agent.reply 工具返回你的最终结果。';
+    // 注入系统提示到会话
+    await conversationService.addMessage(appId, convId, 'system', [{ type: 'text', text: promptText }]);
+    // 设置标记，防止重复注入
+    if (conversation.callChain) {
+      conversation.callChain.push({ callerAppId: '_injected_', timestamp: new Date().toISOString() });
+    } else {
+      conversation.callChain = [{ callerAppId: '_injected_', timestamp: new Date().toISOString() }];
+    }
+    await conversationService.updateConversation(appId, convId, { callChain: conversation.callChain } as any);
+    eventBus.emit({ type: 'error', appId, convId, data: { message: '请使用 mcp.agent.reply 返回结果' } });
+  }
 
   eventBus.emit({ type: 'done', appId, convId, data: {} });
 }

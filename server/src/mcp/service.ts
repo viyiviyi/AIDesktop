@@ -8,8 +8,8 @@ import { runAgentAsync } from '../agents/pi-agent-session.js';
 const builtInServices: Record<string, MCPService> = {
   'mcp.agent': {
     name: 'mcp.agent',
-    description: 'Agent management service - list and call agents',
-    methods: ['list', 'call', 'getInfo']
+    description: 'Agent management service - list, call, and return results from agents',
+    methods: ['list', 'call', 'getInfo', 'reply']
   },
   'mcp.window': {
     name: 'mcp.window',
@@ -80,7 +80,7 @@ class MCPServiceRegistry {
     serviceName: string,
     method: string,
     args: Record<string, unknown>,
-    context: { appId?: string; userId?: string }
+    context: { appId?: string; userId?: string; convId?: string }
   ): Promise<unknown> {
     const service = this.services.get(serviceName);
     if (!service) {
@@ -113,7 +113,7 @@ class MCPServiceRegistry {
   private async handleAgentMethod(
     method: string,
     args: Record<string, unknown>,
-    context: { appId?: string }
+    context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     const { appLoader } = await import('../services/appLoader.js');
     const { conversationService } = await import('../services/conversation.js');
@@ -183,6 +183,10 @@ class MCPServiceRegistry {
         if (targetApp.meta.type !== 'desktop' && targetApp.meta.type !== 'background') {
           throw new Error(`Agent ${agentId} is not callable`);
         }
+        // 检查是否有返回结果能力
+        if (!targetApp.meta.hasReply) {
+          throw new Error(`Agent ${agentId} 未实现返回结果工具，无法被调用`);
+        }
 
         // 可见性检查
         if (context.appId) {
@@ -229,18 +233,37 @@ class MCPServiceRegistry {
       }
 
       case 'reply': {
-        // args: { result: string, conversationId: string }
-        // 将结果回复给调用方 agent
-        const result = args.result as string;
-        const replyConvId = args.conversationId as string;
-        if (!replyConvId || !result) throw new Error('conversationId and result are required');
+        // 被调 agent 返回结果给调用方
+        // args: { result: string, _convId?: string }
+        const replyResult = args.result as string;
+        const replyConvId = (args._convId as string) || context.convId || '';
+        if (!replyResult) throw new Error('result is required');
 
-        const replyConv = await conversationService.getConversation(context.appId || '', replyConvId);
-        if (!replyConv) throw new Error(`Conversation ${replyConvId} not found`);
+        // 从当前会话的 callChain 找到调用方
+        const currentConv = await conversationService.getConversation(context.appId || '', replyConvId);
+        if (!currentConv) throw new Error(`Conversation ${replyConvId} not found`);
+        if (!currentConv.callChain || currentConv.callChain.length === 0) {
+          throw new Error('No caller found in call chain');
+        }
 
-        const saved = await conversationService.addMessage(context.appId || '', replyConvId, 'assistant', [{ type: 'text', text: result }]);
-        eventBus.emit({ type: 'message_end', appId: context.appId || '', convId: replyConvId, data: { id: saved?.id || '', content: saved?.content || [] }});
-        eventBus.emit({ type: 'done', appId: context.appId || '', convId: replyConvId, data: {} });
+        const callerInfo = currentConv.callChain[currentConv.callChain.length - 1];
+        const callerConv = await conversationService.getConversation(callerInfo.callerAppId, callerInfo.callerConvId || '');
+        if (!callerConv) throw new Error(`Caller conversation not found`);
+
+        // 将结果保存到被调 agent 的会话
+        await conversationService.addMessage(context.appId || '', replyConvId, 'assistant', [{ type: 'text', text: replyResult }]);
+
+        // 将结果推送给调用方会话
+        await conversationService.addMessage(callerInfo.callerAppId, callerInfo.callerConvId || '', 'assistant', [{ type: 'text', text: `来自 ${context.appId} 的回复：${replyResult}` }]);
+
+        // 通过 EventBus 通知调用方
+        eventBus.emit({ type: 'agent_call_end', appId: callerInfo.callerAppId, convId: callerInfo.callerConvId || '', data: {
+          result: replyResult,
+          fromAppId: context.appId,
+          timestamp: new Date().toISOString(),
+        }});
+        // 通知被调 agent 会话结束
+        eventBus.emit({ type: 'done', appId: context.appId || '', convId: replyConvId, data: { replySent: true } });
 
         return { success: true };
       }
@@ -283,7 +306,7 @@ class MCPServiceRegistry {
   private async handleWindowMethod(
     method: string,
     args: Record<string, unknown>,
-    context: { appId?: string }
+    context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     // Window management is primarily client-side
     // Server just validates the request
@@ -305,7 +328,7 @@ class MCPServiceRegistry {
   private async handleFilesystemMethod(
     method: string,
     args: Record<string, unknown>,
-    context: { appId?: string }
+    context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     const fs = await import('fs/promises');
     const path = await import('path');
@@ -364,7 +387,7 @@ class MCPServiceRegistry {
   private async handleSettingsMethod(
     method: string,
     args: Record<string, unknown>,
-    context: { appId?: string }
+    context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     const { settingsService } = await import('../services/settings.js');
 
@@ -381,7 +404,7 @@ class MCPServiceRegistry {
   private async handleBrowserMethod(
     method: string,
     args: Record<string, unknown>,
-    context: { appId?: string }
+    context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     const { browserManager } = await import('./browser/manager.js');
 

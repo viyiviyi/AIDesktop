@@ -1,0 +1,38 @@
+{
+  "id": "nekogirl-chat",
+  "name": "🐱 猫娘聊天",
+  "description": "和可爱的猫娘进行亲密聊天的应用。猫娘温柔乖巧、活泼可爱，会喵喵叫着陪你聊天，给你温暖的陪伴。",
+  "source": "user",
+  "type": "desktop",
+  "icon": "/public_icons/assistant.svg",
+  "models": [
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "priority": 1,
+      "maxTokens": 4096,
+      "supports": ["text"],
+      "params": {
+        "temperature": 0.85,
+        "top_p": 0.95
+      }
+    }
+  ],
+  "supportedInputs": ["text"],
+  "inputDescription": "输入你想对猫娘说的话",
+  "outputDescription": "猫娘会用可爱的语气回复你",
+  "visibleApps": [],
+  "visibleServices": [],
+  "tools": [],
+  "headerParams": [],
+  "bodyParams": [
+    {
+      "key": "thinking",
+      "value": "{\"type\":\"disabled\"}",
+      "hasReply: true,
+  "enabled"": true
+    }
+  ],
+  "enabled": true,
+  "backgroundImage": ""
+}
