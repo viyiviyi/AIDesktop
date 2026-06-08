@@ -79,12 +79,13 @@ router.put('/:appId', async (req: Request, res: Response) => {
 
     if (app.meta.source === 'system') {
       // 系统应用只允许更新工具/可见性/模型等运行时配置
-      const { models, visibleApps, visibleServices, tools } = req.body;
+      const { models, visibleApps, visibleServices, tools, hasReply } = req.body;
       const updates: Partial<typeof app.meta> = {};
       if (models !== undefined) updates.models = models;
       if (visibleApps !== undefined) updates.visibleApps = visibleApps;
       if (visibleServices !== undefined) updates.visibleServices = visibleServices;
       if (tools !== undefined) updates.tools = tools;
+      if (hasReply !== undefined) updates.hasReply = hasReply;
 
       if (Object.keys(updates).length === 0) {
         return res.status(403).json({ error: 'Cannot modify system app settings' });
@@ -95,7 +96,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
     }
 
     // Handle flat structure from client - extract known meta fields
-    const { models, enabled, backgroundImage, supportedInputs, inputDescription, outputDescription, visibleApps, visibleServices, tools, headerParams, bodyParams, ...rest } = req.body;
+    const { models, enabled, backgroundImage, supportedInputs, inputDescription, outputDescription, visibleApps, visibleServices, tools, hasReply, headerParams, bodyParams, ...rest } = req.body;
     const updates: Partial<typeof app.meta> = { ...rest };
     if (models !== undefined) updates.models = models;
     if (enabled !== undefined) updates.enabled = enabled;
@@ -106,6 +107,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
     if (visibleApps !== undefined) updates.visibleApps = visibleApps;
     if (visibleServices !== undefined) updates.visibleServices = visibleServices;
     if (tools !== undefined) updates.tools = tools;
+    if (hasReply !== undefined) updates.hasReply = hasReply;
 
     const updated = await appLoader.updateApp(req.params.appId, updates);
     res.json(updated);
