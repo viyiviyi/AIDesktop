@@ -76,7 +76,6 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         visibleApps: fullApp.visibleApps || [],
         visibleServices: fullApp.visibleServices || [],
         tools: fullApp.tools || [],
-        replySchema: fullApp.replySchema || undefined,
         appMd: fullApp.appMd || '',
         headerParams: fullApp.models?.[0]?.headerParams || [],
         bodyParams: fullApp.models?.[0]?.bodyParams || [],
@@ -112,7 +111,6 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         visibleApps: formData.visibleApps,
         visibleServices: formData.visibleServices,
         tools: formData.tools,
-        replySchema: formData.replySchema || undefined,
         // headerParams/bodyParams 写入 models[0]，不在顶层
         models: app.models?.length ? [{
           ...app.models[0],
@@ -314,15 +312,10 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
                 <input
                   type="checkbox"
                   checked={formData.visibleApps.includes(a.id)}
-                  onChange={() => canModifyAll && a.replySchema && toggleVisibleApp(a.id)}
-                  disabled={!canModifyAll || !a.replySchema}
+                  onChange={() => canModifyAll && toggleVisibleApp(a.id)}
+                  disabled={!canModifyAll}
                 />
                 {a.name}
-                {!a.replySchema && (
-                  <span style={{ fontSize: 11, color: 'var(--danger)', marginLeft: 8 }}>
-                    未定义返回数据格式
-                  </span>
-                )}
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
                   {a.source === 'system' ? '系统' : '用户'}
                 </span>
@@ -394,37 +387,6 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
           onChange={(e) => setFormData(prev => ({ ...prev, outputDescription: e.target.value }))}
           placeholder="描述该应用产生输出的格式..."
           rows={2}
-        />
-      </div>
-      <div className="app-settings-field">
-        <label>返回数据格式 (replySchema)</label>
-        <p className="app-settings-hint" style={{ fontSize: 11, marginBottom: 4 }}>
-          JSON Schema 定义被调用时返回的数据格式。定义了此字段的应用才能被其他 Agent 调用。
-          如果不支持被调用，留空即可。
-        </p>
-        <textarea
-          value={formData.replySchema ? JSON.stringify(formData.replySchema, null, 2) : ''}
-          onChange={(e) => {
-            try {
-              const parsed = JSON.parse(e.target.value);
-              setFormData(prev => ({ ...prev, replySchema: parsed }));
-            } catch {
-              // JSON 不完整时不更新
-            }
-          }}
-          placeholder={'{\n  "type": "object",\n  "properties": {\n    "success": { "type": "boolean" },\n    "data": { "type": "object" },\n    "error": { "type": "string" }\n  }\n}'}
-          rows={6}
-          style={{
-            width: '100%',
-            fontFamily: 'monospace',
-            fontSize: 12,
-            padding: 8,
-            background: 'var(--input-bg)',
-            border: '1px solid var(--border-primary)',
-            borderRadius: 4,
-            color: 'var(--text-primary)',
-            resize: 'vertical',
-          }}
         />
       </div>
     </div>

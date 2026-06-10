@@ -184,10 +184,7 @@ class MCPServiceRegistry {
         if (targetApp.meta.type !== 'desktop' && targetApp.meta.type !== 'background') {
           throw new Error(`Agent ${agentId} is not callable`);
         }
-        // 检查是否有返回结果能力
-        if (!targetApp.meta.replySchema) {
-          throw new Error(`Agent ${agentId} 未定义返回数据格式，无法被调用`);
-        }
+        // 现在不要求 replySchema：被调 agent 的输出会自动返回给调用方
 
         // 可见性检查
         if (context.appId) {

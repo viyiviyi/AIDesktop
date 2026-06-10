@@ -304,23 +304,66 @@ export async function runAgentAsync(
 
   await saveNewMessages(appId, convId, newPiMessages, conversationService);
 
-  // 如果被调 agent 没有调用 reply，注入提示
+  // 自动将最终结果返回给调用方（除非被调 agent 已经显式调用了 reply）
   const conversation = await conversationService.getConversation(appId, convId);
-  if (conversation?.source === 'agent' && !session.hasReplied && !conversation.callChain?.some(c => c.callerAppId === '_injected_')) {
-    const promptText = '你被调用来完成任务。请使用 mcp.agent.reply 工具返回你的最终结果。';
-    // 注入系统提示到会话
-    await conversationService.addMessage(appId, convId, 'system', [{ type: 'text', text: promptText }]);
-    // 设置标记，防止重复注入
-    if (conversation.callChain) {
-      conversation.callChain.push({ callerAppId: '_injected_', timestamp: new Date().toISOString() });
-    } else {
-      conversation.callChain = [{ callerAppId: '_injected_', timestamp: new Date().toISOString() }];
+  if (conversation?.source === 'agent' && !session.hasReplied && conversation.callChain && conversation.callChain.length > 0) {
+    const lastCaller = conversation.callChain[conversation.callChain.length - 1];
+    // 跳过 _injected_ 这种内部标记
+    if (lastCaller.callerAppId && lastCaller.callerAppId !== '_injected_') {
+      // 提取最后一次 assistant 消息的文本作为最终结果
+      const finalText = extractFinalText(piMessages, newPiMessages);
+      if (finalText) {
+        const callId = lastCaller.callId || '';
+        const resultToolCallId = `agent-call-${callId}`;
+
+        // 将消息注入调用方会话
+        await conversationService.addMessage(
+          lastCaller.callerAppId,
+          lastCaller.callerConvId || '',
+          'assistant' as any,
+          [{ type: 'text', text: `来自 ${appId}（调用 ${callId}）的结果：${finalText}` }],
+        );
+
+        // 通知调用方会话
+        eventBus.emit({ type: 'agent_call_end', appId: lastCaller.callerAppId, convId: lastCaller.callerConvId || '', data: {
+          callId,
+          result: finalText,
+          fromAppId: appId,
+          timestamp: new Date().toISOString(),
+        }});
+      }
     }
-    await conversationService.updateConversation(appId, convId, { callChain: conversation.callChain } as any);
-    eventBus.emit({ type: 'error', appId, convId, data: { message: '请使用 mcp.agent.reply 返回结果' } });
   }
 
   eventBus.emit({ type: 'done', appId, convId, data: {} });
+}
+
+/**
+ * 从 agent 输出的消息中提取最终文本结果。
+ * 优先使用最新轮次的 assistant 消息。
+ */
+function extractFinalText(piMessages: any[], newPiMessages: any[]): string {
+  // 从新消息中倒序查找最后一个 assistant 消息
+  for (let i = newPiMessages.length - 1; i >= 0; i--) {
+    const msg = newPiMessages[i];
+    if (msg.role === 'assistant') {
+      const texts = (msg.content || [])
+        .filter((c: any) => c?.type === 'text' && c.text)
+        .map((c: any) => c.text);
+      if (texts.length > 0) return texts.join('');
+    }
+  }
+  // 回退：从全量消息中查找
+  for (let i = piMessages.length - 1; i >= 0; i--) {
+    const msg = piMessages[i];
+    if (msg.role === 'assistant') {
+      const texts = (msg.content || [])
+        .filter((c: any) => c?.type === 'text' && c.text)
+        .map((c: any) => c.text);
+      if (texts.length > 0) return texts.join('');
+    }
+  }
+  return '';
 }
 
 /**
