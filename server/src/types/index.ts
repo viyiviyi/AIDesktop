@@ -101,7 +101,7 @@ export interface Conversation {
   messages: Message[];
   source?: ConversationSource;
   /** Agent 调用链：记录谁发起了这次会话 */
-  callChain?: Array<{ callerAppId: string; callerConvId?: string; timestamp: string }>;
+  callChain?: Array<{ callerAppId: string; callerConvId?: string; callId?: string; timestamp: string }>;
   /** 等待用户输入的请求 ID */
   pendingUserInput?: string | null;
 }
@@ -144,8 +144,8 @@ export interface AppMeta {
   visibleServices: string[];
   tools: string[];
   enabled?: boolean;
-  /** 是否实现返回结果工具，没有该能力的 agent 不可被调用 */
-  hasReply?: boolean;
+  /** 返回结果数据的 JSON Schema，定义 mcp.agent.reply 的参数格式。存在此字段时表示应用有返回结果能力。 */
+  replySchema?: Record<string, unknown>;
 }
 
 export interface App {

@@ -562,6 +562,8 @@ body {
   border-bottom-left-radius: 4px;
 }
 
+
+
 .chat-message.user.failed .chat-message-content {
   background: var(--error-color, #dc3545);
   opacity: 0.8;
@@ -633,6 +635,12 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.chat-header-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  margin-left: 8px;
 }
 .chat-header-btn {
   width: 28px;
@@ -2591,6 +2599,8 @@ button {
   flex: 1; min-width: 0;
 }
 .tool-call-expand { font-size: 10px; color: var(--text-secondary); flex-shrink: 0; }
+.tool-call-times { display: flex; gap: 4px; margin-left: auto; margin-right: 4px; flex-shrink: 0; }
+.tool-call-time { font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
 .tool-call-detail {
   padding: 0 10px 8px;
 }
@@ -2609,6 +2619,49 @@ button {
 .thinking-dots span:nth-child(2) { animation-delay:0.2s; }
 .thinking-dots span:nth-child(3) { animation-delay:0.4s; }
 @keyframes dot-blink { 0%,20%{opacity:0} 50%{opacity:1} 100%{opacity:0} }
+
+/* 思考内容折叠 */
+.thinking-block {
+  position: relative;
+  z-index: 1;
+  padding-left: 4px;
+}
+.thinking-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  user-select: none;
+  margin-bottom: 1px;
+  margin-left: 5px;
+}
+.thinking-header:hover {
+  background: rgba(255,255,255,0.1);
+}
+.thinking-label {
+  font-weight: 500;
+}
+.thinking-content {
+  margin-top: 0;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 4px;
+}
+.thinking-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  line-height: 1.5;
+}
 
 /* ============ 回复/编辑/分支/跳转样式 ============ */
 
@@ -2636,15 +2689,24 @@ button {
   white-space: nowrap;
 }
 
-/* 操作按钮 */
-.chat-message-actions {
+/* 底部栏（时间戳 + 操作按钮） */
+.chat-message-footer {
   display: flex;
-  gap: 2px;
-  margin-top: 4px;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 0 16px;
+}
+.chat-message-timestamp {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+.chat-message-footer .msg-action-btn {
   opacity: 0;
   transition: opacity 0.15s;
 }
-.chat-message:hover .chat-message-actions { opacity: 1; }
+.chat-message:hover .chat-message-footer .msg-action-btn { opacity: 1; }
 .msg-action-btn {
   background: none;
   border: none;

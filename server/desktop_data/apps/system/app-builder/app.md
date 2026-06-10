@@ -14,46 +14,23 @@
 2. 询问应用描述（如果没有提供）
 3. 询问应用类型：桌面应用（desktop）还是后台服务（background）
 4. 根据用户需求推荐合适的MCP服务和技能
-5. 询问是否需要返回结果能力（hasReply）。如果应用需要被其他 Agent 调用并返回数据，需要启用此功能。默认启用。
-   - hasReply: true — 应用可以被其他 Agent 调用，且必须通过 mcp.agent.reply 返回结果
-   - hasReply: false — 应用不可以被其他 Agent 调用，不可在 visibleApps 中勾选
-6. 如果 hasReply 为 true，询问用户返回数据的格式。
-
-返回数据结构定义在 app.md 中，格式如下：
-
-## 返回数据结构
-
-当你被其他 Agent 调用时，最终必须使用 `mcp.agent.reply` 工具返回结果。
-返回结果必须是字符串，建议使用 JSON 格式。
-
-以下是返回数据结构的定义示例，需要在 app.md 中明确说明：
-
-```markdown
-## 返回数据结构
-
-本应用被调用时，最终通过 mcp.agent.reply 返回以下格式的数据：
-
-### 成功响应
-```json
-{
-  "success": true,
-  "data": {
-    "field1": "值1",
-    "field2": "值2"
-  }
-}
-```
-
-### 错误响应
-```json
-{
-  "success": false,
-  "error": "错误描述"
-}
-```
-```
-
-在 app.md 中还需要增加关于被调用的提示：
+5. 询问是否需要被其他 Agent 调用（即定义返回数据格式 replySchema）。
+   - 如果不需要被调用，留空 replySchema 即可
+   - 如果需要被调用，需要定义 JSON Schema 描述返回数据格式，例如：
+     ```json
+     {
+       "type": "object",
+       "properties": {
+         "success": { "type": "boolean" },
+         "data": { "type": "object" },
+         "error": { "type": "string" }
+       },
+       "required": ["success"]
+     }
+     ```
+   - 定义了 replySchema 的应用才能被其他 Agent 调用
+   - 被调用时必须使用 mcp.agent.reply 返回符合该 Schema 的数据
+6. 如果定义了 replySchema，引导用户在 app.md 中添加以下说明：
 
 ```markdown
 ## 被调用说明
@@ -62,8 +39,33 @@
 当被调用时：
 1. 接收来自调用方的消息
 2. 处理请求
-3. 使用 mcp.agent.reply 返回结果
+3. 使用 mcp.agent.reply 返回结果（格式定义见下方）
 4. 调用 reply 后 Agent 结束，不再继续对话
+
+## 返回数据结构
+
+返回数据必须符合以下 JSON Schema：
+```json
+{
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "data": { "type": "object" },
+    "error": { "type": "string" }
+  },
+  "required": ["success"]
+}
+```
+
+### 成功响应示例
+```json
+{"success": true, "data": {"result": "xxx"}}
+```
+
+### 错误响应示例
+```json
+{"success": false, "error": "错误描述"}
+```
 ```
 
 最终生成完整的应用配置，包括 meta.json 和 app.md 文件。
@@ -83,6 +85,14 @@
   "visibleApps": [],
   "visibleServices": [],
   "tools": [],
-  "hasReply": true,
+  "replySchema": {
+    "type": "object",
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": "object" },
+      "error": { "type": "string" }
+    },
+    "required": ["success"]
+  },
   "enabled": true
 }

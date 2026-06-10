@@ -43,9 +43,7 @@ class ConversationService {
 
   // 获取应用的所有会话
   async getConversations(appId: string): Promise<Conversation[]> {
-    if (!this.cache.has(appId)) {
-      await this.loadConversations(appId);
-    }
+    await this.loadConversations(appId);
     return Array.from(this.cache.get(appId)!.values());
   }
 
@@ -56,6 +54,8 @@ class ConversationService {
 
     try {
       const files = await readDir(convDir);
+      // 按文件名排序（时间戳倒序），最新的在前
+      files.sort().reverse();
       for (const file of files) {
         if (file.endsWith('.json')) {
           const conv = await readJsonFile<Conversation>(path.join(convDir, file));
@@ -74,6 +74,10 @@ class ConversationService {
   // 获取单个会话
   async getConversation(appId: string, convId: string): Promise<Conversation | null> {
     if (!this.cache.has(appId)) {
+      await this.loadConversations(appId);
+    }
+    // 如果缓存中没有，尝试重新加载
+    if (!this.cache.get(appId)!.has(convId)) {
       await this.loadConversations(appId);
     }
     return this.cache.get(appId)!.get(convId) || null;

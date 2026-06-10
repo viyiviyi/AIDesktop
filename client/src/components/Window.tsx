@@ -305,7 +305,7 @@ interface ChatAppProps {
  */
 export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const { addToast, confirm } = useToast();
-  const [conversations, setConversations] = useState<{ id: string; title: string; preview?: string }[]>([]);
+  const [conversations, setConversations] = useState<{ id: string; title: string; preview?: string; createdAt?: string }[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(
     conversationId && !conversationId.startsWith('conv-') ? conversationId : null
   );
@@ -468,7 +468,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
             .join('')
             .slice(0, 100)
           : undefined;
-        return { id: c.id, title: c.title, preview };
+        return { id: c.id, title: c.title, preview, createdAt: c.createdAt };
       });
       setConversations(mapped);
       // 自动设置当前会话：优先用传入的 preserveConvId，否则用最后一个有消息的，否则用第一个
@@ -688,6 +688,27 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       .join('');
   };
 
+  // 格式化时间为 HH:mm:ss
+  const formatTime = (ts: string): string => {
+    try {
+      const d = new Date(ts);
+      return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+      return '';
+    }
+  };
+
+  // 格式化时间为 MM-dd HH:mm
+  const formatShortDateTime = (ts: string): string => {
+    try {
+      const d = new Date(ts);
+      return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+        + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '';
+    }
+  };
+
   // 展开/收起 tool call 详情 — 按 {msgId: Set<toolCallId>} 独立
   const [expandedByMsg, setExpandedByMsg] = useState<Record<string, Set<string>>>({});
   const toggleToolExpand = useCallback((msgId: string, toolId: string) => {
@@ -718,19 +739,22 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
     const expandedSet = expandedByMsg[msg.id] || new Set();
 
-    // assistant 消息：提取 text 和 toolCall blocks
+    // assistant 消息：提取 text、thinking 和 toolCall blocks
     const textParts: string[] = [];
+    const thinkingParts: string[] = [];
     const toolCallMap = new Map<string, { id: string; name: string; args?: unknown }>();
     for (const c of msg.content) {
       if (c.type === 'text') {
         textParts.push(c.text);
+      } else if (c.type === 'thinking') {
+        thinkingParts.push(c.text);
       } else if (c.type === 'toolCall') {
         toolCallMap.set(c.id, { id: c.id, name: c.name, args: c.arguments });
       }
     }
 
     // 收集后续 toolResult 消息
-    const toolResults = new Map<string, { toolCallId: string; toolName: string; result?: unknown; isError: boolean }>();
+    const toolResults = new Map<string, { toolCallId: string; toolName: string; result?: unknown; isError: boolean; timestamp?: string }>();
     if (allMessages && idx !== undefined) {
       for (let i = idx + 1; i < allMessages.length; i++) {
         const next = allMessages[i];
@@ -743,13 +767,14 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
             toolName: meta.toolName,
             result: text || undefined,
             isError: meta.isError,
+            timestamp: next.timestamp,
           });
         }
       }
     }
 
     // 合并：toolCall 有 result 的合并显示，只有 toolCall 没有 result 的显示为"等待中"
-    const mergedItems: Array<{ id: string; name: string; args?: unknown; result?: unknown; isError: boolean }> = [];
+    const mergedItems: Array<{ id: string; name: string; args?: unknown; result?: unknown; isError: boolean; callTime?: string; resTime?: string }> = [];
     for (const [id, tc] of toolCallMap) {
       const tr = toolResults.get(id);
       mergedItems.push({
@@ -758,6 +783,8 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         args: tc.args,
         result: tr?.result,
         isError: tr?.isError || false,
+        callTime: msg.timestamp,
+        resTime: tr?.timestamp,
       });
     }
     // 只有 result 没有 toolCall 的也加上（异常情况）
@@ -768,6 +795,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
           name: tr.toolName,
           result: tr.result,
           isError: tr.isError,
+          resTime: tr.timestamp,
         });
       }
     }
@@ -795,6 +823,10 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                   <span className="tool-call-icon">{icon}</span>
                   <span className="tool-call-name">{tp.name}</span>
                   {argsPreview && <span className="tool-call-args-preview">{argsPreview}</span>}
+                  <span className="tool-call-times">
+                    {tp.callTime && <span className="tool-call-time">调用 {formatTime(tp.callTime)}</span>}
+                    {tp.resTime && <span className="tool-call-time">响应 {formatTime(tp.resTime)}</span>}
+                  </span>
                   {hasDetail && <span className="tool-call-expand">{isExpanded ? '▲' : '▼'}</span>}
                 </div>
                 {isExpanded && (
@@ -831,6 +863,12 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
           ☰
         </button>
         <span className="chat-header-title">{currentConvTitle}</span>
+        {(() => {
+          const currentConv = conversations.find((c) => c.id === currentConvId);
+          return currentConv?.createdAt ? (
+            <span className="chat-header-time">{formatShortDateTime(currentConv.createdAt)}</span>
+          ) : null;
+        })()}
         <button className="chat-header-btn chat-header-btn-primary" onClick={createNewConversation} title="新建会话">
           +
         </button>
@@ -1006,13 +1044,31 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                   ref={refCallback}
                   className={`chat-message ${msg.role} ${isHighlight ? 'highlight' : ''} ${msg.edited ? 'edited' : ''}`}
                 >
+                  {msg.role === 'assistant' && msg.content.some(c => (c as any).type === 'thinking') && (
+                    <div className="thinking-block">
+                      <div className="thinking-header" onClick={() => toggleToolExpand(msg.id, '_thinking')}>
+                        <span className="thinking-label">已思考</span>
+                      </div>
+                      {(expandedByMsg[msg.id] || new Set()).has('_thinking') && (
+                        <div className="thinking-content">
+                          {msg.content.filter(c => (c as any).type === 'thinking').map((c, i) => (
+                            <pre key={i} className="thinking-text">{(c as any).text}</pre>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="chat-message-content">
                     {renderMessageContent(msg, messages, idx)}
                     {msg.edited && <span className="edited-badge"> (已编辑)</span>}
                   </div>
 
-                  {/* 操作按钮 */}
-                  <div className="chat-message-actions">
+                  {/* 时间戳 + 操作按钮 */}
+                  <div className="chat-message-footer">
+                    {msg.timestamp && (
+                      <span className="chat-message-timestamp">{formatTime(msg.timestamp)}</span>
+                    )}
+                    <span style={{ flex: 1 }} />
                     <button
                       className="msg-action-btn"
                       onClick={() => startReply(msg.id)}

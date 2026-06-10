@@ -49,11 +49,20 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
 
     for (const method of service.methods) {
       const name = safeToolName(service.name, method);
+
+      // mcp_agent_reply 使用 app 自己的 replySchema 作为 result 参数定义
+      let parameters = Type.Object({}, { additionalProperties: true });
+      if (service.name === 'mcp.agent' && method === 'reply' && app.meta.replySchema) {
+        parameters = Type.Object({
+          result: Type.String({ description: `JSON 格式的结果，请按照以下 JSON Schema 定义返回数据：${JSON.stringify(app.meta.replySchema)}` }),
+        });
+      }
+
       tools.push({
         name,
         label: `${service.name} - ${method}`,
         description: `${method} - ${service.description}`,
-        parameters: Type.Object({}, { additionalProperties: true }),
+        parameters,
         execute: async (toolCallId, params, signal, onUpdate) => {
           try {
             const { serviceName, method: m } = parseToolName(name);

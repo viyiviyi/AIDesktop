@@ -90,7 +90,7 @@ export interface Conversation {
   updatedAt: string;
   messages: Message[];
   source?: 'user' | 'agent' | 'system';
-  callChain?: Array<{ callerAppId: string; callerConvId?: string; timestamp: string }>;
+  callChain?: Array<{ callerAppId: string; callerConvId?: string; callId?: string; timestamp: string }>;
   pendingUserInput?: string | null;
 }
 
@@ -136,7 +136,7 @@ export interface AppInfo {
   visibleServices: string[];
   tools: string[];
   enabled?: boolean;
-  hasReply?: boolean;
+  replySchema?: Record<string, unknown>;
 }
 
 export interface App {

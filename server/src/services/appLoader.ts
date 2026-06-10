@@ -142,7 +142,7 @@ class AppLoader {
       visibleApps: app.meta.visibleApps || [],
       visibleServices: app.meta.visibleServices || [],
       tools: app.meta.tools || [],
-      hasReply: app.meta.hasReply !== undefined ? app.meta.hasReply : true,
+      replySchema: app.meta.replySchema,
       enabled: app.meta.enabled !== undefined ? app.meta.enabled : true
     };
 
