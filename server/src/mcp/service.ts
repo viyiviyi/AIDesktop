@@ -124,7 +124,10 @@ class MCPServiceRegistry {
       case 'list': {
         // 获取调用者的信息，用于过滤可见的agent列表
         const callerApp = context.appId ? appLoader.getApp(context.appId) : null;
-        const visibleApps = callerApp?.meta.visibleApps || [];
+        const visibleApps = [...new Set([
+          ...(callerApp?.config.visibleApps || []),
+          ...(callerApp?.meta.visibleApps || [])
+        ])];
 
         return {
           agents: appLoader.getAllApps()
@@ -158,8 +161,8 @@ class MCPServiceRegistry {
           description: app.meta.description,
           type: app.meta.type,
           icon: app.meta.icon,
-          supportedInputs: app.meta.supportedInputs,
-          tools: app.meta.tools
+          supportedInputs: (app.config.supportedInputs || app.meta.supportedInputs),
+          tools: (app.config.tools || app.meta.tools)
         };
       }
       case 'call': {
@@ -189,7 +192,11 @@ class MCPServiceRegistry {
         // 可见性检查
         if (context.appId) {
           const callerApp = appLoader.getApp(context.appId);
-          if (callerApp && callerApp.meta.visibleApps.length > 0 && !callerApp.meta.visibleApps.includes(agentId)) {
+          const callerVisibleApps = [...new Set([
+            ...(callerApp?.config.visibleApps || []),
+            ...(callerApp?.meta.visibleApps || [])
+          ])];
+          if (callerVisibleApps.length > 0 && !callerVisibleApps.includes(agentId)) {
             throw new Error(`Agent ${agentId} is not visible`);
           }
         }

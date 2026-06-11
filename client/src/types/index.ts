@@ -139,11 +139,24 @@ export interface AppInfo {
   replySchema?: Record<string, unknown>;
 }
 
+export interface AppConfig {
+  enabled?: boolean;
+  backgroundImage?: string;
+  supportedInputs?: ContentType[];
+  inputDescription?: string;
+  outputDescription?: string;
+  visibleApps?: string[];
+  visibleServices?: string[];
+  tools?: string[];
+  models?: ModelConfig[];
+}
+
 export interface App {
   meta: AppInfo;
   appMd: string;
   mcpServices: string[];
   skills: string[];
+  config: AppConfig;
 }
 
 // Skills

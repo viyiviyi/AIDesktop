@@ -1,6 +1,6 @@
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import type { App, AppMeta, AppSource } from '../types/index.js';
+import type { App, AppMeta, AppConfig, AppSource } from '../types/index.js';
 import {
   APPS_DIR,
   APPS_DATA_DIR,
@@ -17,7 +17,10 @@ import {
 /**
  * AppLoader - 应用加载器
  * 负责从磁盘加载应用、管理应用的创建、更新、删除
- * 应用存储在三个目录：system（系统）、user（用户）、marketplace（市场）
+ *
+ * 数据分离:
+ *   apps/{source}/{id}/meta.json    — app 定义/默认配置（仅创建时写入）
+ *   apps_data/{id}/config.json      — 用户运行时配置（设置 UI 修改时写入）
  */
 class AppLoader {
   // 应用内存缓存
@@ -48,7 +51,24 @@ class AppLoader {
     }
   }
 
-  // 加载单个应用（读取meta.json、app.md、mcp.json、skills）
+  /** 获取应用运行时配置路径: apps_data/{id}/config.json */
+  private getConfigPath(id: string): string {
+    return path.join(APPS_DATA_DIR, id, 'config.json');
+  }
+
+  /** 读取应用运行时配置，不存在返回空对象 */
+  private async readConfig(id: string): Promise<AppConfig> {
+    return (await readJsonFile<AppConfig>(this.getConfigPath(id))) || {};
+  }
+
+  /** 写入应用运行时配置 */
+  async writeConfig(id: string, config: AppConfig): Promise<void> {
+    const configPath = this.getConfigPath(id);
+    await ensureDir(path.dirname(configPath));
+    await writeJsonFile(configPath, config);
+  }
+
+  // 加载单个应用（读取meta.json、app.md、mcp.json、skills、config.json）
   private async loadApp(appDir: string, source: AppSource): Promise<App | null> {
     const metaPath = path.join(appDir, 'meta.json');
     const appMdPath = path.join(appDir, 'app.md');
@@ -87,11 +107,15 @@ class AppLoader {
       // Skills目录可能不存在
     }
 
+    // 读取用户运行时配置（覆盖 meta 默认值）
+    const config = await this.readConfig(meta.id);
+
     return {
       meta,
       appMd,
       mcpServices,
-      skills
+      skills,
+      config
     };
   }
 
@@ -126,7 +150,7 @@ class AppLoader {
     const id = app.meta.id || uuidv4();
     const now = new Date().toISOString();
 
-    // 构建完整的meta
+    // 构建完整的meta（仅包含 app 定义/默认值）
     const fullMeta: AppMeta = {
       id,
       name: app.meta.name || '新应用',
@@ -134,7 +158,6 @@ class AppLoader {
       source,
       type: app.meta.type || 'desktop',
       icon: app.meta.icon || '/icons/default.png',
-      backgroundImage: app.meta.backgroundImage,
       models: app.meta.models || [],
       supportedInputs: app.meta.supportedInputs || ['text'],
       inputDescription: app.meta.inputDescription || '',
@@ -143,7 +166,6 @@ class AppLoader {
       visibleServices: app.meta.visibleServices || [],
       tools: app.meta.tools || [],
       replySchema: app.meta.replySchema,
-      enabled: app.meta.enabled !== undefined ? app.meta.enabled : true
     };
 
     // 根据来源确定目录
@@ -157,34 +179,38 @@ class AppLoader {
     await ensureDir(path.join(APPS_DATA_DIR, id, 'conversations'));
     await ensureDir(path.join(appDir, 'skills'));
 
-    // 写入文件
+    // meta.json 写入 app 定义（仅创建时写入，后续不修改）
     await writeJsonFile(path.join(appDir, 'meta.json'), fullMeta);
     await writeJsonFile(path.join(appDir, 'app.md'), app.appMd || '');
     await writeJsonFile(path.join(appDir, 'mcp.json'), app.mcpServices || []);
+
+    // 初始 config.json（空，用户设置修改时会写入）
+    await this.writeConfig(id, {});
 
     const newApp: App = {
       meta: fullMeta,
       appMd: app.appMd || '',
       mcpServices: app.mcpServices || [],
-      skills: app.skills || []
+      skills: app.skills || [],
+      config: {}
     };
 
     this.apps.set(id, newApp);
     return newApp;
   }
 
-  // 更新应用（系统应用不可修改）
-  async updateApp(id: string, updates: Partial<AppMeta>): Promise<App | null> {
+  // 更新应用运行时配置（不修改 meta.json）
+  async updateApp(id: string, updates: Partial<AppConfig>): Promise<App | null> {
     const app = this.apps.get(id);
     if (!app) return null;
 
-    const updatedMeta = { ...app.meta, ...updates };
-    const sourceDir = app.meta.source === 'user' ? USER_APPS_DIR : MARKETPLACE_APPS_DIR;
-    const appDir = path.join(sourceDir, id);
+    const currentConfig = await this.readConfig(id);
+    const newConfig = { ...currentConfig, ...updates };
 
-    await writeJsonFile(path.join(appDir, 'meta.json'), updatedMeta);
+    // 写入 config.json
+    await this.writeConfig(id, newConfig);
 
-    const updatedApp = { ...app, meta: updatedMeta };
+    const updatedApp = { ...app, config: newConfig };
     this.apps.set(id, updatedApp);
     return updatedApp;
   }
@@ -197,10 +223,12 @@ class AppLoader {
 
     const { rm } = await import('fs/promises');
     const sourceDir = app.meta.source === 'user' ? USER_APPS_DIR : MARKETPLACE_APPS_DIR;
-    const appDir = path.join(sourceDir, id);
 
     try {
-      await rm(appDir, { recursive: true });
+      // 删除 app 目录
+      await rm(path.join(sourceDir, id), { recursive: true });
+      // 删除 apps_data 目录
+      await rm(path.join(APPS_DATA_DIR, id), { recursive: true, force: true });
       this.apps.delete(id);
       return true;
     } catch {
@@ -208,26 +236,17 @@ class AppLoader {
     }
   }
 
-  // 设置应用启用/禁用状态
+  // 设置应用启用/禁用状态（写入 config.json）
   async setAppEnabled(id: string, enabled: boolean): Promise<App | null> {
     const app = this.apps.get(id);
     if (!app) return null;
 
-    const updatedMeta = { ...app.meta, enabled };
+    const currentConfig = await this.readConfig(id);
+    const newConfig = { ...currentConfig, enabled };
 
-    // 持久化到meta.json（所有来源的应用都支持）
-    const sourceDir = app.meta.source === 'system' ? SYSTEM_APPS_DIR :
-                      app.meta.source === 'user' ? USER_APPS_DIR :
-                      MARKETPLACE_APPS_DIR;
-    const appDir = path.join(sourceDir, id);
+    await this.writeConfig(id, newConfig);
 
-    try {
-      await writeJsonFile(path.join(appDir, 'meta.json'), updatedMeta);
-    } catch {
-      // 如果写入失败（如只读系统应用），只更新内存
-    }
-
-    const updatedApp = { ...app, meta: updatedMeta };
+    const updatedApp = { ...app, config: newConfig };
     this.apps.set(id, updatedApp);
     return updatedApp;
   }

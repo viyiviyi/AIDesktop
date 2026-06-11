@@ -148,11 +148,26 @@ export interface AppMeta {
   replySchema?: Record<string, unknown>;
 }
 
+/** 用户可配置的应用设置（存储在 apps_data/{id}/config.json，与 app 定义分离） */
+export interface AppConfig {
+  enabled?: boolean;
+  backgroundImage?: string;
+  supportedInputs?: ContentType[];
+  inputDescription?: string;
+  outputDescription?: string;
+  visibleApps?: string[];
+  visibleServices?: string[];
+  tools?: string[];
+  models?: ModelConfig[];
+}
+
 export interface App {
   meta: AppMeta;
   appMd: string;
   mcpServices: string[];
   skills: string[];
+  /** 用户运行时配置（来自 apps_data/{id}/config.json） */
+  config: AppConfig;
   allowConfig?: AllowConfig;
 }
 

@@ -74,8 +74,9 @@ function adMsgToPiMsg(m: AdMsg, appId: string, provider: string, modelId: string
 
 function buildSystemPrompt(app: App): string {
   let prompt = app.appMd || "";
-  if (app.meta.visibleApps && app.meta.visibleApps.length > 0) {
-    const names = app.meta.visibleApps.map((id) => {
+  const visibleApps = app.config.visibleApps || app.meta.visibleApps || [];
+  if (visibleApps.length > 0) {
+    const names = visibleApps.map((id: string) => {
       const a = appLoader.getApp(id);
       return a ? `${a.meta.name} (${id})` : id;
     });
@@ -134,8 +135,8 @@ export class PiAgentSession {
     const tools = buildPiToolsForApp(app);
     const systemPrompt = buildSystemPrompt(app);
 
-    // 收集应用的额外参数
-    const appModelConfig = app.meta.models?.[0];
+    // 收集应用的额外参数（优先从 config 读取，回退到 meta）
+    const appModelConfig = (app.config.models?.[0]) || app.meta.models?.[0];
     const bodyParams: Record<string, unknown> = {};
     if (appModelConfig?.bodyParams) {
       for (const p of appModelConfig.bodyParams) {

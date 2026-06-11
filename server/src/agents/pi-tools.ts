@@ -40,7 +40,7 @@ function parseToolName(toolName: string): { serviceName: string; method: string 
  * 为指定 app 构建 AgentTool 列表
  */
 export function buildPiToolsForApp(app: App): AgentTool[] {
-  const allowedTools = new Set(app.meta.tools || []);
+  const allowedTools = new Set([...(app.config.tools || []), ...(app.meta.tools || [])]);
   const services = mcpServiceRegistry.getAllServices();
   const tools: AgentTool[] = [];
 

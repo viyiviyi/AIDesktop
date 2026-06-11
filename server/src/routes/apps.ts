@@ -22,7 +22,7 @@ router.get('/', async (req: Request, res: Response) => {
         source: a.meta.source,
         type: a.meta.type,
         icon: a.meta.icon,
-        enabled: a.meta.enabled !== false,
+        enabled: a.config.enabled !== undefined ? a.config.enabled : true,
         replySchema: a.meta.replySchema
       }))
     });
@@ -31,16 +31,19 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// Get app details
+// Get app details (合并 meta + config)
 router.get('/:appId', async (req: Request, res: Response) => {
   try {
     const app = appLoader.getApp(req.params.appId);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
-    // Return flat structure: merge meta with app-level fields
+
+    // 合并 meta 默认值 + config 运行时覆盖
+    const merged = mergeConfig(app.meta, app.config);
+
     res.json({
-      meta: app.meta,
+      meta: merged,
       appMd: app.appMd,
       mcpServices: app.mcpServices,
       skills: app.skills,
@@ -49,6 +52,24 @@ router.get('/:appId', async (req: Request, res: Response) => {
     res.status(500).json({ error: (error as Error).message });
   }
 });
+
+/**
+ * 将 meta 默认值与 config 运行时覆盖合并
+ * config 中有定义的字段覆盖 meta，config 中没有的保留 meta 值
+ */
+function mergeConfig(meta: any, config: any): any {
+  const result = { ...meta };
+  // enabled 特殊处理：config 有定义则用，否则默认 true
+  result.enabled = config.enabled !== undefined ? config.enabled : true;
+
+  for (const key of ['backgroundImage', 'supportedInputs', 'inputDescription', 'outputDescription',
+                     'visibleApps', 'visibleServices', 'tools', 'models']) {
+    if (config[key] !== undefined) {
+      result[key] = config[key];
+    }
+  }
+  return result;
+}
 
 // Create new app (user source only)
 router.post('/', async (req: Request, res: Response) => {
@@ -70,7 +91,7 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// Update app (user apps only)
+// Update app runtime config (写入 config.json，不修改 meta.json)
 router.put('/:appId', async (req: Request, res: Response) => {
   try {
     const app = appLoader.getApp(req.params.appId);
@@ -78,39 +99,29 @@ router.put('/:appId', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    if (app.meta.source === 'system') {
-      // 系统应用只允许更新工具/可见性/模型等运行时配置
-      const { models, visibleApps, visibleServices, tools, replySchema } = req.body;
-      const updates: Partial<typeof app.meta> = {};
-      if (models !== undefined) updates.models = models;
-      if (visibleApps !== undefined) updates.visibleApps = visibleApps;
-      if (visibleServices !== undefined) updates.visibleServices = visibleServices;
-      if (tools !== undefined) updates.tools = tools;
-      if (replySchema !== undefined) updates.replySchema = replySchema;
+    // 从请求体中提取用户可配置的字段
+    const {
+      models, enabled, backgroundImage, supportedInputs,
+      inputDescription, outputDescription,
+      visibleApps, visibleServices, tools,
+    } = req.body;
 
-      if (Object.keys(updates).length === 0) {
-        return res.status(403).json({ error: 'Cannot modify system app settings' });
-      }
+    const configUpdates: Record<string, unknown> = {};
+    if (enabled !== undefined) configUpdates.enabled = enabled;
+    if (backgroundImage !== undefined) configUpdates.backgroundImage = backgroundImage;
+    if (supportedInputs !== undefined) configUpdates.supportedInputs = supportedInputs;
+    if (inputDescription !== undefined) configUpdates.inputDescription = inputDescription;
+    if (outputDescription !== undefined) configUpdates.outputDescription = outputDescription;
+    if (visibleApps !== undefined) configUpdates.visibleApps = visibleApps;
+    if (visibleServices !== undefined) configUpdates.visibleServices = visibleServices;
+    if (tools !== undefined) configUpdates.tools = tools;
+    if (models !== undefined) configUpdates.models = models;
 
-      const updated = await appLoader.updateApp(req.params.appId, updates);
-      return res.json(updated);
+    if (Object.keys(configUpdates).length === 0) {
+      return res.status(400).json({ error: 'No configurable fields provided' });
     }
 
-    // Handle flat structure from client - extract known meta fields
-    const { models, enabled, backgroundImage, supportedInputs, inputDescription, outputDescription, visibleApps, visibleServices, tools, replySchema, headerParams, bodyParams, ...rest } = req.body;
-    const updates: Partial<typeof app.meta> = { ...rest };
-    if (models !== undefined) updates.models = models;
-    if (enabled !== undefined) updates.enabled = enabled;
-    if (backgroundImage !== undefined) updates.backgroundImage = backgroundImage;
-    if (supportedInputs !== undefined) updates.supportedInputs = supportedInputs;
-    if (inputDescription !== undefined) updates.inputDescription = inputDescription;
-    if (outputDescription !== undefined) updates.outputDescription = outputDescription;
-    if (visibleApps !== undefined) updates.visibleApps = visibleApps;
-    if (visibleServices !== undefined) updates.visibleServices = visibleServices;
-    if (tools !== undefined) updates.tools = tools;
-    if (replySchema !== undefined) updates.replySchema = replySchema;
-
-    const updated = await appLoader.updateApp(req.params.appId, updates);
+    const updated = await appLoader.updateApp(req.params.appId, configUpdates);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -183,7 +194,7 @@ router.post('/reload', async (req: Request, res: Response) => {
         source: a.meta.source,
         type: a.meta.type,
         icon: a.meta.icon,
-        enabled: a.meta.enabled !== false,
+        enabled: a.config.enabled !== false,
         replySchema: a.meta.replySchema
       }))
     });
