@@ -297,18 +297,10 @@ export async function runAgentAsync(
       const finalText = extractFinalText(piMessages, newPiMessages);
       if (finalText) {
         const callId = lastCaller.callId || '';
-        const resultToolCallId = `agent-call-${callId}`;
 
-        // 将消息注入调用方会话
-        await conversationService.addMessage(
-          lastCaller.callerAppId,
-          lastCaller.callerConvId || '',
-          'assistant' as any,
-          [{ type: 'text', text: `来自 ${appId}（调用 ${callId}）的结果：${finalText}` }],
-        );
-
-        // 通知调用方会话
-        eventBus.emit({ type: 'agent_call_end', appId: lastCaller.callerAppId, convId: lastCaller.callerConvId || '', data: {
+        // 通知等待中的 mcp.agent.call（通过 agent_call_end_auto 事件）
+        // 注意：使用被调 agent 的 convId 作为事件 target，因为 call 方法订阅了它
+        eventBus.emit({ type: 'agent_call_end_auto' as any, appId, convId, data: {
           callId,
           result: finalText,
           fromAppId: appId,

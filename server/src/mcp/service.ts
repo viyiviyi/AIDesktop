@@ -227,14 +227,46 @@ class MCPServiceRegistry {
         const savedUserMsg = await conversationService.addMessage(agentId, targetConvId, 'user', message);
         if (!savedUserMsg) throw new Error('Failed to save message');
 
-        // 异步处理 agent（不阻塞返回）
-        runAgentAsync(agentId, targetConvId, targetApp, conversation.messages, message)
-          .catch(err => logger.error('MCPServiceRegistry', `Agent async call error: ${err.message}`));
+        // 等待被调 agent 完成并返回最终结果
+        const callResult = await new Promise<string>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            unsubAgentEnd();
+            unsubAgentError();
+            reject(new Error('Agent call timed out'));
+          }, 120000); // 2 分钟超时
+
+          const unsubAgentEnd = eventBus.subscribe(targetConvId, (event) => {
+            if (event.type === 'agent_call_end_auto' && event.data.callId === callId) {
+              clearTimeout(timeout);
+              unsubAgentEnd();
+              unsubAgentError();
+              resolve(event.data.result as string || '(no output)');
+            }
+          });
+
+          const unsubAgentError = eventBus.subscribe(targetConvId, (event) => {
+            if (event.type === 'error') {
+              clearTimeout(timeout);
+              unsubAgentEnd();
+              unsubAgentError();
+              reject(new Error((event.data.message as string) || 'Agent error'));
+            }
+          });
+
+          // 异步处理 agent
+          runAgentAsync(agentId, targetConvId, targetApp, conversation.messages, message)
+            .catch(err => {
+              clearTimeout(timeout);
+              unsubAgentEnd();
+              unsubAgentError();
+              reject(err);
+            });
+        });
 
         return {
           success: true,
+          result: callResult,
           conversationId: targetConvId,
-          message: 'Agent 已开始处理，结果将通过 EventBus 推送',
         };
       }
 
