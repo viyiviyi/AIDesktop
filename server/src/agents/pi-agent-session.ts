@@ -94,8 +94,6 @@ export class PiAgentSession {
   private textStreamCbs: TextStreamCallback[] = [];
   /** 当前运行的会话 ID，由 runAgentAsync 设置 */
   currentConvId: string = '';
-  /** 是否已调用 mcp.agent.reply */
-  hasReplied: boolean = false;
 
   constructor(appId: string) {
     this.appId = appId;
@@ -228,21 +226,6 @@ export async function runAgentAsync(
   const session = await piAgentManager.getOrCreate(appId, app);
   session.currentConvId = convId;
 
-  // 注入 convId 到 mcp_agent_reply 工具的 context 中
-  if (session.agent.state.tools) {
-    const tools = session.agent.state.tools as any[];
-    for (const tool of tools) {
-      if (tool.name === 'mcp_agent_reply') {
-        const origExecute = tool.execute;
-        tool.execute = async (toolCallId: string, params: any, signal: any, onUpdate: any) => {
-          session.hasReplied = true;
-          return origExecute(toolCallId, { ...params, _convId: convId }, signal, onUpdate);
-        };
-        break;
-      }
-    }
-  }
-
   const unsub = session.agent.subscribe((event: any) => {
     const emit = (type: string, data: Record<string, unknown>) => {
       eventBus.emit({ type: type as any, appId, convId, data });
@@ -304,9 +287,9 @@ export async function runAgentAsync(
 
   await saveNewMessages(appId, convId, newPiMessages, conversationService);
 
-  // 自动将最终结果返回给调用方（除非被调 agent 已经显式调用了 reply）
+  // 自动将最终结果返回给调用方
   const conversation = await conversationService.getConversation(appId, convId);
-  if (conversation?.source === 'agent' && !session.hasReplied && conversation.callChain && conversation.callChain.length > 0) {
+  if (conversation?.source === 'agent' && conversation.callChain && conversation.callChain.length > 0) {
     const lastCaller = conversation.callChain[conversation.callChain.length - 1];
     // 跳过 _injected_ 这种内部标记
     if (lastCaller.callerAppId && lastCaller.callerAppId !== '_injected_') {

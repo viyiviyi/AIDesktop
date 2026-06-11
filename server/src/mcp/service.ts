@@ -9,8 +9,8 @@ import { v4 as uuidv4 } from 'uuid';
 const builtInServices: Record<string, MCPService> = {
   'mcp.agent': {
     name: 'mcp.agent',
-    description: 'Agent management service - list, call, and return results from agents',
-    methods: ['list', 'call', 'getInfo', 'reply']
+    description: 'Agent management service - list, call, get information about agents',
+    methods: ['list', 'call', 'getInfo']
   },
   'mcp.window': {
     name: 'mcp.window',
@@ -236,59 +236,6 @@ class MCPServiceRegistry {
           conversationId: targetConvId,
           message: 'Agent 已开始处理，结果将通过 EventBus 推送',
         };
-      }
-
-      case 'reply': {
-        // 被调 agent 返回结果给调用方
-        // args: { result: string, _convId?: string }
-        const replyResult = args.result as string;
-        const replyConvId = (args._convId as string) || context.convId || '';
-        if (!replyResult) throw new Error('result is required');
-
-        // 从当前会话的 callChain 找到调用方
-        const currentConv = await conversationService.getConversation(context.appId || '', replyConvId);
-        if (!currentConv) throw new Error(`Conversation ${replyConvId} not found`);
-        if (!currentConv.callChain || currentConv.callChain.length === 0) {
-          throw new Error('No caller found in call chain');
-        }
-
-        const callerInfo = currentConv.callChain[currentConv.callChain.length - 1];
-        const callId = callerInfo.callId || '';
-        const callerConv = await conversationService.getConversation(callerInfo.callerAppId, callerInfo.callerConvId || '');
-        if (!callerConv) throw new Error(`Caller conversation not found`);
-
-        // 将结果保存到被调 agent 的会话
-        await conversationService.addMessage(context.appId || '', replyConvId, 'assistant', [{ type: 'text', text: replyResult }]);
-
-        // 将结果注入调用方会话——作为 toolResult 消息，并在 callChain 中标记
-        const resultToolCallId = `agent-call-${callId}`;
-        // 存为一条 toolResult 消息，让调用方 agent 能在下一轮看到结果
-        const toolResultMsg = await conversationService.addMessage(
-          callerInfo.callerAppId,
-          callerInfo.callerConvId || '',
-          'assistant' as any,
-          [{ type: 'text', text: `来自 ${context.appId}（调用 ${callId}）的结果：${replyResult}` }],
-        );
-        if (toolResultMsg) {
-          toolResultMsg.toolResultMeta = {
-            toolCallId: resultToolCallId,
-            toolName: 'mcp_agent_call',
-            isError: false,
-          };
-          await conversationService.updateConversation(callerInfo.callerAppId, callerInfo.callerConvId || '', { messages: callerConv.messages } as any);
-        }
-
-        // 通过 EventBus 通知前端（带 callId 标识）
-        eventBus.emit({ type: 'agent_call_end', appId: callerInfo.callerAppId, convId: callerInfo.callerConvId || '', data: {
-          callId,
-          result: replyResult,
-          fromAppId: context.appId,
-          timestamp: new Date().toISOString(),
-        }});
-        // 通知被调 agent 会话结束
-        eventBus.emit({ type: 'done', appId: context.appId || '', convId: replyConvId, data: { replySent: true, callId } });
-
-        return { success: true, callId };
       }
 
       case 'requestInput': {

@@ -144,7 +144,7 @@ export interface AppMeta {
   visibleServices: string[];
   tools: string[];
   enabled?: boolean;
-  /** 返回结果数据的 JSON Schema，定义 mcp.agent.reply 的参数格式。存在此字段时表示应用有返回结果能力。 */
+  /** 返回结果数据的 JSON Schema（已废弃，保留向后兼容） */
   replySchema?: Record<string, unknown>;
 }
 
