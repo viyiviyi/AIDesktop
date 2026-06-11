@@ -134,13 +134,56 @@ export class PiAgentSession {
     const tools = buildPiToolsForApp(app);
     const systemPrompt = buildSystemPrompt(app);
 
+    // 收集应用的额外参数
+    const appModelConfig = app.meta.models?.[0];
+    const bodyParams: Record<string, unknown> = {};
+    if (appModelConfig?.bodyParams) {
+      for (const p of appModelConfig.bodyParams) {
+        if (p.enabled) {
+          try { bodyParams[p.key] = JSON.parse(p.value); } catch { bodyParams[p.key] = p.value; }
+        }
+      }
+    }
+
     this.agent = new Agent({
       initialState: { model: this.model as any, systemPrompt },
       streamFn: (model, context, options) => {
         const textPreview = context.messages.filter((m: any) => m.role === "user").slice(-1).map((m: any) => typeof m.content === "string" ? m.content.slice(0, 100) : "").join("");
         serverLogger.ai(`${model.provider}/${model.id}`, `>>> ${textPreview}`, { messages: context.messages.length });
         const start = Date.now();
-        const stream = streamSimple(model, context, { ...options, apiKey: this.apiKey });
+
+        // 注入 body 参数（如 thinking: { type: "disabled" }）
+        let streamOptions = { ...options, apiKey: this.apiKey };
+        if (Object.keys(bodyParams).length > 0) {
+          streamOptions = {
+            ...streamOptions,
+            onPayload: (payload: any, m: any) => {
+              // 先调用已有的 onPayload
+              let p = options?.onPayload ? options.onPayload(payload, m) : undefined;
+              if (p === undefined) p = { ...payload };
+              // 注入 body 参数
+              Object.assign(p, bodyParams);
+              serverLogger.debug('PiAgentSession', `Injected body params: ${JSON.stringify(bodyParams)}`);
+              return p;
+            },
+          };
+        }
+
+        // 注入 header 参数
+        if (appModelConfig?.headerParams) {
+          const headers: Record<string, string> = {};
+          for (const hp of appModelConfig.headerParams) {
+            if (hp.enabled) headers[hp.key] = hp.value;
+          }
+          if (Object.keys(headers).length > 0) {
+            streamOptions = {
+              ...streamOptions,
+              headers: { ...(streamOptions.headers || {}), ...headers },
+            };
+          }
+        }
+
+        const stream = streamSimple(model, context, streamOptions);
         stream.result().then((result: any) => {
           const text = (result?.content ?? []).filter((c: any) => c?.type === "text").map((c: any) => c.text).join("").slice(0, 200);
           serverLogger.ai(`${model.provider}/${model.id}`, `<<< (${Date.now() - start}ms, ${result?.stopReason || "?"})`, { stopReason: result?.stopReason, errorMessage: result?.errorMessage, text: text.slice(0, 300) });
