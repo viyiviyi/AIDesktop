@@ -15,7 +15,7 @@ export function AppDetailWindow({ appId }: AppDetailWindowProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Find the window state for this app
-  const windowState = state.windows.find(w => w.appId === 'app-detail:' + appId || w.appId === appId);
+  const windowState = state.windows.find(w => w.appId === 'app-detail:' + appId);
 
   useEffect(() => {
     loadData();

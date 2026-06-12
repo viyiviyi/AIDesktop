@@ -45,7 +45,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   });
 
   const windowState = state.windows.find(w =>
-    w.appId === 'app-settings:' + appId || w.appId === appId
+    w.appId === 'app-settings:' + appId
   );
 
   useEffect(() => {
