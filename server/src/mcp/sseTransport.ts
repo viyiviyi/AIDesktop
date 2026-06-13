@@ -3,11 +3,14 @@
  *
  * 支持两种 MCP over HTTP 传输模式：
  * 1. SSE (传统模式): GET /sse 接收事件, POST /message 发送请求
+ *    服务器通过 SSE 推送 endpoint 事件告知 POST URL
  * 2. Streamable HTTP (新模式): POST 单端点，响应流式返回
  *
  * JSON-RPC over SSE 协议:
- *   - 服务器通过 SSE 发送事件（event: message, data: JSON-RPC）
- *   - 客户端通过 HTTP POST 发送 JSON-RPC 请求到指定端点
+ *   - 服务器通过 SSE 发送事件
+ *   - endpoint 事件: 告知后续 POST 请求的 URL
+ *   - message 事件: JSON-RPC 请求/响应/通知
+ *   - 客户端通过 HTTP POST 发送 JSON-RPC 请求到 endpoint URL
  */
 
 import { logger } from '../utils/logger.js';
@@ -53,7 +56,6 @@ export class MCPSseTransport implements SseTransport {
   ) {
     this.connectionId = connectionId;
     this.sseUrl = sseUrl;
-    // POST URL: 如果未指定，默认使用 SSE URL 的 /message 端点
     this.postUrl = postUrl || sseUrl.replace(/\/?$/, '/message');
     this.customHeaders = headers || {};
   }
@@ -111,9 +113,21 @@ export class MCPSseTransport implements SseTransport {
               } else if (trimmed.startsWith('data: ')) {
                 const data = trimmed.slice(6);
 
-                if (currentEvent === 'message' || currentEvent === '') {
+                if (currentEvent === 'endpoint') {
+                  // 服务器通知 POST URL（动态 endpoint）
+                  const newPostUrl = data.trim();
+                  if (newPostUrl) {
+                    // 如果是相对路径，拼接 base URL
+                    this.postUrl = newPostUrl.startsWith('http')
+                      ? newPostUrl
+                      : new URL(newPostUrl, this.sseUrl).href;
+                    logger.info('MCPSseTransport', `Received endpoint: ${this.postUrl}`);
+                  }
+                } else if (currentEvent === 'message' || currentEvent === '') {
                   try {
                     const message = JSON.parse(data) as JsonRpcMessage;
+
+                    // 通知全局消息处理器
                     if (this.messageHandler) {
                       this.messageHandler(message);
                     }
@@ -121,6 +135,7 @@ export class MCPSseTransport implements SseTransport {
                     logger.warn('MCPSseTransport', `Failed to parse SSE data: ${data.slice(0, 100)}`);
                   }
                 }
+                currentEvent = '';
               }
             }
           }
@@ -146,6 +161,7 @@ export class MCPSseTransport implements SseTransport {
 
   /**
    * 发送 JSON-RPC 消息（通过 HTTP POST）
+   * 只负责发送，响应通过 SSE onMessage 渠道异步返回
    */
   async send(message: JsonRpcMessage): Promise<void> {
     if (!this._isConnected) {
@@ -167,12 +183,20 @@ export class MCPSseTransport implements SseTransport {
         throw new Error(`POST failed: ${response.status} ${response.statusText}`);
       }
 
-      // 处理响应（Streamable HTTP 响应可能包含 JSON-RPC 响应）
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const json = await response.json() as JsonRpcMessage;
-        if (this.messageHandler) {
-          this.messageHandler(json);
+      // 对于 Streamable HTTP: 响应 body 可能直接包含 JSON-RPC 响应
+      // 有 id 的请求（request）：通过 onMessage 异步处理
+      // 无 id 的消息（notification）：直接返回
+      if (message.id !== undefined) {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          try {
+            const json = await response.json() as JsonRpcMessage;
+            if (this.messageHandler) {
+              this.messageHandler(json);
+            }
+          } catch {
+            // JSON 解析失败，忽略——响应会通过 SSE 回来
+          }
         }
       }
 
