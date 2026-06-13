@@ -1225,10 +1225,10 @@ export function SettingsApp(_props: SettingsAppProps) {
   }>>([]);
   // 添加连接表单
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newConnForm, setNewConnForm] = useState({ name: '', command: '', args: '' });
+  const [newConnForm, setNewConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse', command: '', args: '', url: '' });
   // 编辑连接表单
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
-  const [editConnForm, setEditConnForm] = useState({ name: '', command: '', args: '' });
+  const [editConnForm, setEditConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse', command: '', args: '', url: '' });
   // 展开的工具区域
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null);
   // 连接状态提示
@@ -1588,16 +1588,31 @@ export function SettingsApp(_props: SettingsAppProps) {
   };
 
   const handleAddConnection = async () => {
-    if (!newConnForm.name || !newConnForm.command) return;
+    if (!newConnForm.name) return;
     try {
-      const args = newConnForm.args ? newConnForm.args.split(' ').filter(Boolean) : [];
-      const result = await api.connectMcp({
-        name: newConnForm.name,
-        command: newConnForm.command,
-        args,
-      });
+      let result;
+      if (newConnForm.transportType === 'sse') {
+        if (!newConnForm.url) return;
+        result = await api.connectMcp({
+          name: newConnForm.name,
+          transportType: 'sse',
+          command: '',
+          args: [],
+          url: newConnForm.url,
+        });
+      } else {
+        if (!newConnForm.command) return;
+        const args = newConnForm.args ? newConnForm.args.split(' ').filter(Boolean) : [];
+        result = await api.connectMcp({
+          name: newConnForm.name,
+          transportType: 'stdio',
+          command: newConnForm.command,
+          args,
+          url: undefined,
+        });
+      }
       setMcpConnections(result);
-      setNewConnForm({ name: '', command: '', args: '' });
+      setNewConnForm({ name: '', transportType: 'stdio', command: '', args: '', url: '' });
       setShowAddForm(false);
       // 刷新运行时连接
       loadConnectedMcps();
@@ -1620,16 +1635,28 @@ export function SettingsApp(_props: SettingsAppProps) {
 
   const handleStartEditing = (conn: MCPConnection) => {
     setEditingConnId(conn.id);
-    setEditConnForm({ name: conn.name, command: conn.command, args: conn.args.join(' ') });
+    setEditConnForm({
+      name: conn.name,
+      transportType: conn.transportType || 'stdio',
+      command: conn.command || '',
+      args: conn.args ? conn.args.join(' ') : '',
+      url: conn.url || '',
+    });
   };
 
   const handleSaveEdit = async () => {
     if (!editingConnId) return;
     try {
-      const args = editConnForm.args ? editConnForm.args.split(' ').filter(Boolean) : [];
       const conns = mcpConnections.connections.map(c =>
         c.id === editingConnId
-          ? { ...c, name: editConnForm.name, command: editConnForm.command, args }
+          ? {
+              ...c,
+              name: editConnForm.name,
+              transportType: editConnForm.transportType,
+              command: editConnForm.transportType === 'sse' ? '' : editConnForm.command,
+              args: editConnForm.transportType === 'sse' ? [] : editConnForm.args.split(' ').filter(Boolean),
+              url: editConnForm.transportType === 'sse' ? editConnForm.url : undefined,
+            }
           : c
       );
       await api.updateMcpSettings({ connections: conns });
@@ -1706,18 +1733,39 @@ export function SettingsApp(_props: SettingsAppProps) {
                 style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
             </div>
             <div className="settings-item" style={{ marginBottom: 8 }}>
-              <label>命令</label>
-              <input type="text" value={editConnForm.command}
-                onChange={e => setEditConnForm(p => ({ ...p, command: e.target.value }))}
-                style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+              <label>传输类型</label>
+              <select value={editConnForm.transportType}
+                onChange={e => setEditConnForm(p => ({ ...p, transportType: e.target.value as 'stdio' | 'sse' }))}
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }}>
+                <option value="stdio">Stdio (Shell 命令)</option>
+                <option value="sse">SSE (HTTP URL)</option>
+              </select>
             </div>
-            <div className="settings-item" style={{ marginBottom: 8 }}>
-              <label>参数</label>
-              <input type="text" value={editConnForm.args}
-                onChange={e => setEditConnForm(p => ({ ...p, args: e.target.value }))}
-                placeholder="空格分隔的参数"
-                style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
-            </div>
+            {editConnForm.transportType === 'stdio' ? (
+              <>
+                <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <label>命令</label>
+                  <input type="text" value={editConnForm.command}
+                    onChange={e => setEditConnForm(p => ({ ...p, command: e.target.value }))}
+                    style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+                </div>
+                <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <label>参数</label>
+                  <input type="text" value={editConnForm.args}
+                    onChange={e => setEditConnForm(p => ({ ...p, args: e.target.value }))}
+                    placeholder="空格分隔的参数"
+                    style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+                </div>
+              </>
+            ) : (
+              <div className="settings-item" style={{ marginBottom: 8 }}>
+                <label>URL</label>
+                <input type="text" value={editConnForm.url}
+                  onChange={e => setEditConnForm(p => ({ ...p, url: e.target.value }))}
+                  placeholder="例如: http://localhost:3001/mcp"
+                  style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button className="btn-primary" onClick={handleSaveEdit} style={{ padding: '4px 12px', fontSize: 12 }}>保存</button>
               <button className="btn-secondary" onClick={() => setEditingConnId(null)} style={{ padding: '4px 12px', fontSize: 12 }}>取消</button>
@@ -1728,7 +1776,15 @@ export function SettingsApp(_props: SettingsAppProps) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>{conn.name}</div>
-                <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontFamily: 'monospace' }}>{conn.command} {conn.args.join(' ')}</div>
+                {conn.transportType === 'sse' ? (
+                  <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontFamily: 'monospace' }}>
+                    SSE: {conn.url || '-'}
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontFamily: 'monospace' }}>
+                    {conn.command} {conn.args.join(' ')}
+                  </div>
+                )}
               </div>
               <span style={{
                 fontSize: 11, padding: '2px 8px', borderRadius: 10,
@@ -2863,21 +2919,43 @@ export function SettingsApp(_props: SettingsAppProps) {
                     style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
                 </div>
                 <div className="settings-item" style={{ marginBottom: 8 }}>
-                  <label>命令</label>
-                  <input type="text" value={newConnForm.command}
-                    onChange={e => setNewConnForm(p => ({ ...p, command: e.target.value }))}
-                    placeholder="例如: npx"
-                    style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                  <label>传输类型</label>
+                  <select value={newConnForm.transportType}
+                    onChange={e => setNewConnForm(p => ({ ...p, transportType: e.target.value as 'stdio' | 'sse' }))}
+                    style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }}>
+                    <option value="stdio">Stdio (Shell 命令)</option>
+                    <option value="sse">SSE (HTTP URL)</option>
+                  </select>
                 </div>
-                <div className="settings-item" style={{ marginBottom: 12 }}>
-                  <label>参数</label>
-                  <input type="text" value={newConnForm.args}
-                    onChange={e => setNewConnForm(p => ({ ...p, args: e.target.value }))}
-                    placeholder="例如: -y @modelcontextprotocol/server-postgres ..."
-                    style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
-                </div>
-                <button onClick={handleAddConnection} disabled={!newConnForm.name || !newConnForm.command}
-                  style={{ padding: '6px 16px', background: 'var(--accent-color)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 13, opacity: (!newConnForm.name || !newConnForm.command) ? 0.5 : 1 }}>
+                {newConnForm.transportType === 'stdio' ? (
+                  <>
+                    <div className="settings-item" style={{ marginBottom: 8 }}>
+                      <label>命令</label>
+                      <input type="text" value={newConnForm.command}
+                        onChange={e => setNewConnForm(p => ({ ...p, command: e.target.value }))}
+                        placeholder="例如: npx"
+                        style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                    </div>
+                    <div className="settings-item" style={{ marginBottom: 12 }}>
+                      <label>参数</label>
+                      <input type="text" value={newConnForm.args}
+                        onChange={e => setNewConnForm(p => ({ ...p, args: e.target.value }))}
+                        placeholder="例如: -y @modelcontextprotocol/server-postgres ..."
+                        style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="settings-item" style={{ marginBottom: 12 }}>
+                    <label>URL</label>
+                    <input type="text" value={newConnForm.url}
+                      onChange={e => setNewConnForm(p => ({ ...p, url: e.target.value }))}
+                      placeholder="例如: http://localhost:3001/mcp"
+                      style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                  </div>
+                )}
+                <button onClick={handleAddConnection}
+                  disabled={!newConnForm.name || (newConnForm.transportType === 'stdio' ? !newConnForm.command : !newConnForm.url)}
+                  style={{ padding: '6px 16px', background: 'var(--accent-color)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 13, opacity: (!newConnForm.name || (newConnForm.transportType === 'stdio' ? !newConnForm.command : !newConnForm.url)) ? 0.5 : 1 }}>
                   添加
                 </button>
               </div>

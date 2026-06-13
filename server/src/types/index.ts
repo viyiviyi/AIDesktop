@@ -200,10 +200,18 @@ export interface MCPService {
 export interface MCPConnection {
   id: string;
   name: string;
+  /** 传输类型: 'stdio' (shell命令) 或 'sse' (HTTP SSE URL) */
+  transportType: 'stdio' | 'sse';
+  /** stdio 模式: shell 命令 */
   command: string;
+  /** stdio 模式: 命令参数 */
   args: string[];
+  /** SSE 模式: MCP 服务器 URL（如 http://localhost:3001/mcp） */
+  url?: string;
   enabled: boolean;
   services: MCPService[];
+  /** 启用的工具名称列表，空数组或 undefined 表示全部启用 */
+  enabledTools?: string[];
 }
 
 export interface MCPConfig {

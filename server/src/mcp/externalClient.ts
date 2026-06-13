@@ -1,6 +1,7 @@
 import { ChildProcess } from 'child_process';
 import { MCPConnection } from '../types/index.js';
-import { MCPStdioTransport } from './stdioTransport.js';
+import { MCPStdioTransport, StdioTransport } from './stdioTransport.js';
+import { MCPSseTransport, SseTransport } from './sseTransport.js';
 import { MCPJsonRpcClient } from './jsonRpcClient.js';
 import { mcpProcessManager } from './processManager.js';
 import { logger } from '../utils/logger.js';
@@ -86,27 +87,35 @@ export class MCPExternalClient {
    * 连接到MCP服务器
    */
   async connect(): Promise<void> {
-    logger.info('MCPExternalClient', `Connecting to ${this.connection.name} (${this.connection.command})`);
+    const transportType = this.connection.transportType || 'stdio';
 
-    // 启动进程
-    await mcpProcessManager.startProcess(
-      this.connectionId,
-      this.connection.command,
-      this.connection.args
-    );
+    if (transportType === 'sse') {
+      // SSE 传输：通过 HTTP SSE 连接
+      const url = this.connection.url;
+      if (!url) throw new Error('SSE transport requires a url');
+      logger.info('MCPExternalClient', `Connecting to ${this.connection.name} via SSE: ${url}`);
 
-    const mcpProcess = mcpProcessManager.getProcess(this.connectionId);
-    if (!mcpProcess) {
-      throw new Error('Failed to start MCP process');
+      const sseTransport = new MCPSseTransport(url, this.connectionId);
+      await sseTransport.connect();
+      this.transport = new MCPJsonRpcClient(sseTransport as any, this.connectionId);
+    } else {
+      // Stdio 传输：启动进程并通过 stdin/stdout 通信
+      logger.info('MCPExternalClient', `Connecting to ${this.connection.name} via stdio: ${this.connection.command}`);
+
+      await mcpProcessManager.startProcess(
+        this.connectionId,
+        this.connection.command,
+        this.connection.args
+      );
+
+      const mcpProcess = mcpProcessManager.getProcess(this.connectionId);
+      if (!mcpProcess) {
+        throw new Error('Failed to start MCP process');
+      }
+
+      const stdioTransport = new MCPStdioTransport(mcpProcess.process, this.connectionId);
+      this.transport = new MCPJsonRpcClient(stdioTransport, this.connectionId);
     }
-
-    // 创建传输层
-    const transport = new MCPStdioTransport(mcpProcess.process, this.connectionId);
-
-    // 创建JSON-RPC客户端
-    this.transport = new MCPJsonRpcClient(transport, this.connectionId);
-
-    logger.info('MCPExternalClient', `Process started for ${this.connection.name}`);
   }
 
   /**

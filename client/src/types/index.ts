@@ -171,10 +171,13 @@ export interface Skill {
 export interface MCPConnection {
   id: string;
   name: string;
+  transportType: 'stdio' | 'sse';
   command: string;
   args: string[];
+  url?: string;
   enabled: boolean;
   services: Array<{ name: string; description: string; methods: string[] }>;
+  enabledTools?: string[];
 }
 
 export interface ProviderModel {

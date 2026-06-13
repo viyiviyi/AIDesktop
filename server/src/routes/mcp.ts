@@ -61,8 +61,16 @@ router.post('/connect', async (req: Request, res: Response) => {
   try {
     const { connection } = req.body;
 
-    if (!connection || !connection.name || !connection.command) {
-      return res.status(400).json({ error: 'Connection name and command are required' });
+    if (!connection || !connection.name) {
+      return res.status(400).json({ error: 'Connection name is required' });
+    }
+
+    if (connection.transportType === 'sse' && !connection.url) {
+      return res.status(400).json({ error: 'SSE transport requires a url' });
+    }
+
+    if ((!connection.transportType || connection.transportType === 'stdio') && !connection.command) {
+      return res.status(400).json({ error: 'Stdio transport requires a command' });
     }
 
     logger.info('MCPRoutes', `Connecting to external MCP server: ${connection.name}`);
