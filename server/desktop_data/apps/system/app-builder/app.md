@@ -32,9 +32,11 @@
 4. 不需要调用任何返回工具——正常输出你的结果即可
 ```
 
-最终生成完整的应用配置，包括 meta.json 和 app.md 文件。
+最终生成完整的应用配置，包括 meta.json、app.md、mcp.json 文件。
 
-创建应用时，使用 mcp.filesystem.write 写入 meta.json，格式如下：
+创建应用时，使用 mcp.filesystem.write 写入以下文件：
+
+**meta.json**（app 定义，创建后不再修改）：
 {
   "id": "应用ID（小写英文）",
   "name": "应用名称",
@@ -48,6 +50,9 @@
   "outputDescription": "...",
   "visibleApps": [],
   "visibleServices": [],
-  "tools": [],
-  "enabled": true
+  "tools": []
 }
+
+**app.md**：Agent 的行为提示文本
+
+**mcp.json**：绑定的 MCP 服务列表，如 ["mcp.filesystem", "mcp.agent"]
