@@ -187,8 +187,6 @@ class MCPServiceRegistry {
         if (targetApp.meta.type !== 'desktop' && targetApp.meta.type !== 'background') {
           throw new Error(`Agent ${agentId} is not callable`);
         }
-        // 现在不要求 replySchema：被调 agent 的输出会自动返回给调用方
-
         // 可见性检查
         if (context.appId) {
           const callerApp = appLoader.getApp(context.appId);

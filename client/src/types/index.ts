@@ -136,7 +136,6 @@ export interface AppInfo {
   visibleServices: string[];
   tools: string[];
   enabled?: boolean;
-  replySchema?: Record<string, unknown>;
 }
 
 export interface AppConfig {

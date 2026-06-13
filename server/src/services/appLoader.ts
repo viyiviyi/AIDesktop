@@ -165,7 +165,6 @@ class AppLoader {
       visibleApps: app.meta.visibleApps || [],
       visibleServices: app.meta.visibleServices || [],
       tools: app.meta.tools || [],
-      replySchema: app.meta.replySchema,
     };
 
     // 根据来源确定目录

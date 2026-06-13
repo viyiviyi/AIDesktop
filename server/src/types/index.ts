@@ -144,8 +144,6 @@ export interface AppMeta {
   visibleServices: string[];
   tools: string[];
   enabled?: boolean;
-  /** 返回结果数据的 JSON Schema（已废弃，保留向后兼容） */
-  replySchema?: Record<string, unknown>;
 }
 
 /** 用户可配置的应用设置（存储在 apps_data/{id}/config.json，与 app 定义分离） */
