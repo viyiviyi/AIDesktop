@@ -24,6 +24,12 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [installedApps, setInstalledApps] = useState<App[]>([]);
   const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
+  // 已连接的外部 MCP 服务器信息，用于在工具列表中显示 "mcp.external"
+  const [mcpExternals, setMcpExternals] = useState<Array<{
+    connectionId: string;
+    name: string;
+    isConnected: boolean;
+  }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
   const [isSaving, setIsSaving] = useState(false);
@@ -55,17 +61,26 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [fullApp, modesData, appsData, servicesRes] = await Promise.all([
+      const [fullApp, modesData, appsData, servicesRes, mcpConnectionsRes] = await Promise.all([
         api.getApp(appId),
         api.getModes(),
         api.getApps(),
         api.getMcpServices ? api.getMcpServices() : fetch('/api/mcp/services').then(r => r.json()).catch(() => ({ services: [] })),
+        api.getMcpConnections().catch(() => []),
       ]);
 
       setApp(fullApp);
       setProviders(modesData.providers);
       setInstalledApps(appsData as any);
       setAvailableTools((servicesRes as any)?.services || []);
+
+      // 处理已连接的外部 MCP
+      const connectedList = (mcpConnectionsRes as any[] || []).filter((c: any) => c.isConnected);
+      setMcpExternals(connectedList.map((c: any) => ({
+        connectionId: c.connectionId,
+        name: c.serverInfo?.name || c.connectionId,
+        isConnected: c.isConnected,
+      })));
 
       setFormData({
         enabled: fullApp.enabled !== false,
@@ -260,11 +275,23 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
       { name: 'mcp.browser', description: '浏览器服务' },
     ];
 
+    // 如果有已连接的外部 MCP 服务，追加 "mcp.external" 选项
+    const hasExternal = mcpExternals.length > 0;
+    const externalService = { name: 'mcp.external', description: '外部 MCP 服务（' + mcpExternals.map(e => e.name).join(', ') + '）' };
+
     // 加上外部 MCP 连接的工具
     const allToolNames = [...new Set([
       ...builtinServices.map(s => s.name),
+      ...(hasExternal ? [externalService.name] : []),
       ...formData.tools,
     ])];
+
+    const getServiceInfo = (name: string) => {
+      const builtin = builtinServices.find(s => s.name === name);
+      if (builtin) return builtin;
+      if (hasExternal && name === 'mcp.external') return externalService;
+      return null;
+    };
 
     return (
       <div className="app-settings-section">
@@ -272,7 +299,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         <p className="app-settings-hint">选择该应用可调用的 MCP 服务。后台服务应用默认拥有所有可见工具的调用权限。</p>
         <div className="app-settings-checklist">
           {allToolNames.map(name => {
-            const service = builtinServices.find(s => s.name === name);
+            const service = getServiceInfo(name);
             return (
               <label key={name} className="app-settings-checkbox">
                 <input

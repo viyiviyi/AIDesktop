@@ -1214,6 +1214,27 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [modes, setModes] = useState<{ providers: ModelProvider[] }>({ providers: [] });
   // MCP连接列表
   const [mcpConnections, setMcpConnections] = useState<{ connections: MCPConnection[] }>({ connections: [] });
+  // 已连接的运行时 MCP 列表（含工具信息）
+  const [connectedMcps, setConnectedMcps] = useState<Array<{
+    connectionId: string;
+    serverInfo: { name: string; version: string } | null;
+    isConnected: boolean;
+    isInitialized: boolean;
+    tools: Array<{ name: string; description: string; inputSchema: object }>;
+    resources: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
+  }>>([]);
+  // 添加连接表单
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newConnForm, setNewConnForm] = useState({ name: '', command: '', args: '' });
+  // 编辑连接表单
+  const [editingConnId, setEditingConnId] = useState<string | null>(null);
+  const [editConnForm, setEditConnForm] = useState({ name: '', command: '', args: '' });
+  // 展开的工具区域
+  const [expandedConnId, setExpandedConnId] = useState<string | null>(null);
+  // 连接状态提示
+  const [connMsg, setConnMsg] = useState<{ id: string; text: string; isError: boolean } | null>(null);
+  // 工具启用状态（按连接ID存储）
+  const [connEnabledTools, setConnEnabledTools] = useState<Record<string, string[]>>({});
   // 技能列表
   const [skills, setSkills] = useState<{ skills: Skill[]; globalEnabled: boolean }>({ skills: [], globalEnabled: true });
   // 已安装的应用列表
@@ -1261,6 +1282,7 @@ export function SettingsApp(_props: SettingsAppProps) {
   useEffect(() => {
     loadModes();
     loadMcpSettings();
+    loadConnectedMcps();
     loadSkillSettings();
     loadInstalledApps();
   }, []);
@@ -1494,6 +1516,23 @@ export function SettingsApp(_props: SettingsAppProps) {
     }
   };
 
+  const loadConnectedMcps = async () => {
+    try {
+      const connections = await api.getMcpConnections();
+      setConnectedMcps(connections);
+      // 从运行时连接中加载已启用的工具列表
+      const enabledMap: Record<string, string[]> = {};
+      for (const conn of connections) {
+        if (conn.isConnected) {
+          enabledMap[conn.connectionId] = conn.tools.map(t => t.name);
+        }
+      }
+      setConnEnabledTools(enabledMap);
+    } catch (error) {
+      console.error('Failed to load connected MCPs:', error);
+    }
+  };
+
   const loadSkillSettings = async () => {
     try {
       const data = await api.getSkillSettings();
@@ -1546,6 +1585,218 @@ export function SettingsApp(_props: SettingsAppProps) {
     } catch (error) {
       console.error('Failed to update MCP settings:', error);
     }
+  };
+
+  const handleAddConnection = async () => {
+    if (!newConnForm.name || !newConnForm.command) return;
+    try {
+      const args = newConnForm.args ? newConnForm.args.split(' ').filter(Boolean) : [];
+      const result = await api.connectMcp({
+        name: newConnForm.name,
+        command: newConnForm.command,
+        args,
+      });
+      setMcpConnections(result);
+      setNewConnForm({ name: '', command: '', args: '' });
+      setShowAddForm(false);
+      // 刷新运行时连接
+      loadConnectedMcps();
+    } catch (error) {
+      console.error('Failed to add MCP connection:', error);
+      alert('添加 MCP 连接失败');
+    }
+  };
+
+  const handleDeleteConnection = async (connId: string) => {
+    if (!confirm('确定删除此 MCP 连接配置？')) return;
+    try {
+      await api.disconnectMcp(connId);
+      setMcpConnections(prev => ({ connections: prev.connections.filter(c => c.id !== connId) }));
+      loadConnectedMcps();
+    } catch (error) {
+      console.error('Failed to delete MCP connection:', error);
+    }
+  };
+
+  const handleStartEditing = (conn: MCPConnection) => {
+    setEditingConnId(conn.id);
+    setEditConnForm({ name: conn.name, command: conn.command, args: conn.args.join(' ') });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingConnId) return;
+    try {
+      const args = editConnForm.args ? editConnForm.args.split(' ').filter(Boolean) : [];
+      const conns = mcpConnections.connections.map(c =>
+        c.id === editingConnId
+          ? { ...c, name: editConnForm.name, command: editConnForm.command, args }
+          : c
+      );
+      await api.updateMcpSettings({ connections: conns });
+      setMcpConnections({ connections: conns });
+      setEditingConnId(null);
+    } catch (error) {
+      console.error('Failed to update MCP connection:', error);
+      alert('更新失败');
+    }
+  };
+
+  const handleToggleConnEnabled = async (connId: string, enabled: boolean) => {
+    const newConnections = mcpConnections.connections.map(c =>
+      c.id === connId ? { ...c, enabled } : c
+    );
+    const updated = await api.updateMcpSettings({ connections: newConnections });
+    setMcpConnections(updated);
+  };
+
+  const handleConnectServer = async (conn: MCPConnection) => {
+    setConnMsg({ id: conn.id, text: '连接中...', isError: false });
+    try {
+      const result = await api.connectMcpServer({ id: conn.id, name: conn.name, command: conn.command, args: conn.args, enabled: true });
+      setConnMsg({ id: conn.id, text: result.success ? '连接成功' : (result.connection as any)?.error || '连接失败', isError: !result.success });
+      loadConnectedMcps();
+    } catch (error) {
+      setConnMsg({ id: conn.id, text: '连接出错: ' + ((error as Error).message), isError: true });
+    }
+  };
+
+  const handleToggleTool = async (connectionId: string, toolName: string) => {
+    const current = connEnabledTools[connectionId] || [];
+    const next = current.includes(toolName)
+      ? current.filter(t => t !== toolName)
+      : [...current, toolName];
+    const newMap = { ...connEnabledTools, [connectionId]: next };
+    setConnEnabledTools(newMap);
+    try {
+      await api.updateMcpConnectionTools(connectionId, next);
+    } catch (error) {
+      console.error('Failed to update connection tools:', error);
+      // 回滚
+      setConnEnabledTools(prev => ({ ...prev, [connectionId]: current }));
+    }
+  };
+
+  const getConnRuntimeInfo = (connId: string) => {
+    return connectedMcps.find(c => c.connectionId === connId);
+  };
+
+  const getConnToolCount = (conn: MCPConnection) => {
+    // 先从运行时获取
+    const runtime = connectedMcps.find(c => c.connectionId === conn.id);
+    if (runtime && runtime.isConnected && runtime.tools) return runtime.tools.length;
+    return 0;
+  };
+
+  const renderMcpConnectionCard = (conn: MCPConnection) => {
+    const runtimeInfo = getConnRuntimeInfo(conn.id);
+    const isConnected = runtimeInfo?.isConnected ?? false;
+    const isExpanded = expandedConnId === conn.id;
+    const runtimeTools = runtimeInfo?.tools || [];
+    const enabledTools = connEnabledTools[conn.id] || runtimeTools.map(t => t.name);
+    const isEditing = editingConnId === conn.id;
+
+    return (
+      <div key={conn.id} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
+        {isEditing ? (
+          <div>
+            <div className="settings-item" style={{ marginBottom: 8 }}>
+              <label>名称</label>
+              <input type="text" value={editConnForm.name}
+                onChange={e => setEditConnForm(p => ({ ...p, name: e.target.value }))}
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+            </div>
+            <div className="settings-item" style={{ marginBottom: 8 }}>
+              <label>命令</label>
+              <input type="text" value={editConnForm.command}
+                onChange={e => setEditConnForm(p => ({ ...p, command: e.target.value }))}
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+            </div>
+            <div className="settings-item" style={{ marginBottom: 8 }}>
+              <label>参数</label>
+              <input type="text" value={editConnForm.args}
+                onChange={e => setEditConnForm(p => ({ ...p, args: e.target.value }))}
+                placeholder="空格分隔的参数"
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button className="btn-primary" onClick={handleSaveEdit} style={{ padding: '4px 12px', fontSize: 12 }}>保存</button>
+              <button className="btn-secondary" onClick={() => setEditingConnId(null)} style={{ padding: '4px 12px', fontSize: 12 }}>取消</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>{conn.name}</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontFamily: 'monospace' }}>{conn.command} {conn.args.join(' ')}</div>
+              </div>
+              <span style={{
+                fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                background: isConnected ? 'var(--success-bg)' : 'var(--bg-primary)',
+                color: isConnected ? 'var(--success-color)' : 'var(--text-secondary)',
+                border: '1px solid ' + (isConnected ? 'var(--success-color)' : 'var(--border-primary)'),
+              }}>
+                {isConnected ? '已连接' : '未连接'}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                {getConnToolCount(conn)} 工具
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              <label className="settings-item" style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', margin: 0, fontSize: 12 }}>
+                <input type="checkbox" checked={conn.enabled}
+                  onChange={e => handleToggleConnEnabled(conn.id, e.target.checked)} />
+                启用
+              </label>
+              <button onClick={() => handleConnectServer(conn)}
+                style={{ padding: '3px 10px', fontSize: 11, background: isConnected ? 'var(--danger)' : 'var(--accent-color)', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>
+                {isConnected ? '重连' : '连接'}
+              </button>
+              <button onClick={() => handleStartEditing(conn)}
+                style={{ padding: '3px 10px', fontSize: 11, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 4, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                编辑
+              </button>
+              <button onClick={() => handleDeleteConnection(conn.id)}
+                style={{ padding: '3px 10px', fontSize: 11, background: 'transparent', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer' }}>
+                删除
+              </button>
+              {connMsg && connMsg.id === conn.id && (
+                <span style={{ fontSize: 11, color: connMsg.isError ? 'var(--danger)' : 'var(--success-color)', marginLeft: 4 }}>
+                  {connMsg.text}
+                </span>
+              )}
+            </div>
+
+            {/* 工具展开区 */}
+            <div>
+              <button onClick={() => setExpandedConnId(isExpanded ? null : conn.id)}
+                style={{ padding: '2px 8px', fontSize: 11, background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                {isExpanded ? '▲ 收起工具' : '▼ 展开工具 (' + runtimeTools.length + ')'}
+              </button>
+              {isExpanded && (
+                <div style={{ marginTop: 8, padding: 8, background: 'var(--bg-primary)', borderRadius: 6 }}>
+                  {runtimeTools.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>暂无可用工具，请先连接</div>
+                  ) : (
+                    runtimeTools.map(tool => (
+                      <label key={tool.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', cursor: 'pointer', fontSize: 12 }}>
+                        <input type="checkbox" checked={enabledTools.includes(tool.name)}
+                          onChange={() => handleToggleTool(conn.id, tool.name)} />
+                        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{tool.name}</span>
+                        <span style={{ color: 'var(--text-secondary)', marginLeft: 4, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {tool.description}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
   };
 
   const handleSkillUpdate = async (newSkills: typeof skills) => {
@@ -2593,37 +2844,51 @@ export function SettingsApp(_props: SettingsAppProps) {
       case 'mcp':
         return (
           <div className="settings-section">
-            <h3>MCP 服务连接</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0 }}>MCP 服务连接</h3>
+              <button onClick={() => setShowAddForm(!showAddForm)}
+                style={{ padding: '6px 14px', background: 'var(--accent-color)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 13 }}>
+                {showAddForm ? '取消' : '+ 添加连接'}
+              </button>
+            </div>
+
+            {/* 添加连接表单 */}
+            {showAddForm && (
+              <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
+                <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <label>名称</label>
+                  <input type="text" value={newConnForm.name}
+                    onChange={e => setNewConnForm(p => ({ ...p, name: e.target.value }))}
+                    placeholder="例如: PostgreSQL MCP"
+                    style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                </div>
+                <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <label>命令</label>
+                  <input type="text" value={newConnForm.command}
+                    onChange={e => setNewConnForm(p => ({ ...p, command: e.target.value }))}
+                    placeholder="例如: npx"
+                    style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                </div>
+                <div className="settings-item" style={{ marginBottom: 12 }}>
+                  <label>参数</label>
+                  <input type="text" value={newConnForm.args}
+                    onChange={e => setNewConnForm(p => ({ ...p, args: e.target.value }))}
+                    placeholder="例如: -y @modelcontextprotocol/server-postgres ..."
+                    style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                </div>
+                <button onClick={handleAddConnection} disabled={!newConnForm.name || !newConnForm.command}
+                  style={{ padding: '6px 16px', background: 'var(--accent-color)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 13, opacity: (!newConnForm.name || !newConnForm.command) ? 0.5 : 1 }}>
+                  添加
+                </button>
+              </div>
+            )}
+
             {mcpConnections.connections.length === 0 ? (
               <div style={{ color: 'var(--text-secondary)', padding: 20, textAlign: 'center' }}>
                 暂无 MCP 服务连接
               </div>
             ) : (
-              mcpConnections.connections.map((conn) => (
-                <div key={conn.id} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
-                  <div className="settings-item" style={{ marginBottom: 8 }}>
-                    <label>名称</label>
-                    <span style={{ color: 'var(--text-primary)' }}>{conn.name}</span>
-                  </div>
-                  <div className="settings-item" style={{ marginBottom: 8 }}>
-                    <label>命令</label>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{conn.command}</span>
-                  </div>
-                  <div className="settings-item">
-                    <label>启用</label>
-                    <input
-                      type="checkbox"
-                      checked={conn.enabled}
-                      onChange={(e) => {
-                        const newConnections = mcpConnections.connections.map(c =>
-                          c.id === conn.id ? { ...c, enabled: e.target.checked } : c
-                        );
-                        handleMcpUpdate({ connections: newConnections });
-                      }}
-                    />
-                  </div>
-                </div>
-              ))
+              mcpConnections.connections.map(conn => renderMcpConnectionCard(conn))
             )}
           </div>
         );

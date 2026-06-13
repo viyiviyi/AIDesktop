@@ -159,6 +159,64 @@ router.get('/connections/:connectionId/tools', async (req: Request, res: Respons
   }
 });
 
+// Get a single connection with tool enable status
+router.get('/connections/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Get connection config from settings
+    const mcp = await settingsService.getMcp();
+    const connectionConfig = mcp.connections.find(c => c.id === id);
+    if (!connectionConfig) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    // Get client tools if connected
+    const client = mcpClientRegistry.getClient(id);
+    const tools = client ? client.getTools() : [];
+    const enabledTools = connectionConfig.enabledTools || [];
+
+    // Mark each tool's enabled status
+    const toolsWithStatus = tools.map((tool: any) => ({
+      name: tool.name,
+      description: tool.description || '',
+      inputSchema: tool.inputSchema || {},
+      enabled: enabledTools.length === 0 || enabledTools.includes(tool.name),
+    }));
+
+    res.json({
+      connection: {
+        id: connectionConfig.id,
+        name: connectionConfig.name,
+        command: connectionConfig.command,
+        args: connectionConfig.args,
+        enabled: connectionConfig.enabled,
+        enabledTools: connectionConfig.enabledTools,
+        tools: toolsWithStatus,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Update enabled tools for a connection
+router.put('/connections/:id/tools', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { enabledTools } = req.body;
+
+    if (!Array.isArray(enabledTools)) {
+      return res.status(400).json({ error: 'enabledTools must be an array of tool name strings' });
+    }
+
+    const result = await settingsService.updateMcpConnection(id, { enabledTools });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // Call a tool on a specific connection
 router.post('/connections/:connectionId/call', async (req: Request, res: Response) => {
   try {

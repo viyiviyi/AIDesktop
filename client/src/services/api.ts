@@ -517,6 +517,27 @@ export async function listMcpTools(connectionId: string): Promise<Array<{ name: 
   return data.tools;
 }
 
+// 获取单个 MCP 连接的详细信息（含工具启用状态）
+export async function getMcpConnectionDetail(connectionId: string): Promise<{
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+  enabledTools?: string[];
+  tools: Array<{ name: string; description: string; inputSchema: object; enabled: boolean }>;
+}> {
+  return fetchJson(`/settings/mcp/${connectionId}`);
+}
+
+// 更新 MCP 连接的工具启用状态
+export async function updateMcpConnectionTools(connectionId: string, enabledTools: string[]): Promise<void> {
+  await fetchJson(`/settings/mcp/${connectionId}/tools`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabledTools }),
+  });
+}
+
 // 调用MCP工具
 export async function callMcpTool(connectionId: string, tool: string, args: object): Promise<unknown> {
   const data = await fetchJson<{ result: unknown }>(`/mcp/connections/${connectionId}/call`, {

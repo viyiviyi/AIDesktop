@@ -207,6 +207,21 @@ class SettingsService {
     return { ...this.mcp };
   }
 
+  // 更新单个MCP连接
+  async updateMcpConnection(connectionId: string, updates: Partial<MCPConnection>): Promise<{ connections: MCPConnection[] }> {
+    await ensureDir(CONFIGS_DIR);
+    if (!this.mcp) {
+      await this.loadMcp();
+    }
+    const index = this.mcp!.connections.findIndex(c => c.id === connectionId);
+    if (index < 0) {
+      throw new Error(`MCP connection ${connectionId} not found`);
+    }
+    this.mcp!.connections[index] = { ...this.mcp!.connections[index], ...updates };
+    await writeJsonFile(path.join(CONFIGS_DIR, 'mcp.json'), this.mcp);
+    return { connections: this.mcp!.connections };
+  }
+
   // 连接新MCP服务
   async connectMcp(connection: Omit<MCPConnection, 'id'>): Promise<{ connections: MCPConnection[] }> {
     await ensureDir(CONFIGS_DIR);

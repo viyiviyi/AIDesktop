@@ -543,6 +543,19 @@ class MCPServiceRegistry {
       throw new Error('tool name is required for external MCP calls');
     }
 
+    // 检查 enabledTools 权限
+    const { settingsService } = await import('../services/settings.js');
+    const mcp = await settingsService.getMcp();
+    const connection = mcp.connections.find(c => c.id === connectionId);
+    if (connection) {
+      const enabledTools = connection.enabledTools;
+      if (enabledTools !== undefined && enabledTools.length > 0) {
+        if (!enabledTools.includes(tool)) {
+          throw new Error(`Tool "${tool}" is not enabled for connection "${connection.name}". Enabled tools: ${enabledTools.join(', ')}`);
+        }
+      }
+    }
+
     logger.info('MCPServiceRegistry', `External MCP call: ${tool} on connection ${connectionId}`);
 
     try {
