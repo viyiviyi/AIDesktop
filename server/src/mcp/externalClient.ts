@@ -95,7 +95,15 @@ export class MCPExternalClient {
       if (!url) throw new Error('SSE transport requires a url');
       logger.info('MCPExternalClient', `Connecting to ${this.connection.name} via SSE: ${url}`);
 
-      const sseTransport = new MCPSseTransport(url, this.connectionId);
+      // 转换自定义请求头
+      const headers: Record<string, string> = {};
+      if (this.connection.headers) {
+        for (const h of this.connection.headers) {
+          if (h.key) headers[h.key] = h.value;
+        }
+      }
+
+      const sseTransport = new MCPSseTransport(url, this.connectionId, undefined, headers);
       await sseTransport.connect();
       this.transport = new MCPJsonRpcClient(sseTransport as any, this.connectionId);
     } else {

@@ -208,6 +208,8 @@ export interface MCPConnection {
   args: string[];
   /** SSE 模式: MCP 服务器 URL（如 http://localhost:3001/mcp） */
   url?: string;
+  /** SSE 模式: 自定义请求头（如 Authorization, API-Key 等） */
+  headers?: Array<{ key: string; value: string }>;
   enabled: boolean;
   services: MCPService[];
   /** 启用的工具名称列表，空数组或 undefined 表示全部启用 */

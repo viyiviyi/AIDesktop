@@ -1225,10 +1225,10 @@ export function SettingsApp(_props: SettingsAppProps) {
   }>>([]);
   // 添加连接表单
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newConnForm, setNewConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse', command: '', args: '', url: '' });
+  const [newConnForm, setNewConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse', command: '', args: '', url: '', headers: [] as Array<{ key: string; value: string }> });
   // 编辑连接表单
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
-  const [editConnForm, setEditConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse', command: '', args: '', url: '' });
+  const [editConnForm, setEditConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse', command: '', args: '', url: '', headers: [] as Array<{ key: string; value: string }> });
   // 展开的工具区域
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null);
   // 连接状态提示
@@ -1599,6 +1599,7 @@ export function SettingsApp(_props: SettingsAppProps) {
           command: '',
           args: [],
           url: newConnForm.url,
+          headers: newConnForm.headers.filter(h => h.key),
         });
       } else {
         if (!newConnForm.command) return;
@@ -1612,7 +1613,7 @@ export function SettingsApp(_props: SettingsAppProps) {
         });
       }
       setMcpConnections(result);
-      setNewConnForm({ name: '', transportType: 'stdio', command: '', args: '', url: '' });
+      setNewConnForm({ name: '', transportType: 'stdio', command: '', args: '', url: '', headers: [] });
       setShowAddForm(false);
       // 刷新运行时连接
       loadConnectedMcps();
@@ -1641,6 +1642,7 @@ export function SettingsApp(_props: SettingsAppProps) {
       command: conn.command || '',
       args: conn.args ? conn.args.join(' ') : '',
       url: conn.url || '',
+      headers: conn.headers ? conn.headers.map(h => ({ ...h })) : [],
     });
   };
 
@@ -1656,6 +1658,7 @@ export function SettingsApp(_props: SettingsAppProps) {
               command: editConnForm.transportType === 'sse' ? '' : editConnForm.command,
               args: editConnForm.transportType === 'sse' ? [] : editConnForm.args.split(' ').filter(Boolean),
               url: editConnForm.transportType === 'sse' ? editConnForm.url : undefined,
+              headers: editConnForm.headers.filter(h => h.key),
             }
           : c
       );
@@ -1758,13 +1761,44 @@ export function SettingsApp(_props: SettingsAppProps) {
                 </div>
               </>
             ) : (
-              <div className="settings-item" style={{ marginBottom: 8 }}>
-                <label>URL</label>
-                <input type="text" value={editConnForm.url}
-                  onChange={e => setEditConnForm(p => ({ ...p, url: e.target.value }))}
-                  placeholder="例如: http://localhost:3001/mcp"
-                  style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
-              </div>
+              <>
+                <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <label>URL</label>
+                  <input type="text" value={editConnForm.url}
+                    onChange={e => setEditConnForm(p => ({ ...p, url: e.target.value }))}
+                    placeholder="例如: http://localhost:3001/mcp"
+                    style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 12, color: 'var(--text-secondary)' }}>请求头 (可选)</label>
+                  {editConnForm.headers.map((h, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                      <input type="text" value={h.key}
+                        onChange={e => {
+                          const hdrs = [...editConnForm.headers];
+                          hdrs[i] = { ...hdrs[i], key: e.target.value };
+                          setEditConnForm(p => ({ ...p, headers: hdrs }));
+                        }}
+                        placeholder="Key"
+                        style={{ width: '40%', background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 6px', color: 'var(--text-primary)', fontSize: 12 }} />
+                      <input type="text" value={h.value}
+                        onChange={e => {
+                          const hdrs = [...editConnForm.headers];
+                          hdrs[i] = { ...hdrs[i], value: e.target.value };
+                          setEditConnForm(p => ({ ...p, headers: hdrs }));
+                        }}
+                        placeholder="Value"
+                        style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 6px', color: 'var(--text-primary)', fontSize: 12 }} />
+                      <button onClick={() => setEditConnForm(p => ({ ...p, headers: p.headers.filter((_, j) => j !== i) }))}
+                        style={{ padding: '2px 6px', fontSize: 11, background: 'transparent', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer' }}>×</button>
+                    </div>
+                  ))}
+                  <button onClick={() => setEditConnForm(p => ({ ...p, headers: [...p.headers, { key: '', value: '' }] }))}
+                    style={{ padding: '2px 8px', fontSize: 11, background: 'transparent', border: '1px dashed var(--border-primary)', borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                    + 添加请求头
+                  </button>
+                </div>
+              </>
             )}
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button className="btn-primary" onClick={handleSaveEdit} style={{ padding: '4px 12px', fontSize: 12 }}>保存</button>
@@ -2945,13 +2979,44 @@ export function SettingsApp(_props: SettingsAppProps) {
                     </div>
                   </>
                 ) : (
-                  <div className="settings-item" style={{ marginBottom: 12 }}>
-                    <label>URL</label>
-                    <input type="text" value={newConnForm.url}
-                      onChange={e => setNewConnForm(p => ({ ...p, url: e.target.value }))}
-                      placeholder="例如: http://localhost:3001/mcp"
-                      style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
-                  </div>
+                  <>
+                    <div className="settings-item" style={{ marginBottom: 8 }}>
+                      <label>URL</label>
+                      <input type="text" value={newConnForm.url}
+                        onChange={e => setNewConnForm(p => ({ ...p, url: e.target.value }))}
+                        placeholder="例如: http://localhost:3001/mcp"
+                        style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                    </div>
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={{ display: 'block', marginBottom: 4, fontSize: 12, color: 'var(--text-secondary)' }}>请求头 (可选)</label>
+                      {newConnForm.headers.map((h, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                          <input type="text" value={h.key}
+                            onChange={e => {
+                              const hdrs = [...newConnForm.headers];
+                              hdrs[i] = { ...hdrs[i], key: e.target.value };
+                              setNewConnForm(p => ({ ...p, headers: hdrs }));
+                            }}
+                            placeholder="Key"
+                            style={{ width: '40%', background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 6px', color: 'var(--text-primary)', fontSize: 12 }} />
+                          <input type="text" value={h.value}
+                            onChange={e => {
+                              const hdrs = [...newConnForm.headers];
+                              hdrs[i] = { ...hdrs[i], value: e.target.value };
+                              setNewConnForm(p => ({ ...p, headers: hdrs }));
+                            }}
+                            placeholder="Value"
+                            style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 6px', color: 'var(--text-primary)', fontSize: 12 }} />
+                          <button onClick={() => setNewConnForm(p => ({ ...p, headers: p.headers.filter((_, j) => j !== i) }))}
+                            style={{ padding: '2px 6px', fontSize: 11, background: 'transparent', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer' }}>×</button>
+                        </div>
+                      ))}
+                      <button onClick={() => setNewConnForm(p => ({ ...p, headers: [...p.headers, { key: '', value: '' }] }))}
+                        style={{ padding: '2px 8px', fontSize: 11, background: 'transparent', border: '1px dashed var(--border-primary)', borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                        + 添加请求头
+                      </button>
+                    </div>
+                  </>
                 )}
                 <button onClick={handleAddConnection}
                   disabled={!newConnForm.name || (newConnForm.transportType === 'stdio' ? !newConnForm.command : !newConnForm.url)}

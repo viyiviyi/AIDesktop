@@ -43,17 +43,19 @@ export class MCPSseTransport implements SseTransport {
   private connectionId: string;
   private sseUrl: string;
   private postUrl: string;
+  private customHeaders: Record<string, string>;
 
   constructor(
     sseUrl: string,
     connectionId: string = 'unknown',
     postUrl?: string,
+    headers?: Record<string, string>,
   ) {
     this.connectionId = connectionId;
-    // SSE URL: 如 http://localhost:3001/mcp
     this.sseUrl = sseUrl;
     // POST URL: 如果未指定，默认使用 SSE URL 的 /message 端点
     this.postUrl = postUrl || sseUrl.replace(/\/?$/, '/message');
+    this.customHeaders = headers || {};
   }
 
   /**
@@ -70,6 +72,7 @@ export class MCPSseTransport implements SseTransport {
         headers: {
           'Accept': 'text/event-stream',
           'Cache-Control': 'no-cache',
+          ...this.customHeaders,
         },
         signal: this.abortController.signal,
       });
@@ -154,6 +157,7 @@ export class MCPSseTransport implements SseTransport {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...this.customHeaders,
         },
         body: JSON.stringify(message),
         signal: this.abortController?.signal,

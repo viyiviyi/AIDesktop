@@ -175,6 +175,7 @@ export interface MCPConnection {
   command: string;
   args: string[];
   url?: string;
+  headers?: Array<{ key: string; value: string }>;
   enabled: boolean;
   services: Array<{ name: string; description: string; methods: string[] }>;
   enabledTools?: string[];
