@@ -12,10 +12,11 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import type { App } from "../types/index.js";
 import { mcpServiceRegistry } from "../mcp/service.js";
+import { mcpClientRegistry } from "../mcp/clientRegistry.js";
 
 /** 将 service.name.method 转为 LLM 兼容的 tool name（. → _） */
 function safeToolName(serviceName: string, method: string): string {
-  return `${serviceName.replace(/\./g, "_")}_${method}`;
+  return `${serviceName.replace(/\\./g, "_")}_${method}`;
 }
 
 /** 从 safeToolName 解析回 serviceName 和 method */
@@ -47,6 +48,11 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
   for (const service of services) {
     if (allowedTools.size > 0 && !allowedTools.has(service.name)) continue;
 
+    // 外部 MCP 服务的工具单独处理（每个工具生成一个 AgentTool）
+    if (service.name === 'mcp.external') {
+      continue;
+    }
+
     for (const method of service.methods) {
       const name = safeToolName(service.name, method);
 
@@ -68,6 +74,73 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
             );
             return {
               content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+              details: result,
+            };
+          } catch (error) {
+            return {
+              content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+              details: null,
+            };
+          }
+        },
+      });
+    }
+  }
+
+  // 为外部 MCP 工具的每个启用的工具生成独立的 AgentTool
+  const externalTools = buildExternalMcpAgentTools(allowedTools);
+  tools.push(...externalTools);
+
+  return tools;
+}
+
+/**
+ * 构建外部 MCP 工具的 AgentTool
+ * 只生成在 allowedTools 中的工具
+ */
+function buildExternalMcpAgentTools(allowedTools: Set<string>): AgentTool[] {
+  const tools: AgentTool[] = [];
+
+  // 如果 app 有 mcp.external 权限，或者有具体的外部工具权限
+  const hasExternalAccess = allowedTools.size === 0 || allowedTools.has('mcp.external');
+  if (!hasExternalAccess) return tools;
+
+  const clients = mcpClientRegistry.listClients();
+  for (const client of clients) {
+    if (!client.isConnected()) continue;
+
+    const connectionId = client.getConnectionId();
+    const connName = client.getServerInfo()?.name || connectionId;
+    const connTools = client.getTools();
+
+    for (const tool of connTools) {
+      // 工具名: external_{连接ID}_{工具名}（针对 LLM 兼容）
+      const safeConnId = connectionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeToolName = (tool.name || tool.name).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const agentToolName = `mcp_ext_${safeConnId}_${safeToolName}`;
+
+      // 在 app config 中存储的格式是 "external:连接ID:工具名"
+      const appToolKey = `external:${connectionId}:${tool.name}`;
+      if (allowedTools.size > 0 && !allowedTools.has(appToolKey) && !allowedTools.has('mcp.external') && !allowedTools.has('*')) continue;
+
+      tools.push({
+        name: agentToolName,
+        label: `${connName} - ${tool.name}`,
+        description: tool.description || `${connName} tool: ${tool.name}`,
+        parameters: tool.inputSchema && typeof tool.inputSchema === 'object' && Object.keys(tool.inputSchema).length > 0
+          ? Type.Object({}, { additionalProperties: true }) // 使用宽松 schema 避免验证失败
+          : Type.Object({}, { additionalProperties: true }),
+        execute: async (toolCallId, params, signal, onUpdate) => {
+          try {
+            const result = await mcpServiceRegistry.callMethod(
+              'mcp.external',
+              'call',
+              { connectionId, tool: tool.name, toolArgs: (params as any) || {} },
+              {},
+            );
+            const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+            return {
+              content: [{ type: "text" as const, text }],
               details: result,
             };
           } catch (error) {

@@ -1591,11 +1591,11 @@ export function SettingsApp(_props: SettingsAppProps) {
     if (!newConnForm.name) return;
     try {
       let result;
-      if (newConnForm.transportType === 'sse') {
+      if (newConnForm.transportType === 'sse' || newConnForm.transportType === 'http') {
         if (!newConnForm.url) return;
         result = await api.connectMcp({
           name: newConnForm.name,
-          transportType: 'sse',
+          transportType: newConnForm.transportType,
           command: '',
           args: [],
           url: newConnForm.url,
@@ -1655,9 +1655,9 @@ export function SettingsApp(_props: SettingsAppProps) {
               ...c,
               name: editConnForm.name,
               transportType: editConnForm.transportType,
-              command: editConnForm.transportType === 'sse' ? '' : editConnForm.command,
-              args: editConnForm.transportType === 'sse' ? [] : editConnForm.args.split(' ').filter(Boolean),
-              url: editConnForm.transportType === 'sse' ? editConnForm.url : undefined,
+              command: editConnForm.transportType === 'sse' || editConnForm.transportType === 'http' ? '' : editConnForm.command,
+              args: editConnForm.transportType === 'sse' || editConnForm.transportType === 'http' ? [] : editConnForm.args.split(' ').filter(Boolean),
+              url: editConnForm.transportType === 'sse' || editConnForm.transportType === 'http' ? editConnForm.url : undefined,
               headers: editConnForm.headers.filter(h => h.key),
             }
           : c
@@ -1682,7 +1682,16 @@ export function SettingsApp(_props: SettingsAppProps) {
   const handleConnectServer = async (conn: MCPConnection) => {
     setConnMsg({ id: conn.id, text: '连接中...', isError: false });
     try {
-      const result = await api.connectMcpServer({ id: conn.id, name: conn.name, command: conn.command, args: conn.args, enabled: true });
+      const result = await api.connectMcpServer({ 
+        id: conn.id, 
+        name: conn.name, 
+        transportType: conn.transportType, 
+        command: conn.command, 
+        args: conn.args, 
+        url: conn.url, 
+        headers: conn.headers, 
+        enabled: conn.enabled !== false 
+      });
       setConnMsg({ id: conn.id, text: result.success ? '连接成功' : (result.connection as any)?.error || '连接失败', isError: !result.success });
       loadConnectedMcps();
     } catch (error) {
@@ -1740,10 +1749,11 @@ export function SettingsApp(_props: SettingsAppProps) {
               <select value={editConnForm.transportType}
                 onChange={e => setEditConnForm(p => ({ ...p, transportType: e.target.value as 'stdio' | 'sse' }))}
                 style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }}>
-                <option value="stdio">Stdio (Shell 命令)</option>
-                <option value="sse">SSE (HTTP URL)</option>
-              </select>
-            </div>
+                 <option value="stdio">Stdio (Shell 命令)</option>
+                 <option value="sse">SSE (传统 SSE)</option>
+                 <option value="http">HTTP (Streamable HTTP)</option>
+               </select>
+             </div>
             {editConnForm.transportType === 'stdio' ? (
               <>
                 <div className="settings-item" style={{ marginBottom: 8 }}>
@@ -1810,9 +1820,9 @@ export function SettingsApp(_props: SettingsAppProps) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>{conn.name}</div>
-                {conn.transportType === 'sse' ? (
+                {conn.transportType === 'sse' || conn.transportType === 'http' ? (
                   <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontFamily: 'monospace' }}>
-                    SSE: {conn.url || '-'}
+                    {conn.transportType === 'sse' ? 'SSE' : 'HTTP'}: {conn.url || '-'}
                   </div>
                 ) : (
                   <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontFamily: 'monospace' }}>
@@ -2958,7 +2968,8 @@ export function SettingsApp(_props: SettingsAppProps) {
                     onChange={e => setNewConnForm(p => ({ ...p, transportType: e.target.value as 'stdio' | 'sse' }))}
                     style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }}>
                     <option value="stdio">Stdio (Shell 命令)</option>
-                    <option value="sse">SSE (HTTP URL)</option>
+                    <option value="sse">SSE (传统 SSE)</option>
+                    <option value="http">HTTP (Streamable HTTP)</option>
                   </select>
                 </div>
                 {newConnForm.transportType === 'stdio' ? (

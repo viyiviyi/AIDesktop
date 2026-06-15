@@ -65,8 +65,8 @@ router.post('/connect', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Connection name is required' });
     }
 
-    if (connection.transportType === 'sse' && !connection.url) {
-      return res.status(400).json({ error: 'SSE transport requires a url' });
+    if ((connection.transportType === 'sse' || connection.transportType === 'http') && !connection.url) {
+      return res.status(400).json({ error: 'SSE/HTTP transport requires a url' });
     }
 
     if ((!connection.transportType || connection.transportType === 'stdio') && !connection.command) {

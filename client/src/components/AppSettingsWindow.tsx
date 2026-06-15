@@ -27,8 +27,11 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   // 已连接的外部 MCP 服务器信息，用于在工具列表中显示 "mcp.external"
   const [mcpExternals, setMcpExternals] = useState<Array<{
     connectionId: string;
-    name: string;
+    serverInfo: { name: string; version: string } | null;
     isConnected: boolean;
+    isInitialized: boolean;
+    tools: Array<{ name: string; description: string; inputSchema: object }>;
+    resources: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
   }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
@@ -78,8 +81,11 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
       const connectedList = (mcpConnectionsRes as any[] || []).filter((c: any) => c.isConnected);
       setMcpExternals(connectedList.map((c: any) => ({
         connectionId: c.connectionId,
-        name: c.serverInfo?.name || c.connectionId,
+        serverInfo: c.serverInfo || null,
         isConnected: c.isConnected,
+        isInitialized: c.isInitialized || false,
+        tools: c.tools || [],
+        resources: c.resources || [],
       })));
 
       setFormData({
@@ -272,53 +278,72 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
       { name: 'mcp.window', description: '窗口管理服务' },
       { name: 'mcp.settings', description: '设置服务' },
       { name: 'mcp.agent', description: 'Agent 管理服务' },
-      { name: 'mcp.browser', description: '浏览器服务' },
     ];
-
-    // 如果有已连接的外部 MCP 服务，追加 "mcp.external" 选项
-    const hasExternal = mcpExternals.length > 0;
-    const externalService = { name: 'mcp.external', description: '外部 MCP 服务（' + mcpExternals.map(e => e.name).join(', ') + '）' };
-
-    // 加上外部 MCP 连接的工具
-    const allToolNames = [...new Set([
-      ...builtinServices.map(s => s.name),
-      ...(hasExternal ? [externalService.name] : []),
-      ...formData.tools,
-    ])];
-
-    const getServiceInfo = (name: string) => {
-      const builtin = builtinServices.find(s => s.name === name);
-      if (builtin) return builtin;
-      if (hasExternal && name === 'mcp.external') return externalService;
-      return null;
-    };
 
     return (
       <div className="app-settings-section">
-        <h4>MCP 工具 / 技能</h4>
-        <p className="app-settings-hint">选择该应用可调用的 MCP 服务。后台服务应用默认拥有所有可见工具的调用权限。</p>
-        <div className="app-settings-checklist">
-          {allToolNames.map(name => {
-            const service = getServiceInfo(name);
-            return (
-              <label key={name} className="app-settings-checkbox">
-                <input
-                  type="checkbox"
-                  checked={formData.tools.includes(name)}
-                  onChange={() => canModifyAll && toggleTool(name)}
-                  disabled={!canModifyAll}
-                />
-                <span style={{ flex: 1 }}>{name}</span>
-                {service && (
-                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>
-                    {service.description}
-                  </span>
-                )}
-              </label>
-            );
-          })}
+        <h4>内置 MCP 服务</h4>
+        <p className="app-settings-hint">选择该应用可调用的内置 MCP 服务。</p>
+        <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
+          {builtinServices.map(s => (
+            <label key={s.name} className="app-settings-checkbox">
+              <input
+                type="checkbox"
+                checked={formData.tools.includes(s.name)}
+                onChange={() => canModifyAll && toggleTool(s.name)}
+                disabled={!canModifyAll}
+              />
+              <span style={{ flex: 1 }}>{s.name}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>
+                {s.description}
+              </span>
+            </label>
+          ))}
         </div>
-        {allToolNames.length === 0 && (
+
+        {(mcpExternals || []).filter(c => c.isConnected).length > 0 && (
+          <>
+            <h4>外部 MCP 服务</h4>
+            <p className="app-settings-hint">已连接的 MCP 服务器提供的工具，可单独勾选。</p>
+            {mcpExternals.filter(c => c.isConnected).map(conn => {
+              const connName = conn.serverInfo?.name || conn.connectionId;
+              return (
+                <div key={conn.connectionId} style={{
+                  marginBottom: 12, padding: 10, background: 'var(--bg-secondary)',
+                  borderRadius: 8, border: '1px solid var(--border-primary)'
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 6 }}>
+                    {connName}
+                  </div>
+                  <div style={{ paddingLeft: 8 }}>
+                    {(conn.tools || []).map(tool => {
+                      const toolKey = `external:${conn.connectionId}:${tool.name}`;
+                      return (
+                        <label key={toolKey} className="app-settings-checkbox" style={{ marginBottom: 4 }}>
+                          <input
+                            type="checkbox"
+                            checked={formData.tools.includes(toolKey)}
+                            onChange={() => canModifyAll && toggleTool(toolKey)}
+                            disabled={!canModifyAll}
+                          />
+                          <span style={{ flex: 1, fontSize: 13 }}>{tool.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>
+                            {tool.description || ''}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {(conn.tools || []).length === 0 && (
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>无可用工具</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        {(mcpExternals || []).filter(c => c.isConnected).length === 0 && builtinServices.length === 0 && (
           <span className="app-settings-empty">暂无可用工具，请先在 MCP 设置中配置</span>
         )}
       </div>

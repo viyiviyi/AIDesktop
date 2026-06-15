@@ -27,11 +27,6 @@ const builtInServices: Record<string, MCPService> = {
     description: 'Settings service - get and update desktop settings',
     methods: ['get', 'update']
   },
-  'mcp.browser': {
-    name: 'mcp.browser',
-    description: 'Browser service - navigate, interact with web pages, get content',
-    methods: ['navigate', 'getContent', 'interact', 'close', 'listSessions']
-  }
 };
 
 /**

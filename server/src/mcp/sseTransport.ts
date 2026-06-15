@@ -68,6 +68,9 @@ export class MCPSseTransport implements SseTransport {
 
     this.abortController = new AbortController();
 
+    // 先尝试 SSE GET 连接（标准 MCP SSE 协议）
+    // 如果失败（如 400），回退到 Streamable HTTP 模式（纯 POST）
+    let sseConnected = false;
     try {
       const response = await fetch(this.sseUrl, {
         method: 'GET',
@@ -79,83 +82,82 @@ export class MCPSseTransport implements SseTransport {
         signal: this.abortController.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(`SSE connection failed: ${response.status} ${response.statusText}`);
-      }
+      if (response.ok && response.body) {
+        sseConnected = true;
+        this._isConnected = true;
+        this.postUrl = this.sseUrl; // Streamable HTTP 模式：POST 到同一 URL
 
-      if (!response.body) {
-        throw new Error('Response body is null');
-      }
+        // 解析 SSE 流
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let currentEvent = '';
 
-      this._isConnected = true;
+        const pump = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-      // 解析 SSE 流
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let currentEvent = '';
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
 
-      const pump = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+              for (const line of lines) {
+                const trimmed = line.trim();
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
+                if (trimmed.startsWith('event: ')) {
+                  currentEvent = trimmed.slice(7);
+                } else if (trimmed.startsWith('data: ')) {
+                  const data = trimmed.slice(6);
 
-            for (const line of lines) {
-              const trimmed = line.trim();
-
-              if (trimmed.startsWith('event: ')) {
-                currentEvent = trimmed.slice(7);
-              } else if (trimmed.startsWith('data: ')) {
-                const data = trimmed.slice(6);
-
-                if (currentEvent === 'endpoint') {
-                  // 服务器通知 POST URL（动态 endpoint）
-                  const newPostUrl = data.trim();
-                  if (newPostUrl) {
-                    // 如果是相对路径，拼接 base URL
-                    this.postUrl = newPostUrl.startsWith('http')
-                      ? newPostUrl
-                      : new URL(newPostUrl, this.sseUrl).href;
-                    logger.info('MCPSseTransport', `Received endpoint: ${this.postUrl}`);
-                  }
-                } else if (currentEvent === 'message' || currentEvent === '') {
-                  try {
-                    const message = JSON.parse(data) as JsonRpcMessage;
-
-                    // 通知全局消息处理器
-                    if (this.messageHandler) {
-                      this.messageHandler(message);
+                  if (currentEvent === 'endpoint') {
+                    const newPostUrl = data.trim();
+                    if (newPostUrl) {
+                      this.postUrl = newPostUrl.startsWith('http')
+                        ? newPostUrl
+                        : new URL(newPostUrl, this.sseUrl).href;
+                      logger.info('MCPSseTransport', `Received endpoint: ${this.postUrl}`);
                     }
-                  } catch (e) {
-                    logger.warn('MCPSseTransport', `Failed to parse SSE data: ${data.slice(0, 100)}`);
+                  } else if (currentEvent === 'message' || currentEvent === '') {
+                    try {
+                      const message = JSON.parse(data) as JsonRpcMessage;
+                      if (this.messageHandler) {
+                        this.messageHandler(message);
+                      }
+                    } catch (e) {
+                      logger.warn('MCPSseTransport', `Failed to parse SSE data: ${data.slice(0, 100)}`);
+                    }
                   }
+                  currentEvent = '';
                 }
-                currentEvent = '';
               }
             }
+          } catch (error: any) {
+            if (error.name !== 'AbortError') {
+              logger.error('MCPSseTransport', `SSE stream error: ${error.message}`);
+              this._isConnected = false;
+              this.errorHandler?.(error);
+            }
           }
-        } catch (error: any) {
-          if (error.name !== 'AbortError') {
-            logger.error('MCPSseTransport', `SSE stream error: ${error.message}`);
-            this._isConnected = false;
-            this.errorHandler?.(error);
-          }
-        }
-      };
+        };
 
-      pump().catch((error) => {
-        logger.error('MCPSseTransport', `SSE pump error: ${error.message}`);
-        this._isConnected = false;
-      });
-
+        pump().catch((error) => {
+          logger.error('MCPSseTransport', `SSE pump error: ${error.message}`);
+          this._isConnected = false;
+        });
+      } else {
+        logger.info('MCPSseTransport', `SSE GET returned ${response.status}, falling back to Streamable HTTP`);
+      }
     } catch (error: any) {
-      this._isConnected = false;
-      throw new Error(`SSE connection failed: ${error.message}`);
+      logger.info('MCPSseTransport', `SSE GET failed: ${error.message}, falling back to Streamable HTTP`);
+    }
+
+    if (!sseConnected) {
+      // Streamable HTTP 模式：不使用 SSE 流，直接通过 POST 请求/响应
+      this.postUrl = this.sseUrl;
+      this._isConnected = true;
+      logger.info('MCPSseTransport', `Using Streamable HTTP: ${this.postUrl}`);
     }
   }
 
@@ -173,6 +175,7 @@ export class MCPSseTransport implements SseTransport {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json, text/event-stream',
           ...this.customHeaders,
         },
         body: JSON.stringify(message),

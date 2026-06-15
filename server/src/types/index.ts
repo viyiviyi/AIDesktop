@@ -200,8 +200,8 @@ export interface MCPService {
 export interface MCPConnection {
   id: string;
   name: string;
-  /** 传输类型: 'stdio' (shell命令) 或 'sse' (HTTP SSE URL) */
-  transportType: 'stdio' | 'sse';
+  /** 传输类型: 'stdio' (shell命令), 'sse' (传统 SSE), 'http' (Streamable HTTP) */
+  transportType: 'stdio' | 'sse' | 'http';
   /** stdio 模式: shell 命令 */
   command: string;
   /** stdio 模式: 命令参数 */

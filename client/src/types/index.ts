@@ -171,7 +171,7 @@ export interface Skill {
 export interface MCPConnection {
   id: string;
   name: string;
-  transportType: 'stdio' | 'sse';
+  transportType: 'stdio' | 'sse' | 'http';
   command: string;
   args: string[];
   url?: string;
