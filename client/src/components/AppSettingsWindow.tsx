@@ -37,6 +37,8 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  // 外部 MCP 展开状态
+  const [expandedMcpConns, setExpandedMcpConns] = useState<Record<string, boolean>>({});
 
   // Form state
   const [formData, setFormData] = useState({
@@ -307,36 +309,72 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
             <p className="app-settings-hint">已连接的 MCP 服务器提供的工具，可单独勾选。</p>
             {mcpExternals.filter(c => c.isConnected).map(conn => {
               const connName = conn.serverInfo?.name || conn.connectionId;
+              const tools = conn.tools || [];
+              const checkedCount = tools.filter(t => formData.tools.includes(`external:${conn.connectionId}:${t.name}`)).length;
+              const allChecked = checkedCount === tools.length && tools.length > 0;
+              const partialChecked = checkedCount > 0 && !allChecked;
+              const isExpanded = expandedMcpConns[conn.connectionId] ?? false;
+
               return (
                 <div key={conn.connectionId} style={{
-                  marginBottom: 12, padding: 10, background: 'var(--bg-secondary)',
-                  borderRadius: 8, border: '1px solid var(--border-primary)'
+                  marginBottom: 12, padding: 0, background: 'var(--bg-secondary)',
+                  borderRadius: 8, border: '1px solid var(--border-primary)', overflow: 'hidden'
                 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 6 }}>
-                    {connName}
+                  <div
+                    onClick={() => setExpandedMcpConns(prev => ({ ...prev, [conn.connectionId]: !isExpanded }))}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
+                      cursor: 'pointer', userSelect: 'none', fontSize: 13, fontWeight: 600,
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{isExpanded ? '▼' : '▶'}</span>
+                    <input
+                      type="checkbox"
+                      ref={el => { if (el) el.indeterminate = partialChecked; }}
+                      checked={allChecked}
+                      onClick={e => e.stopPropagation()}
+                      onChange={() => {
+                        const keys = tools.map(t => `external:${conn.connectionId}:${t.name}`);
+                        if (allChecked) {
+                          keys.forEach(k => { if (formData.tools.includes(k)) toggleTool(k); });
+                        } else {
+                          keys.forEach(k => { if (!formData.tools.includes(k)) toggleTool(k); });
+                        }
+                      }}
+                      disabled={!canModifyAll}
+                      style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
+                    />
+                    <span style={{ flex: 1 }}>{connName}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      {checkedCount}/{tools.length}
+                    </span>
                   </div>
-                  <div style={{ paddingLeft: 8 }}>
-                    {(conn.tools || []).map(tool => {
-                      const toolKey = `external:${conn.connectionId}:${tool.name}`;
-                      return (
-                        <label key={toolKey} className="app-settings-checkbox" style={{ marginBottom: 4 }}>
-                          <input
-                            type="checkbox"
-                            checked={formData.tools.includes(toolKey)}
-                            onChange={() => canModifyAll && toggleTool(toolKey)}
-                            disabled={!canModifyAll}
-                          />
-                          <span style={{ flex: 1, fontSize: 13 }}>{tool.name}</span>
-                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>
-                            {tool.description || ''}
-                          </span>
-                        </label>
-                      );
-                    })}
-                    {(conn.tools || []).length === 0 && (
-                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>无可用工具</span>
-                    )}
-                  </div>
+                  {isExpanded && (
+                    <div style={{ padding: '0 12px 10px 32px' }}>
+                      {tools.map(tool => {
+                        const toolKey = `external:${conn.connectionId}:${tool.name}`;
+                        return (
+                          <label key={toolKey} className="app-settings-checkbox" style={{ marginBottom: 3, alignItems: 'flex-start' }}>
+                            <input
+                              type="checkbox"
+                              checked={formData.tools.includes(toolKey)}
+                              onChange={() => canModifyAll && toggleTool(toolKey)}
+                              disabled={!canModifyAll}
+                              style={{ marginTop: 2, flexShrink: 0 }}
+                            />
+                            <span style={{ flex: 1, fontSize: 13 }}>{tool.name}</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>
+                              {tool.description || ''}
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {tools.length === 0 && (
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>无可用工具</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
