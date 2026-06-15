@@ -206,7 +206,11 @@ export interface MCPConnection {
   command: string;
   /** stdio 模式: 命令参数 */
   args: string[];
-  /** SSE 模式: MCP 服务器 URL（如 http://localhost:3001/mcp） */
+  /** stdio 模式: 工作目录 */
+  cwd?: string;
+  /** stdio 模式: 环境变量 */
+  env?: Record<string, string>;
+  /** SSE/HTTP 模式: MCP 服务器 URL（如 http://localhost:3001/mcp） */
   url?: string;
   /** SSE 模式: 自定义请求头（如 Authorization, API-Key 等） */
   headers?: Array<{ key: string; value: string }>;

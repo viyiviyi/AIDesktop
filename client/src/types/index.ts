@@ -174,6 +174,8 @@ export interface MCPConnection {
   transportType: 'stdio' | 'sse' | 'http';
   command: string;
   args: string[];
+  cwd?: string;
+  env?: Record<string, string>;
   url?: string;
   headers?: Array<{ key: string; value: string }>;
   enabled: boolean;

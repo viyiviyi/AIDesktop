@@ -78,6 +78,8 @@ export class MCPExternalClient {
       transport = new StdioClientTransport({
         command: this.connection.command,
         args: this.connection.args || [],
+        ...(this.connection.cwd ? { cwd: this.connection.cwd } : {}),
+        env: { ...process.env, ...(this.connection.env || {}) } as Record<string, string>,
       });
     }
 

@@ -1225,10 +1225,10 @@ export function SettingsApp(_props: SettingsAppProps) {
   }>>([]);
   // 添加连接表单
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newConnForm, setNewConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse', command: '', args: '', url: '', headers: [] as Array<{ key: string; value: string }> });
+  const [newConnForm, setNewConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse' | 'http', command: '', args: '', url: '', cwd: '', headers: [] as Array<{ key: string; value: string }> });
   // 编辑连接表单
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
-  const [editConnForm, setEditConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse', command: '', args: '', url: '', headers: [] as Array<{ key: string; value: string }> });
+  const [editConnForm, setEditConnForm] = useState({ name: '', transportType: 'stdio' as 'stdio' | 'sse' | 'http', command: '', args: '', url: '', cwd: '', headers: [] as Array<{ key: string; value: string }> });
   // 展开的工具区域
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null);
   // 连接状态提示
@@ -1609,11 +1609,12 @@ export function SettingsApp(_props: SettingsAppProps) {
           transportType: 'stdio',
           command: newConnForm.command,
           args,
+          cwd: newConnForm.cwd || undefined,
           url: undefined,
         });
       }
       setMcpConnections(result);
-      setNewConnForm({ name: '', transportType: 'stdio', command: '', args: '', url: '', headers: [] });
+      setNewConnForm({ name: '', transportType: 'stdio', command: '', args: '', url: '', cwd: '', headers: [] });
       setShowAddForm(false);
       // 刷新运行时连接
       loadConnectedMcps();
@@ -1642,6 +1643,7 @@ export function SettingsApp(_props: SettingsAppProps) {
       command: conn.command || '',
       args: conn.args ? conn.args.join(' ') : '',
       url: conn.url || '',
+      cwd: conn.cwd || '',
       headers: conn.headers ? conn.headers.map(h => ({ ...h })) : [],
     });
   };
@@ -1658,6 +1660,7 @@ export function SettingsApp(_props: SettingsAppProps) {
               command: editConnForm.transportType === 'sse' || editConnForm.transportType === 'http' ? '' : editConnForm.command,
               args: editConnForm.transportType === 'sse' || editConnForm.transportType === 'http' ? [] : editConnForm.args.split(' ').filter(Boolean),
               url: editConnForm.transportType === 'sse' || editConnForm.transportType === 'http' ? editConnForm.url : undefined,
+              cwd: editConnForm.transportType === 'stdio' ? editConnForm.cwd || undefined : undefined,
               headers: editConnForm.headers.filter(h => h.key),
             }
           : c
@@ -1769,6 +1772,13 @@ export function SettingsApp(_props: SettingsAppProps) {
                     placeholder="空格分隔的参数"
                     style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
                 </div>
+                <div className="settings-item" style={{ marginBottom: 8 }}>
+                  <label>工作目录</label>
+                  <input type="text" value={editConnForm.cwd}
+                    onChange={e => setEditConnForm(p => ({ ...p, cwd: e.target.value }))}
+                    placeholder="可选"
+                    style={{ background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 8px', color: 'var(--text-primary)' }} />
+                </div>
               </>
             ) : (
               <>
@@ -1827,6 +1837,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                 ) : (
                   <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontFamily: 'monospace' }}>
                     {conn.command} {conn.args.join(' ')}
+                    {conn.cwd && <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>cwd: {conn.cwd}</span>}
                   </div>
                 )}
               </div>
@@ -2986,6 +2997,13 @@ export function SettingsApp(_props: SettingsAppProps) {
                       <input type="text" value={newConnForm.args}
                         onChange={e => setNewConnForm(p => ({ ...p, args: e.target.value }))}
                         placeholder="例如: -y @modelcontextprotocol/server-postgres ..."
+                        style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
+                    </div>
+                    <div className="settings-item" style={{ marginBottom: 12 }}>
+                      <label>工作目录</label>
+                      <input type="text" value={newConnForm.cwd}
+                        onChange={e => setNewConnForm(p => ({ ...p, cwd: e.target.value }))}
+                        placeholder="例如: C:/aias-browser-mcp（可选）"
                         style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '6px 8px', color: 'var(--text-primary)' }} />
                     </div>
                   </>
