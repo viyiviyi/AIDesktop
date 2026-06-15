@@ -101,9 +101,11 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
 function buildExternalMcpAgentTools(allowedTools: Set<string>): AgentTool[] {
   const tools: AgentTool[] = [];
 
-  // 如果 app 有 mcp.external 权限，或者有具体的外部工具权限
-  const hasExternalAccess = allowedTools.size === 0 || allowedTools.has('mcp.external');
-  if (!hasExternalAccess) return tools;
+  // 如果 allowedTools 为空（未配置任何工具），不允许任何外部工具
+  // 只有显式勾选了 mcp.external 或具体的外部工具才放行
+  if (allowedTools.size === 0) return tools;
+  const hasExternalAccess = allowedTools.has('mcp.external');
+  if (!hasExternalAccess && ![...allowedTools].some(k => k.startsWith('external:'))) return tools;
 
   const clients = mcpClientRegistry.listClients();
   for (const client of clients) {
@@ -114,10 +116,10 @@ function buildExternalMcpAgentTools(allowedTools: Set<string>): AgentTool[] {
     const connTools = client.getTools();
 
     for (const tool of connTools) {
-      // 工具名: external_{连接ID}_{工具名}（针对 LLM 兼容）
-      const safeConnId = connectionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      // 工具名: mcp_{连接名}_{工具名}（连接名用安全字符）
+      const safeConnName = (client.getServerInfo()?.name || connectionId).replace(/[^a-zA-Z0-9_-]/g, '_');
       const safeToolName = (tool.name || tool.name).replace(/[^a-zA-Z0-9_-]/g, '_');
-      const agentToolName = `mcp_ext_${safeConnId}_${safeToolName}`;
+      const agentToolName = `mcp_${safeConnName}_${safeToolName}`;
 
       // 在 app config 中存储的格式是 "external:连接ID:工具名"
       const appToolKey = `external:${connectionId}:${tool.name}`;

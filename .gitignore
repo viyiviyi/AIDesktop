@@ -9,3 +9,6 @@ server/desktop_data/apps_data/
 server/desktop_data/apps/user/
 .claude/
 docs/
+.hermes/
+hermes_conversation_*.json
+server/desktop_data/configs/window-positions.json
