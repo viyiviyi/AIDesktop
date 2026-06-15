@@ -27,6 +27,11 @@ const builtInServices: Record<string, MCPService> = {
     description: 'Settings service - get and update desktop settings',
     methods: ['get', 'update']
   },
+  'mcp.external': {
+    name: 'mcp.external',
+    description: 'External MCP server tools',
+    methods: ['call']
+  },
 };
 
 /**
