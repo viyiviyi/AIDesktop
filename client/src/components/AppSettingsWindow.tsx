@@ -280,8 +280,10 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
       { name: 'mcp.window', description: '窗口管理服务' },
       { name: 'mcp.settings', description: '设置服务' },
       { name: 'mcp.agent', description: 'Agent 管理服务' },
+      { name: 'mcp.sleep', description: '等待一段时间（最多600秒）' },
+      { name: 'mcp.exec', description: '执行 shell 命令' },
+      { name: 'mcp.http', description: '发送 HTTP 请求' },
     ];
-
     return (
       <div className="app-settings-section">
         <h4>内置 MCP 服务</h4>
