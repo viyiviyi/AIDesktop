@@ -7,6 +7,7 @@ export interface Toast {
   type: ToastType;
   message: string;
   duration: number;
+  createdAt: number;
 }
 
 export interface ConfirmDialog {
@@ -37,7 +38,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     const defaultDuration = type === 'error' ? 15000 : 5000;
     const dur = duration ?? defaultDuration;
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setToasts((prev) => [...prev, { id, type, message, duration: dur }]);
+    setToasts((prev) => [...prev, { id, type, message, duration: dur, createdAt: Date.now() }]);
 
     if (dur > 0) {
       const timer = setTimeout(() => {
@@ -63,10 +64,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => {
       const toast = prev.find((t) => t.id === id);
       if (!toast || toast.duration <= 0) return prev;
+      // 计算剩余时间
+      const elapsed = Date.now() - toast.createdAt;
+      const remaining = Math.max(0, toast.duration - elapsed);
+      if (remaining <= 0) {
+        // 已经超时了，立即移除
+        setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)));
+        return prev;
+      }
       const timer = setTimeout(() => {
         setToasts((p) => p.filter((t) => t.id !== id));
         timersRef.current.delete(id);
-      }, toast.duration);
+      }, remaining);
       timersRef.current.set(id, timer);
       return prev;
     });
