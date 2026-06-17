@@ -218,6 +218,13 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       y: (window.innerHeight - defaultSize.height) / 2,
     };
 
+    // 如果窗口超出视口，移回屏幕内（保留最小 20px 边距）
+    const margin = 20;
+    basePosition = {
+      x: Math.max(margin, Math.min(basePosition.x, window.innerWidth - defaultSize.width - margin)),
+      y: Math.max(margin, Math.min(basePosition.y, window.innerHeight - defaultSize.height - margin)),
+    };
+
     // 同个应用每多开一个窗口，偏移增加 30px 错开
     const sameAppCount = state.windows.filter(w => w.appId === app.id).length;
     const offset = 30 * sameAppCount;
@@ -272,6 +279,13 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       y: (window.innerHeight - defaultSize.height) / 2,
     };
 
+    // 如果窗口超出视口，移回屏幕内
+    const margin = 20;
+    const clampedPosition = {
+      x: Math.max(margin, Math.min(basePosition.x, window.innerWidth - defaultSize.width - margin)),
+      y: Math.max(margin, Math.min(basePosition.y, window.innerHeight - defaultSize.height - margin)),
+    };
+
     const maxZ = state.windows.reduce((max, w) => Math.max(max, w.zIndex), 0);
 
     const newWindow: WindowState = {
@@ -279,7 +293,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       appId,
       title,
       icon: icon || '',
-      position: basePosition,
+      position: clampedPosition,
       size: { ...defaultSize },
       isMaximized: false,
       isMinimized: false,
