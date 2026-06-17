@@ -4,6 +4,7 @@ import { logger } from '../utils/logger.js';
 import { eventBus } from '../services/eventBus.js';
 import { runAgentAsync } from '../agents/pi-agent-session.js';
 import { v4 as uuidv4 } from 'uuid';
+import * as os from 'os';
 
 // 内置MCP服务定义
 const builtInServices: Record<string, MCPService> = {
@@ -27,10 +28,20 @@ const builtInServices: Record<string, MCPService> = {
     description: 'Settings service - get and update desktop settings',
     methods: ['get', 'update']
   },
-  'mcp.external': {
-    name: 'mcp.external',
-    description: 'External MCP server tools',
-    methods: ['call']
+  'mcp.sleep': {
+    name: 'mcp.sleep',
+    description: 'Sleep/wait for a specified number of seconds. Maximum 600 seconds (10 minutes).',
+    methods: ['sleep']
+  },
+  'mcp.exec': {
+    name: 'mcp.exec',
+    description: `Execute a shell command and return its output. Current OS: ${os.platform()} ${os.release()}. The command runs with a timeout and waits for completion.`,
+    methods: ['exec']
+  },
+  'mcp.http': {
+    name: 'mcp.http',
+    description: 'Make HTTP requests with full control over URL, method, headers, and body.',
+    methods: ['request']
   },
 };
 
@@ -102,10 +113,14 @@ class MCPServiceRegistry {
         return this.handleFilesystemMethod(method, args, context);
       case 'mcp.settings':
         return this.handleSettingsMethod(method, args, context);
+      case 'mcp.sleep':
+        return this.handleSleepMethod(method, args, context);
+      case 'mcp.exec':
+        return this.handleExecMethod(method, args, context);
+      case 'mcp.http':
+        return this.handleHttpMethod(method, args, context);
       case 'mcp.browser':
         return this.handleBrowserMethod(method, args, context);
-      case 'mcp.external':
-        return this.handleExternalMethod(method, args, context);
       default:
         throw new Error(`Service ${serviceName} not implemented`);
     }
@@ -408,6 +423,99 @@ class MCPServiceRegistry {
     }
   }
 
+  private async handleSleepMethod(
+    method: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    switch (method) {
+      case 'sleep': {
+        const seconds = args.seconds as number || 0;
+        const clamped = Math.max(1, Math.min(600, seconds));
+        await new Promise(resolve => setTimeout(resolve, clamped * 1000));
+        return { success: true, slept: clamped, unit: 'seconds' };
+      }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleExecMethod(
+    method: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    switch (method) {
+      case 'exec': {
+        const command = args.command as string;
+        if (!command) throw new Error('command is required');
+        const { execSync } = await import('child_process');
+        const timeout = (args.timeout as number) || 30000;
+        try {
+          const output = execSync(command, {
+            timeout,
+            encoding: 'utf-8',
+            maxBuffer: 10 * 1024 * 1024,
+            windowsHide: true,
+          });
+          return { success: true, output, exitCode: 0 };
+        } catch (error: any) {
+          return {
+            success: false,
+            output: error.stdout || '',
+            stderr: error.stderr || '',
+            exitCode: error.status ?? -1,
+            error: error.message,
+          };
+        }
+      }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleHttpMethod(
+    method: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    switch (method) {
+      case 'request': {
+        const url = args.url as string;
+        if (!url) throw new Error('url is required');
+
+        const fetchArgs: RequestInit = {
+          method: (args.method as string) || 'GET',
+          headers: (args.headers as Record<string, string>) || {},
+        };
+        if (args.body) {
+          fetchArgs.body = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
+        }
+        const timeout = (args.timeout as number) || 30000;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeout);
+        try {
+          const response = await fetch(url, { ...fetchArgs, signal: controller.signal });
+          const contentType = response.headers.get('content-type') || '';
+          let body: unknown;
+          if (contentType.includes('application/json')) {
+            body = await response.json();
+          } else {
+            body = await response.text();
+          }
+          return {
+            success: true,
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            body,
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
   private async handleBrowserMethod(
     method: string,
     args: Record<string, unknown>,
@@ -517,53 +625,6 @@ class MCPServiceRegistry {
 
       default:
         throw new Error(`Unknown method: ${method}`);
-    }
-  }
-
-  /**
-   * 处理外部MCP服务方法
-   * 通过MCPClientRegistry转发到外部MCP服务器
-   */
-  private async handleExternalMethod(
-    method: string,
-    args: Record<string, unknown>,
-    context: { appId?: string; userId?: string }
-  ): Promise<unknown> {
-    const { connectionId, tool, toolArgs } = args as {
-      connectionId: string;
-      tool: string;
-      toolArgs: Record<string, unknown>;
-    };
-
-    if (!connectionId) {
-      throw new Error('connectionId is required for external MCP calls');
-    }
-
-    if (!tool) {
-      throw new Error('tool name is required for external MCP calls');
-    }
-
-    // 检查 enabledTools 权限
-    const { settingsService } = await import('../services/settings.js');
-    const mcp = await settingsService.getMcp();
-    const connection = mcp.connections.find(c => c.id === connectionId);
-    if (connection) {
-      const enabledTools = connection.enabledTools;
-      if (enabledTools !== undefined && enabledTools.length > 0) {
-        if (!enabledTools.includes(tool)) {
-          throw new Error(`Tool "${tool}" is not enabled for connection "${connection.name}". Enabled tools: ${enabledTools.join(', ')}`);
-        }
-      }
-    }
-
-    logger.info('MCPServiceRegistry', `External MCP call: ${tool} on connection ${connectionId}`);
-
-    try {
-      const result = await mcpClientRegistry.callTool(connectionId, tool, toolArgs || {});
-      return result;
-    } catch (error) {
-      logger.error('MCPServiceRegistry', `External MCP call failed: ${(error as Error).message}`);
-      throw error;
     }
   }
 }

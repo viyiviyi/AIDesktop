@@ -399,13 +399,19 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         const text = content.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('');
         // 提取 toolCall 块
         const toolCallBlocks = content.filter((c: any) => c.type === 'toolCall');
+        // 如果没有任何实际内容，跳过（后面 done 事件会 loadMessages）
+        if (!text && toolCallBlocks.length === 0) {
+          setStreamingText('');
+          setToolCalls([]);
+          setThinkingText('');
+          break;
+        }
         // 构建完整消息 content
         const msgContent: any[] = [];
         if (text) msgContent.push({ type: 'text', text });
         for (const tc of toolCallBlocks) {
           msgContent.push({ type: 'toolCall', id: tc.id, name: tc.name, arguments: tc.arguments || {} });
         }
-        // 如果 content 为空但 toolCalls state 有内容（回退：从 toolCalls 构建）
         const finalMsg: Message = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           role: 'assistant',
@@ -431,7 +437,9 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         if (cId) loadMessages(cId);
         break;
       case 'error':
-        addToast('error', `AI 回复失败: ${event.data.message as string}`);
+        const errorMsg = event.data.message as string;
+        console.error('[AI Error]', errorMsg);
+        addToast('error', `AI 回复失败: ${errorMsg}`);
         setIsLoading(false);
         break;
     }
@@ -510,16 +518,23 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
   // 删除会话
   const deleteConversation = async (convId: string) => {
-    if (convId === currentConvId) {
-      addToast('warning', '不能删除当前活跃的会话');
-      return;
-    }
     const ok = await confirm('确定要删除这个会话吗？');
     if (!ok) return;
     try {
       await api.deleteConversation(appId, convId);
       const updated = conversations.filter((c) => c.id !== convId);
       setConversations(updated);
+      // 如果删除的是当前会话，切换到最新的会话
+      if (convId === currentConvId) {
+        if (updated.length > 0) {
+          setCurrentConvId(updated[updated.length - 1].id);
+        } else {
+          // 没有会话了，创建一个新的
+          const conv = await api.createConversation(appId, `会话 1`);
+          setConversations([{ id: conv.id, title: conv.title }]);
+          setCurrentConvId(conv.id);
+        }
+      }
       addToast('success', '会话已删除');
     } catch (error) {
       addToast('error', '删除会话失败');
@@ -905,8 +920,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 </div>
               )}
               <div className="chat-conv-actions">
-                {conv.id !== currentConvId && (
-                  <button
+                <button
                     className="chat-conv-action-btn"
                     onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id); }}
                     title="删除会话"
@@ -918,7 +932,6 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                       <line x1="14" y1="11" x2="14" y2="17"/>
                     </svg>
                   </button>
-                )}
                 <button
                   className="chat-conv-action-btn"
                   onClick={(e) => { e.stopPropagation(); startRename(conv.id, conv.title); }}
