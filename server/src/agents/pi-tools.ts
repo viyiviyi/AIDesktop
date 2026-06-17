@@ -16,7 +16,7 @@ import { mcpClientRegistry } from "../mcp/clientRegistry.js";
 
 /** 将 service.name.method 转为 LLM 兼容的 tool name（. → _） */
 function safeToolName(serviceName: string, method: string): string {
-  return `${serviceName.replace(/\\./g, "_")}_${method}`;
+  return `${serviceName.replace(/\./g, "_")}_${method}`.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 /** 从 safeToolName 解析回 serviceName 和 method */
@@ -134,12 +134,7 @@ function buildExternalMcpAgentTools(allowedTools: Set<string>): AgentTool[] {
           : Type.Object({}, { additionalProperties: true }),
         execute: async (toolCallId, params, signal, onUpdate) => {
           try {
-            const result = await mcpServiceRegistry.callMethod(
-              'mcp.external',
-              'call',
-              { connectionId, tool: tool.name, toolArgs: (params as any) || {} },
-              {},
-            );
+            const result = await mcpClientRegistry.callTool(connectionId, tool.name, (params as any) || {});
             const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
             return {
               content: [{ type: "text" as const, text }],

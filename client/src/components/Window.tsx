@@ -437,7 +437,9 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         if (cId) loadMessages(cId);
         break;
       case 'error':
-        addToast('error', `AI 回复失败: ${event.data.message as string}。请检查模型 API Key 和网络连接是否正常。`);
+        const errorMsg = event.data.message as string;
+        console.error('[AI Error]', errorMsg);
+        addToast('error', `AI 回复失败: ${errorMsg}`);
         setIsLoading(false);
         break;
     }

@@ -32,7 +32,6 @@ export function ToastContainer() {
           <div
             key={toast.id}
             className={`toast toast-${toast.type}`}
-            onClick={() => removeToast(toast.id)}
             onMouseEnter={() => pauseToast(toast.id)}
             onMouseLeave={() => resumeToast(toast.id)}
           >
@@ -40,10 +39,7 @@ export function ToastContainer() {
             <span className="toast-message">{toast.message}</span>
             <button
               className="toast-close"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeToast(toast.id);
-              }}
+              onClick={() => removeToast(toast.id)}
             >
               ×
             </button>
