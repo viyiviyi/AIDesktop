@@ -510,23 +510,16 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
   // 删除会话
   const deleteConversation = async (convId: string) => {
+    if (convId === currentConvId) {
+      addToast('warning', '不能删除当前活跃的会话');
+      return;
+    }
     const ok = await confirm('确定要删除这个会话吗？');
     if (!ok) return;
     try {
       await api.deleteConversation(appId, convId);
       const updated = conversations.filter((c) => c.id !== convId);
       setConversations(updated);
-      // 如果删除的是当前会话，切换到最新的会话
-      if (convId === currentConvId) {
-        if (updated.length > 0) {
-          setCurrentConvId(updated[updated.length - 1].id);
-        } else {
-          // 没有会话了，创建一个新的
-          const conv = await api.createConversation(appId, `会话 1`);
-          setConversations([{ id: conv.id, title: conv.title }]);
-          setCurrentConvId(conv.id);
-        }
-      }
       addToast('success', '会话已删除');
     } catch (error) {
       addToast('error', '删除会话失败');
@@ -912,7 +905,8 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 </div>
               )}
               <div className="chat-conv-actions">
-                <button
+                {conv.id !== currentConvId && (
+                  <button
                     className="chat-conv-action-btn"
                     onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id); }}
                     title="删除会话"
@@ -924,6 +918,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                       <line x1="14" y1="11" x2="14" y2="17"/>
                     </svg>
                   </button>
+                )}
                 <button
                   className="chat-conv-action-btn"
                   onClick={(e) => { e.stopPropagation(); startRename(conv.id, conv.title); }}
