@@ -1,7 +1,7 @@
 import { useToast, type ToastType } from '../contexts/ToastContext';
 
 export function ToastContainer() {
-  const { toasts, removeToast, confirmDialog } = useToast();
+  const { toasts, removeToast, confirmDialog, pauseToast, resumeToast } = useToast();
 
   const getToastIcon = (type: ToastType) => {
     switch (type) {
@@ -33,6 +33,8 @@ export function ToastContainer() {
             key={toast.id}
             className={`toast toast-${toast.type}`}
             onClick={() => removeToast(toast.id)}
+            onMouseEnter={() => pauseToast(toast.id)}
+            onMouseLeave={() => resumeToast(toast.id)}
           >
             <span className="toast-icon">{getToastIcon(toast.type)}</span>
             <span className="toast-message">{toast.message}</span>
