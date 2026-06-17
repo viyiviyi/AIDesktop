@@ -166,23 +166,37 @@ export function StartMenu() {
       {state.startMenuOpen && <div className="start-menu-overlay" onClick={handleOverlayClick} />}
       <div className={`start-menu ${state.startMenuOpen ? 'visible' : ''}`}>
         <div className="start-menu-left">
-          {displayedApps.slice(0, 6).map((app) => (
-            <div
-              key={app.id}
-              className="start-menu-app-item"
-              onClick={() => handleAppClick(app)}
-              title={app.name}
-            >
-              <img
-                src={app.icon || DEFAULT_ICON}
-                alt={app.name}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = DEFAULT_ICON;
-                }}
-              />
-              <span>{app.name}</span>
+          {displayedApps.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '4px 12px 8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                应用
+              </div>
+              {displayedApps.slice(0, 12).map((app) => (
+                <div
+                  key={app.id}
+                  className="start-menu-app-item"
+                  onClick={() => handleAppClick(app)}
+                >
+                  <img
+                    src={app.icon || DEFAULT_ICON}
+                    alt={app.name}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = DEFAULT_ICON;
+                    }}
+                  />
+                  <div className="app-item-info">
+                    <span className="app-item-name">{app.name}</span>
+                    <span className="app-item-desc">{app.description}</span>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+          {displayedApps.length === 0 && searchQuery && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', textAlign: 'center', padding: 20 }}>
+              未找到匹配的应用
             </div>
-          ))}
+          )}
         </div>
         <div className="start-menu-right">
           <div className="start-menu-search">
