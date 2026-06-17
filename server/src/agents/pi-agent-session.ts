@@ -316,13 +316,22 @@ export async function runAgentAsync(
     if (!userText.trim()) throw new Error('No text in user message');
 
     await session.agent.prompt(userText);
+
+    // 检查 agent 内部是否产生了错误（例如 API 调用失败但被 pi-agent-core 静默处理了）
+    if (session.agent.state.errorMessage) {
+      throw new Error(session.agent.state.errorMessage);
+    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    serverLogger.error('agent', `Agent error for ${appId}/${convId}: ${msg}`);
     eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
-  } finally {
     unsub();
     unsub2();
+    eventBus.emit({ type: 'done', appId, convId, data: {} });
+    return;
   }
+  unsub();
+  unsub2();
 
   // 将 pi 的新消息转换为持久化消息保存
   const piMessages = session.agent.state.messages;

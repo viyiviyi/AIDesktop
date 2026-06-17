@@ -399,13 +399,19 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         const text = content.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('');
         // 提取 toolCall 块
         const toolCallBlocks = content.filter((c: any) => c.type === 'toolCall');
+        // 如果没有任何实际内容，跳过（后面 done 事件会 loadMessages）
+        if (!text && toolCallBlocks.length === 0) {
+          setStreamingText('');
+          setToolCalls([]);
+          setThinkingText('');
+          break;
+        }
         // 构建完整消息 content
         const msgContent: any[] = [];
         if (text) msgContent.push({ type: 'text', text });
         for (const tc of toolCallBlocks) {
           msgContent.push({ type: 'toolCall', id: tc.id, name: tc.name, arguments: tc.arguments || {} });
         }
-        // 如果 content 为空但 toolCalls state 有内容（回退：从 toolCalls 构建）
         const finalMsg: Message = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           role: 'assistant',
@@ -431,7 +437,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         if (cId) loadMessages(cId);
         break;
       case 'error':
-        addToast('error', `AI 回复失败: ${event.data.message as string}`);
+        addToast('error', `AI 回复失败: ${event.data.message as string}。请检查模型 API Key 和网络连接是否正常。`);
         setIsLoading(false);
         break;
     }
