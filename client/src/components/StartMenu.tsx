@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import type { AppInfo, Message } from '../types';
 import * as api from '../services/api';
+import { useAgentEventStream, type WsConvEvent } from '../services/useAgentEventStream';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -27,6 +28,12 @@ export function StartMenu() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<{ id: string; title: string }[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // 流式消息状态
+  const [streamingText, setStreamingText] = useState('');
+  const [thinkingText, setThinkingText] = useState('');
+  const currentConvIdRef = useRef<string | null>(null);
+  // 保持 convId ref 同步
+  currentConvIdRef.current = conversationId;
 
   const desktopApps = state.installedApps.filter((app) => app.type === 'desktop');
 
@@ -48,10 +55,11 @@ export function StartMenu() {
       const convs = await api.getConversations(APP_ID);
       setConversations(convs);
       if (convs.length > 0) {
-        // 加载最新会话
-        const latest = convs[convs.length - 1];
-        setConversationId(latest.id);
-        await loadMessages(latest.id);
+        // 还原上次会话，如果没有则取最新（convs[0]）
+        const savedId = sessionStorage.getItem('startmenu_last_conv');
+        const target = savedId && convs.find(c => c.id === savedId) ? savedId : convs[0].id;
+        setConversationId(target);
+        await loadMessages(target);
       } else {
         // 无会话时创建新会话并显示欢迎语
         const conv = await api.createConversation(APP_ID, '开始菜单对话');
@@ -76,6 +84,10 @@ export function StartMenu() {
     try {
       const conv = await api.getConversation(APP_ID, convId);
       setMessages(conv.messages);
+      // 更新会话标题（根据消息自动计算）
+      setConversations(prev => prev.map(c =>
+        c.id === convId ? { ...c, title: getConvTitle({ id: convId, title: c.title, messages: conv.messages }) } : c
+      ));
     } catch (error) {
       console.error('Failed to load messages:', error);
     }
@@ -83,6 +95,7 @@ export function StartMenu() {
 
   // 切换会话
   const switchConversation = async (convId: string) => {
+    sessionStorage.setItem('startmenu_last_conv', convId);
     setConversationId(convId);
     setIsLoading(true);
     await loadMessages(convId);
@@ -101,32 +114,26 @@ export function StartMenu() {
     }
   };
 
-  // 发送消息（非流式）
+  // 发送消息 — WebSocket 事件驱动模式
   const handleSend = async () => {
     if (!input.trim() || !conversationId || isLoading) return;
 
     const messageText = input.trim();
-    const userMessage: Message = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content: [{ type: 'text', text: messageText }],
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    setStreamingText('');
+    setThinkingText('');
 
     try {
-      await api.sendMessage(APP_ID, conversationId, [
+      const { userMessage } = await api.sendMessage(APP_ID, conversationId, [
         { type: 'text', text: messageText },
       ]);
-      // 重新加载消息列表以确保同步
-      await loadMessages(conversationId);
+      setMessages(prev => [...prev, userMessage]);
+      setThinkingText('思考中...');
     } catch (error) {
-      console.error('Failed to send message:', error);
-      setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
-    } finally {
+      const errorMsg = error instanceof Error ? error.message : '发送消息失败';
+      setInput(messageText);
+      console.error('Failed to send message:', errorMsg);
       setIsLoading(false);
     }
   };
@@ -153,6 +160,128 @@ export function StartMenu() {
       .map((c) => c.text)
       .join('');
   };
+
+  // WebSocket 事件处理器 — 流式回复
+  const handleAgentEvent = useCallback((event: WsConvEvent) => {
+    switch (event.type) {
+      case 'thinking':
+        setThinkingText((event.data.text as string) || '思考中...');
+        break;
+      case 'message_start':
+        setThinkingText('');
+        setStreamingText('');
+        break;
+      case 'text_chunk':
+        setStreamingText(prev => prev + (event.data.text as string));
+        setThinkingText('');
+        break;
+      case 'message_update': {
+        const content = event.data.content as any[] || [];
+        const texts = content.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('');
+        if (texts) {
+          setStreamingText(texts);
+          setThinkingText('');
+        }
+        break;
+      }
+      case 'message_end': {
+        const content = (event.data.content || []) as any[];
+        const text = content.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('');
+        const toolCallBlocks = content.filter((c: any) => c.type === 'toolCall');
+        if (!text && toolCallBlocks.length === 0) {
+          setStreamingText('');
+          break;
+        }
+        const msgContent: any[] = [];
+        if (text) msgContent.push({ type: 'text', text });
+        for (const tc of toolCallBlocks) {
+          msgContent.push({ type: 'toolCall', id: tc.id, name: tc.name, arguments: tc.arguments || {} });
+        }
+        const finalMsg: Message = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          content: msgContent.length > 0 ? msgContent : [{ type: 'text', text: text || '' }],
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === 'assistant' && !getMessageText(last)) {
+            return [...prev.slice(0, -1), finalMsg];
+          }
+          return [...prev, finalMsg];
+        });
+        setStreamingText('');
+        setThinkingText('');
+        break;
+      }
+      case 'done': {
+        setIsLoading(false);
+        // 流式已通过事件累积了完整消息，done 后不再重新加载以避免布局抖动
+        const cId = currentConvIdRef.current;
+        if (cId) {
+          // 只更新会话标题（异步，不阻塞渲染）
+          api.getConversation(APP_ID, cId).then(conv => {
+            if (conv) {
+              setConversations(prev => prev.map(c =>
+                c.id === cId ? { ...c, title: getConvTitle({ id: cId, title: c.title, messages: conv.messages }) } : c
+              ));
+            }
+          }).catch(() => {});
+        }
+        break;
+      }
+      case 'error':
+        setStreamingText('');
+        setThinkingText('');
+        setIsLoading(false);
+        break;
+    }
+  }, []);
+
+  // 连接 WebSocket 事件流
+  useAgentEventStream(APP_ID, conversationId ?? undefined, handleAgentEvent);
+
+  // 从消息中自动计算会话标题
+  const getConvTitle = (conv: { id: string; title: string; messages?: Message[] }) => {
+    if (!conv.messages || conv.messages.length === 0) return conv.title || '新会话';
+    const msgs = conv.messages;
+    // 找第一条 user 消息
+    const firstUser = msgs.find(m => m.role === 'user');
+    if (firstUser) {
+      const text = getMessageText(firstUser).trim();
+      if (text.length >= 4) return text.slice(0, 150);
+    }
+    // user 消息不够长，找第一条 assistant 消息
+    const firstAssistant = msgs.find(m => m.role === 'assistant');
+    if (firstAssistant) {
+      const text = getMessageText(firstAssistant).trim();
+      if (text.length > 0) return text.slice(0, 50);
+    }
+    return conv.title || '新会话';
+  };
+
+  // 获取当前会话标题
+  const currentConvTitle = (() => {
+    const conv = conversations.find(c => c.id === conversationId);
+    if (!conv) return '选择会话';
+    // 如果已经 loadMessages 了，就基于当前 messages 重新计算
+    return getConvTitle({ id: conv.id, title: conv.title, messages });
+  })();
+
+  // 当前会话的下拉展开状态
+  const [showConvDropdown, setShowConvDropdown] = useState(false);
+  const convDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (convDropdownRef.current && !convDropdownRef.current.contains(e.target as Node)) {
+        setShowConvDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const displayedApps = searchQuery
     ? desktopApps.filter((app) =>
@@ -208,42 +337,34 @@ export function StartMenu() {
               autoFocus
             />
           </div>
-          {/* 会话切换栏 */}
-          <div className="start-menu-conv-bar">
-            <select
-              value={conversationId || ''}
-              onChange={(e) => switchConversation(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '2px 6px',
-                background: 'var(--bg-primary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 4,
-                color: 'var(--text-primary)',
-                fontSize: 11,
-              }}
+          {/* 会话标题栏 — 点击弹出下拉选择 */}
+          <div className="start-menu-conv-title" ref={convDropdownRef}>
+            <div
+              className="start-menu-conv-title-bar"
+              onClick={() => setShowConvDropdown(!showConvDropdown)}
             >
-              {conversations.map((conv) => (
-                <option key={conv.id} value={conv.id}>
-                  {conv.title}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={createNewConversation}
-              style={{
-                padding: '2px 8px',
-                background: 'var(--bg-primary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 4,
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                fontSize: 11,
-              }}
-              title="新会话"
-            >
-              +
-            </button>
+              <span className="start-menu-conv-title-text">{currentConvTitle}</span>
+              <span className="start-menu-conv-title-arrow">{showConvDropdown ? '▲' : '▼'}</span>
+            </div>
+            {showConvDropdown && (
+              <div className="start-menu-conv-dropdown">
+                <div className="start-menu-conv-item new" onClick={() => { createNewConversation(); setShowConvDropdown(false); }}>
+                  + 新会话
+                </div>
+                {conversations.map((conv) => (
+                  <div
+                    key={conv.id}
+                    className={`start-menu-conv-item ${conv.id === conversationId ? 'active' : ''}`}
+                    onClick={() => {
+                      switchConversation(conv.id);
+                      setShowConvDropdown(false);
+                    }}
+                  >
+                    {conv.title}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="start-menu-conversation">
             {messages.map((msg) => (
@@ -253,9 +374,26 @@ export function StartMenu() {
                 </div>
               </div>
             ))}
+            {/* 流式加载中 */}
             {isLoading && (
               <div className="chat-message assistant">
-                <div className="chat-message-content">思考中...</div>
+                {thinkingText && (
+                  <div className="chat-message-thinking">
+                    <span className="thinking-icon">◇</span>
+                    {thinkingText}
+                  </div>
+                )}
+                {streamingText && (
+                  <div className="chat-message-content">
+                    {streamingText}
+                    <span className="streaming-cursor">|</span>
+                  </div>
+                )}
+                {!streamingText && !thinkingText && (
+                  <div className="chat-message-content">
+                    <span className="thinking-dots">思考中<span>.</span><span>.</span><span>.</span></span>
+                  </div>
+                )}
               </div>
             )}
             <div ref={messagesEndRef} />
