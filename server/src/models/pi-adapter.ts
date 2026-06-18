@@ -53,7 +53,7 @@ export function convertProviderToModels(
       contextWindow: maxTokens,
       maxTokens,
       reasoning: false,
-      input: [],
+      input: (m.supports || []).filter(s => s === 'text' || s === 'image'),
       cost: {
         input: 0,
         output: 0,

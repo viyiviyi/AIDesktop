@@ -5,11 +5,53 @@ import { agentEngine } from '../agents/engine.js';
 import { piAgentManager, runAgentAsync } from '../agents/pi-agent-session.js';
 import { eventBus } from '../services/eventBus.js';
 import { serverLogger } from '../utils/logger.js';
+import path from 'path';
+import fs from 'fs/promises';
+import * as crypto from 'node:crypto';
+import { APPS_DATA_DIR, ensureDir, readDir } from '../utils/file.js';
 
 const router = Router({ mergeParams: true });
 
 // 存储活跃的 agent 流（convId -> abort）
 const activeStreams = new Map<string, () => void>();
+
+/** 将会话中的 dataURL 提取为附件文件，替换为文件路径引用 */
+async function saveContentAttachments(
+  appId: string,
+  convId: string,
+  content: any[],
+): Promise<any[]> {
+  const result: any[] = [];
+  for (const block of content) {
+    if (block.type === 'image' && typeof block.url === 'string' && block.url.startsWith('data:')) {
+      const ext = block.url.split(';')[0].split('/')[1] || 'png';
+      const fileName = `${crypto.randomUUID()}.${ext}`;
+      // 获取会话文件夹路径
+      const conv = await conversationService.getConversation(appId, convId);
+      if (!conv) {
+        result.push({ ...block, url: '' });
+        continue;
+      }
+      const convDir = path.join(APPS_DATA_DIR, appId, 'conversations');
+      const folders = await readDir(convDir);
+      const dirName = folders.find(f => {
+        const jsonPath = path.join(convDir, f, 'conversation.json');
+        try { const data = JSON.parse(require('fs').readFileSync(jsonPath, 'utf-8')); return data.id === convId; } catch { return false; }
+      });
+      if (!dirName) {
+        result.push(block);
+        continue;
+      }
+      const convFolder = path.join(convDir, dirName);
+      const base64Data = block.url.split(',')[1];
+      await fs.writeFile(path.join(convFolder, fileName), base64Data, 'base64');
+      result.push({ ...block, url: `/api/files/${appId}/conversations/${dirName}/${fileName}` });
+    } else {
+      result.push(block);
+    }
+  }
+  return result;
+}
 
 // Get all conversations for an app
 router.get('/', async (req: Request, res: Response) => {
@@ -87,8 +129,9 @@ router.post('/:convId/messages', async (req: Request, res: Response) => {
     const conversation = await conversationService.getConversation(appId, convId);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
 
-    // 1. 保存 user 消息（支持 replyTo）
-    const savedUserMsg = await conversationService.addMessage(appId, convId, 'user', content, undefined, replyTo);
+    // 1. 保存 user 消息（图片 dataURL 提取为附件文件）
+    const processedContent = await saveContentAttachments(appId, convId, content);
+    const savedUserMsg = await conversationService.addMessage(appId, convId, 'user', processedContent, undefined, replyTo);
     if (!savedUserMsg) throw new Error('Failed to save user message');
 
     // 2. 立即返回

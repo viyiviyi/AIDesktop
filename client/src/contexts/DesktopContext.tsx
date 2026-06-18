@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
     width: 700,
     height: 500,
   },
+  sendKey: 'alt+s',
 };
 
 // Action类型定义 - 描述所有可能的桌面状态更新操作

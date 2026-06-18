@@ -228,6 +228,8 @@ export interface StartMenuSettings {
   height: number;
 }
 
+export type SendKey = 'enter' | 'ctrl+enter' | 'alt+s' | 'ctrl+s';
+
 export interface DesktopSettings {
   theme: 'light' | 'dark' | 'auto';
   wallpaper: string;
@@ -235,6 +237,7 @@ export interface DesktopSettings {
   window: WindowSettings;
   menuBar: MenuBarSettings;
   startMenu: StartMenuSettings;
+  sendKey: SendKey;
 }
 
 export interface WindowState {

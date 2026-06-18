@@ -25,8 +25,35 @@ import * as fs from 'node:fs/promises';
 function adMsgToPiMsg(m: AdMsg, appId: string, provider: string, modelId: string): PiMsg | null {
   const ts = new Date(m.timestamp).getTime();
   if (m.role === "user") {
-    const text = m.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map((c) => c.text).join("\n");
-    return { role: "user", content: text || "", timestamp: ts } as any;
+    const textBlocks = m.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map((c) => c.text);
+    const content: any[] = [];
+    if (textBlocks.length) content.push({ type: "text", text: textBlocks.join("\n") });
+    for (const c of m.content) {
+      if (c.type === "image") {
+        const img = c as any;
+        if (typeof img.url === 'string' && img.url.startsWith('data:')) {
+          const mimeType = img.url.split(';')[0].replace('data:', '');
+          const data = img.url.split(',')[1];
+          content.push({ type: "image", mimeType, data });
+        } else if (typeof img.url === 'string' && img.url.startsWith('/api/files/')) {
+          // 从文件读取
+          try {
+            const syncFs = require('fs');
+            const filePath = path.join(process.cwd(), 'desktop_data', 'apps_data', img.url.replace('/api/files/', ''));
+            const fileBuffer = syncFs.readFileSync(filePath);
+            const ext = filePath.split('.').pop() || 'png';
+            const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
+            content.push({ type: "image", mimeType, data: fileBuffer.toString('base64') });
+          } catch {
+            content.push({ type: "text", text: "(image file not found)" });
+          }
+        } else {
+          content.push({ type: "text", text: "(image unavailable)" });
+        }
+      }
+    }
+    if (content.length === 0) content.push({ type: "text", text: "" });
+    return { role: "user", content, timestamp: ts } as any;
   }
   if (m.role === "assistant") {
     const textBlocks = m.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map((c) => c.text);
@@ -114,11 +141,15 @@ export class PiAgentSession {
 
     let providerId = defaultModelConfig.providerId;
     let modelId = defaultModelConfig.modelId;
-    if (app.meta.models && app.meta.models.length > 0) {
-      const appProvider = modes.providers.find(p => p.id === app.meta.models![0].provider);
+    // 优先使用 app config 中配置的模型（用户通过设置界面修改的），其次 meta 默认值
+    const appModelConfig = (app.config.models && app.config.models.length > 0) ? app.config.models[0]
+      : (app.meta.models && app.meta.models.length > 0) ? app.meta.models[0]
+      : null;
+    if (appModelConfig) {
+      const appProvider = modes.providers.find(p => p.id === appModelConfig.provider);
       if (appProvider && appProvider.enabled !== false) {
-        providerId = app.meta.models[0].provider;
-        modelId = app.meta.models[0].model;
+        providerId = appModelConfig.provider;
+        modelId = appModelConfig.model;
       }
     }
     if (!providerId || !modelId) throw new Error(`No model configured for app "${app.meta.id}".`);
@@ -136,10 +167,10 @@ export class PiAgentSession {
     const systemPrompt = buildSystemPrompt(app);
 
     // 收集应用的额外参数（优先从 config 读取，回退到 meta）
-    const appModelConfig = (app.config.models?.[0]) || app.meta.models?.[0];
+    const modelBodyParams = (app.config.models?.[0]) || app.meta.models?.[0];
     const bodyParams: Record<string, unknown> = {};
-    if (appModelConfig?.bodyParams) {
-      for (const p of appModelConfig.bodyParams) {
+    if (modelBodyParams?.bodyParams) {
+      for (const p of modelBodyParams.bodyParams) {
         if (p.enabled) {
           try { bodyParams[p.key] = JSON.parse(p.value); } catch { bodyParams[p.key] = p.value; }
         }
@@ -170,10 +201,32 @@ export class PiAgentSession {
           };
         }
 
+        // 记录原始请求 payload
+        const originalOnPayload = streamOptions.onPayload;
+        streamOptions.onPayload = (payload: any, m: any) => {
+          let p = originalOnPayload ? originalOnPayload(payload, m) : { ...payload };
+          // 记录请求体（截断大字段）
+          const logged = { ...p };
+          if (logged.messages) {
+            logged.messages = logged.messages.map((msg: any) => {
+              if (typeof msg.content === 'string') return { ...msg, content: msg.content.slice(0, 200) };
+              if (Array.isArray(msg.content)) {
+                return { ...msg, content: msg.content.map((c: any) =>
+                  c.type === 'image' ? { ...c, url: c.url?.slice(0, 80) + '...' } :
+                  c.type === 'text' ? { ...c, text: c.text?.slice(0, 200) } : c
+                ) };
+              }
+              return msg;
+            });
+          }
+          serverLogger.debug('ai', `Request payload: ${JSON.stringify(logged).slice(0, 3000)}`);
+          return p;
+        };
+
         // 注入 header 参数
-        if (appModelConfig?.headerParams) {
+        if (modelBodyParams?.headerParams) {
           const headers: Record<string, string> = {};
-          for (const hp of appModelConfig.headerParams) {
+          for (const hp of modelBodyParams.headerParams) {
             if (hp.enabled) headers[hp.key] = hp.value;
           }
           if (Object.keys(headers).length > 0) {
@@ -270,6 +323,12 @@ export async function runAgentAsync(
   const session = await piAgentManager.getOrCreate(appId, app);
   session.currentConvId = convId;
 
+  // 如果 agent 正在处理，忽略本次请求
+  if (session.agent.activeRun) {
+    serverLogger.warn('agent', `Agent already processing for ${appId}/${convId}, skipping`);
+    return;
+  }
+
   const unsub = session.agent.subscribe((event: any) => {
     const emit = (type: string, data: Record<string, unknown>) => {
       eventBus.emit({ type: type as any, appId, convId, data });
@@ -313,9 +372,28 @@ export async function runAgentAsync(
       .filter((c: any): c is { type: 'text'; text: string } => c.type === 'text')
       .map((c: any) => c.text)
       .join('\n');
-    if (!userText.trim()) throw new Error('No text in user message');
+    // 提取图片内容传给 prompt
+    const userImages = userContent
+      .filter((c: any): c is { type: 'image'; url: string } => c.type === 'image')
+      .map((c: any) => {
+        if (c.url.startsWith('data:')) {
+          return { type: 'image' as const, mimeType: c.url.split(';')[0].replace('data:', ''), data: c.url.split(',')[1] };
+        }
+        // 文件路径引用，读取文件
+        try {
+          const syncFs = require('fs');
+          const filePath = path.join(DATA_DIR, 'apps_data', c.url.replace('/api/files/', ''));
+          const fileBuffer = syncFs.readFileSync(filePath);
+          const ext = filePath.split('.').pop() || 'png';
+          return { type: 'image' as const, mimeType: ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`, data: fileBuffer.toString('base64') };
+        } catch {
+          return { type: 'text' as const, text: '(image unavailable)' };
+        }
+      });
+    // 如果没有文本也没有图片，报错
+    if (!userText.trim() && userImages.length === 0) throw new Error('No text in user message');
 
-    await session.agent.prompt(userText);
+    await session.agent.prompt(userText || '(image input)', userImages.length > 0 ? userImages : undefined);
 
     // 检查 agent 内部是否产生了错误（例如 API 调用失败但被 pi-agent-core 静默处理了）
     if (session.agent.state.errorMessage) {
@@ -484,7 +562,7 @@ async function saveNewMessages(
  * 将其存储为 { _fileRef: '<appId>/<convId>/<uuid>.txt', _originalSize: N }，
  * 并在目标路径写入实际内容。
  */
-async function replaceLargeContentWithFileRef(
+export async function replaceLargeContentWithFileRef(
   data: unknown,
   appId: string,
   convId: string,

@@ -23,6 +23,7 @@ router.get('/', async (req: Request, res: Response) => {
         type: a.meta.type,
         icon: a.meta.icon,
         enabled: a.config.enabled !== undefined ? a.config.enabled : true,
+        supportedInputs: a.config.supportedInputs !== undefined ? a.config.supportedInputs : a.meta.supportedInputs,
       }))
     });
   } catch (error) {
@@ -194,6 +195,7 @@ router.post('/reload', async (req: Request, res: Response) => {
         type: a.meta.type,
         icon: a.meta.icon,
         enabled: a.config.enabled !== false,
+        supportedInputs: a.config.supportedInputs !== undefined ? a.config.supportedInputs : a.meta.supportedInputs,
       }))
     });
   } catch (error) {

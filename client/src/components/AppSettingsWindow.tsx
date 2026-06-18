@@ -448,7 +448,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         </div>
       </div>
       <div className="app-settings-field">
-        <label>输入输出设置</label>
+        <label>输入类型</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
           {CONTENT_TYPES.map(({ value, label }) => (
             <label key={value} className="app-settings-checkbox">
@@ -471,6 +471,16 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
           placeholder="描述该应用接受的输入格式..."
           rows={2}
         />
+      </div>
+      <div className="app-settings-field">
+        <label>输出类型</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          <label className="app-settings-checkbox">
+            <input type="checkbox" checked={true} disabled />
+            文本
+          </label>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)', alignSelf: 'center' }}>（目前仅支持文本输出）</span>
+        </div>
       </div>
       <div className="app-settings-field">
         <label>输出说明</label>

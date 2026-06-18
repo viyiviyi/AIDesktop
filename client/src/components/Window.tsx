@@ -1,11 +1,12 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import { useToast } from '../contexts/ToastContext';
-import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel } from '../types';
+import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel, Content } from '../types';
 import * as api from '../services/api';
 import { useAgentEventStream } from '../services/useAgentEventStream';
 import type { WsConvEvent } from '../services/useAgentEventStream';
 import { MarkdownView } from './MarkdownView';
+import { PictureFilled } from '@ant-design/icons';
 
 // 流式 tool call 的展开状态管理（独立于 Window 内部展开状态，因为 toolCalls 不是 msg.content）
 const toolExpandStore = new Map<string, boolean>();
@@ -305,6 +306,7 @@ interface ChatAppProps {
  */
 export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const { addToast, confirm } = useToast();
+  const { state } = useDesktop();
   const [conversations, setConversations] = useState<{ id: string; title: string; preview?: string; createdAt?: string }[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(
     conversationId && !conversationId.startsWith('conv-') ? conversationId : null
@@ -331,16 +333,128 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const initRef = useRef(false);
   const currentConvIdRef = useRef(currentConvId);
   currentConvIdRef.current = currentConvId;
+  // 多模态输入 — 附件列表
+  const [attachments, setAttachments] = useState<{ id: string; type: 'image' | 'audio' | 'video' | 'file'; url: string; name: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 初始化：如果 conversationId 是临时 conv-xxx 格式，立即创建真正的会话
+  // 判断当前应用是否支持图片输入
+  const currentAppInfo = state.installedApps.find(a => a.id === appId);
+  const appSupportsImage = currentAppInfo?.supportedInputs?.includes('image') ?? false;
+
+  // 压缩图片到指定最大尺寸
+  const compressImage = (dataUrl: string, maxDimension: number): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width <= maxDimension && height <= maxDimension) {
+          resolve(dataUrl);
+          return;
+        }
+        // 等比例缩放
+        if (width > height) {
+          if (width > maxDimension) { height = height * maxDimension / width; width = maxDimension; }
+        } else {
+          if (height > maxDimension) { width = width * maxDimension / height; height = maxDimension; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = dataUrl;
+    });
+  };
+
+  // 选择附件
+  const handleAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target?.result as string);
+        reader.readAsDataURL(file);
+      });
+      const type = file.type.startsWith('image/') ? 'image' : 'file';
+      // 图片压缩：1080p以内保持原样，8k及以上压到2k
+      let finalUrl = dataUrl;
+      if (type === 'image') {
+        const img = new Image();
+        await new Promise((resolve) => { img.onload = resolve; img.src = dataUrl; });
+        const maxDim = Math.max(img.width, img.height);
+        if (maxDim >= 7680) {
+          finalUrl = await compressImage(dataUrl, 2048);
+        } else if (maxDim > 1080) {
+          finalUrl = await compressImage(dataUrl, 1080);
+        }
+      }
+      setAttachments(prev => [...prev, { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, type: type as any, url: finalUrl, name: file.name }]);
+    }
+    e.target.value = '';
+  };
+
+  // 粘贴图片
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    if (!appSupportsImage) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => resolve(ev.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+        const img = new Image();
+        await new Promise((resolve) => { img.onload = resolve; img.src = dataUrl; });
+        const maxDim = Math.max(img.width, img.height);
+        let finalUrl = dataUrl;
+        if (maxDim >= 7680) {
+          finalUrl = await compressImage(dataUrl, 2048);
+        } else if (maxDim > 1080) {
+          finalUrl = await compressImage(dataUrl, 1080);
+        }
+        setAttachments(prev => [...prev, { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, type: 'image', url: finalUrl, name: file.name }]);
+      }
+    }
+  }, [appSupportsImage]);
+
+  // 移除附件
+  const removeAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+  };
+
+  // 初始化：加载会话列表，如果有已有会话则用最新的，否则创建新会话
   useEffect(() => {
     if (initRef.current) return;
-    if (!conversationId || !conversationId.startsWith('conv-')) return;
-
     initRef.current = true;
-    api.createConversation(appId, `窗口 ${Date.now()}`).then(conv => {
-      setCurrentConvId(conv.id);
-      loadConversations();
+
+    api.getConversations(appId).then(convs => {
+      const mapped = convs.map(c => ({
+        id: c.id,
+        title: c.title,
+        preview: undefined as string | undefined,
+        createdAt: c.createdAt,
+      }));
+      setConversations(mapped);
+
+      if (convs.length > 0) {
+        // 有已有会话，用最新的有消息的会话
+        const target = convs.find(c => c.messages.length > 0) || convs[0];
+        setCurrentConvId(target.id);
+      } else {
+        // 没有会话，创建一个
+        return api.createConversation(appId, `窗口 ${Date.now()}`).then(conv => {
+          setConversations([{ id: conv.id, title: conv.title, createdAt: conv.createdAt }]);
+          setCurrentConvId(conv.id);
+        });
+      }
     }).catch(() => {});
   }, []);
 
@@ -479,11 +593,10 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         return { id: c.id, title: c.title, preview, createdAt: c.createdAt };
       });
       setConversations(mapped);
-      // 自动设置当前会话：优先用传入的 preserveConvId，否则用最后一个有消息的，否则用第一个
+      // 自动设置当前会话：优先用传入的 preserveConvId，否则用最新的有消息的，否则用最新的
       const curId = preserveConvId !== undefined ? preserveConvId : currentConvId;
       if (!curId || !mapped.find(c => c.id === curId)) {
-        const convsWithMsgs = convs.filter(c => c.messages.length > 0);
-        const target = convsWithMsgs.length > 0 ? convsWithMsgs[convsWithMsgs.length - 1] : convs[0];
+        const target = convs.find(c => c.messages.length > 0) || convs[0];
         if (target) {
           setCurrentConvId(target.id);
         }
@@ -574,10 +687,18 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
   // 发送消息 — WebSocket 事件驱动模式
   const sendMessage = async (replyTo?: string) => {
-    if (!input.trim() || !currentConvId || isLoading) return;
+    if ((!input.trim() && attachments.length === 0) || !currentConvId || isLoading) return;
 
     const messageContent = input;
+    const content: Content[] = [];
+    if (messageContent.trim()) content.push({ type: 'text', text: messageContent });
+    for (const att of attachments) {
+      if (att.type === 'image') content.push({ type: 'image', url: att.url, alt: att.name } as any);
+      else content.push({ type: 'file', path: att.url, name: att.name, size: 0 } as any);
+    }
+
     setInput('');
+    setAttachments([]);
     setIsLoading(true);
     setStreamingText('');
     setToolCalls([]);
@@ -585,9 +706,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     setReplyToId(null);
 
     try {
-      const { userMessage } = await api.sendMessage(appId, currentConvId, [
-        { type: 'text', text: messageContent },
-      ], replyTo);
+      const { userMessage } = await api.sendMessage(appId, currentConvId, content, replyTo);
 
       setMessages(prev => [...prev, userMessage]);
       setThinkingText('思考中...');
@@ -676,9 +795,20 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
-  // 键盘事件处理 - Enter发送消息
+  // 键盘事件处理 - 按配置的快捷键发送消息
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    const sendKey = state.settings.sendKey || 'alt+s';
+    let shouldSend = false;
+    if (sendKey === 'enter') {
+      shouldSend = e.key === 'Enter' && !e.shiftKey;
+    } else if (sendKey === 'ctrl+enter') {
+      shouldSend = e.key === 'Enter' && (e.ctrlKey || e.metaKey);
+    } else if (sendKey === 'alt+s') {
+      shouldSend = (e.key === 's' || e.key === 'S') && e.altKey;
+    } else if (sendKey === 'ctrl+s') {
+      shouldSend = (e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey);
+    }
+    if (shouldSend) {
       e.preventDefault();
       if (editingMsgId) {
         submitEdit();
@@ -754,6 +884,10 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
     const expandedSet = expandedByMsg[msg.id] || new Set();
 
+    // 提取附件（图片、文件）
+    const imageBlocks = msg.content.filter((c): c is any => c.type === 'image');
+    const fileBlocks = msg.content.filter((c): c is any => c.type === 'file');
+
     // assistant 消息：提取 text、thinking 和 toolCall blocks
     const textParts: string[] = [];
     const thinkingParts: string[] = [];
@@ -815,14 +949,21 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       }
     }
 
-    // 纯文本
+    // 纯文本（或附件+文本）
+    const hasAttachments = imageBlocks.length > 0 || fileBlocks.length > 0;
     if (mergedItems.length === 0) {
-      return <MarkdownView content={textParts.join('')} />;
+      return (
+        <>
+          {hasAttachments && renderAttachments(imageBlocks, fileBlocks)}
+          <MarkdownView content={textParts.join('')} />
+        </>
+      );
     }
 
-    // 混合内容：文本(用 Markdown 渲染) + 工具调用结果块
+    // 混合内容：附件 + 文本(用 Markdown 渲染) + 工具调用结果块
     return (
       <>
+        {hasAttachments && renderAttachments(imageBlocks, fileBlocks)}
         {textParts.length > 0 && <div className="tool-call-text-block"><MarkdownView content={textParts.join('')} /></div>}
         <div className="tool-log-list">
           {mergedItems.map((tp) => {
@@ -867,6 +1008,30 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       </>
     );
   }, [expandedByMsg, toggleToolExpand]);
+
+  // 渲染消息中的附件（图片预览 + 文件列表）
+  const renderAttachments = (images: any[], files: any[]) => {
+    return (
+      <div className="chat-msg-attachments">
+        {images.map((img, i) => (
+          <div key={i} className="chat-msg-image-wrapper">
+            <img
+              src={img.url}
+              alt={img.alt || ''}
+              className="chat-msg-image"
+              onClick={() => window.open(img.url, '_blank')}
+              style={{ cursor: 'pointer', maxWidth: '100%', maxHeight: 300, borderRadius: 8, objectFit: 'contain' }}
+            />
+          </div>
+        ))}
+        {files.map((f, i) => (
+          <div key={i} className="chat-msg-file">
+            📎 {f.name || f.path?.split('/').pop() || '附件'}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   const currentConvTitle = conversations.find((c) => c.id === currentConvId)?.title || '会话';
 
@@ -1187,17 +1352,55 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
           </>
         ) : (
           <>
-            <textarea
-              value={input}
-              onChange={(e) => { setInput(e.target.value); autoResize(e); }}
-              onKeyDown={handleKeyDown}
-              placeholder={replyToId ? '输入回复...' : '输入消息...'}
-              disabled={!currentConvId || isLoading}
-              rows={1}
-            />
-            <button onClick={() => sendMessage(replyToId || undefined)} disabled={!currentConvId || isLoading || !input.trim()}>
-              发送
-            </button>
+            {/* 附件预览 */}
+            {attachments.length > 0 && (
+              <div className="chat-attachments">
+                {attachments.map(att => (
+                  <div key={att.id} className="chat-attachment-item">
+                    {att.type === 'image' ? (
+                      <img src={att.url} alt={att.name} className="chat-attachment-thumb" />
+                    ) : (
+                      <div className="chat-attachment-file">📎 {att.name}</div>
+                    )}
+                    <button className="chat-attachment-remove" onClick={() => removeAttachment(att.id)}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="chat-input-row">
+              {appSupportsImage && (
+                <>
+                  <button
+                    className="chat-attach-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="选择图片"
+                    disabled={!currentConvId || isLoading}
+                  >
+                    <PictureFilled style={{ fontSize: 16 }} />
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={handleAttachFile}
+                  />
+                </>
+              )}
+              <textarea
+                value={input}
+                onChange={(e) => { setInput(e.target.value); autoResize(e); }}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                placeholder={replyToId ? '输入回复...' : '输入消息...'}
+                disabled={!currentConvId || isLoading}
+                rows={1}
+              />
+              <button onClick={() => sendMessage(replyToId || undefined)} disabled={!currentConvId || isLoading || (!input.trim() && attachments.length === 0)}>
+                发送
+              </button>
+            </div>
           </>
         )}
       </div>
@@ -2054,6 +2257,32 @@ export function SettingsApp(_props: SettingsAppProps) {
                     updateSettings({ menuBar: newMenuBar });
                   }}
                 />
+              </div>
+            </div>
+            <div className="settings-section">
+              <h3>输入</h3>
+              <div className="settings-item">
+                <label>发送快捷键</label>
+                <select
+                  value={localSettings.sendKey}
+                  onChange={(e) => {
+                    const val = e.target.value as any;
+                    setLocalSettings({ ...localSettings, sendKey: val });
+                    updateSettings({ sendKey: val } as any);
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    background: 'var(--bg-primary)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="alt+s">Alt + S</option>
+                  <option value="enter">Enter</option>
+                  <option value="ctrl+enter">Ctrl + Enter</option>
+                  <option value="ctrl+s">Ctrl + S</option>
+                </select>
               </div>
             </div>
           </>
