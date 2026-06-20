@@ -562,6 +562,23 @@ export async function updateSkillSettings(skills: { skills: Skill[]; globalEnabl
   });
 }
 
+// ============ 表单相关API ============
+
+// 提交或取消表单
+export async function submitFormResponse(
+  appId: string,
+  convId: string,
+  formId: string,
+  toolCallId: string,
+  data?: Record<string, unknown>,
+  cancelled?: boolean,
+): Promise<{ success: boolean }> {
+  return fetchJson<{ success: boolean }>(`/apps/${appId}/conversations/${convId}/form-response`, {
+    method: 'POST',
+    body: JSON.stringify({ formId, toolCallId, data, cancelled }),
+  });
+}
+
 // ============ 其他API ============
 
 // 获取 MCP 服务列表

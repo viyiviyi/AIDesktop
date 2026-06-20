@@ -104,6 +104,32 @@ export interface Conversation {
   callChain?: Array<{ callerAppId: string; callerConvId?: string; callId?: string; timestamp: string }>;
   /** 等待用户输入的请求 ID */
   pendingUserInput?: string | null;
+  /** 会话状态 */
+  status?: 'active' | 'form-pending';
+  /** 等待中的表单列表 */
+  pendingForms?: Array<{
+    formId: string;
+    toolCallId: string;
+    schema: FormSchema;
+    createdAt: string;
+  }>;
+}
+
+export interface FormField {
+  name: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'select' | 'radio' | 'checkbox' | 'confirm' | 'file';
+  required?: boolean;
+  options?: string[];
+  placeholder?: string;
+  accept?: string;
+  description?: string;
+}
+
+export interface FormSchema {
+  title: string;
+  description?: string;
+  fields: FormField[];
 }
 
 // App types

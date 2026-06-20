@@ -92,6 +92,30 @@ export interface Conversation {
   source?: 'user' | 'agent' | 'system';
   callChain?: Array<{ callerAppId: string; callerConvId?: string; callId?: string; timestamp: string }>;
   pendingUserInput?: string | null;
+  status?: 'active' | 'form-pending';
+  pendingForms?: Array<{
+    formId: string;
+    toolCallId: string;
+    schema: FormSchema;
+    createdAt: string;
+  }>;
+}
+
+export interface FormField {
+  name: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'select' | 'radio' | 'checkbox' | 'confirm' | 'file';
+  required?: boolean;
+  options?: string[] | { label: string; value: string }[];
+  placeholder?: string;
+  accept?: string;
+  description?: string;
+}
+
+export interface FormSchema {
+  title: string;
+  description?: string;
+  fields: FormField[];
 }
 
 // App types

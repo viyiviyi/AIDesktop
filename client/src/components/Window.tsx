@@ -1,11 +1,12 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import { useToast } from '../contexts/ToastContext';
-import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel, Content } from '../types';
+import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel, Content, Conversation, FormSchema, FormField } from '../types';
 import * as api from '../services/api';
 import { useAgentEventStream } from '../services/useAgentEventStream';
 import type { WsConvEvent } from '../services/useAgentEventStream';
 import { MarkdownView } from './MarkdownView';
+import { FormComponent } from './FormComponent';
 import { PictureFilled } from '@ant-design/icons';
 
 // 流式 tool call 的展开状态管理（独立于 Window 内部展开状态，因为 toolCalls 不是 msg.content）
@@ -336,6 +337,8 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   // 多模态输入 — 附件列表
   const [attachments, setAttachments] = useState<{ id: string; type: 'image' | 'audio' | 'video' | 'file'; url: string; name: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 表单状态 — 等待用户填写的表单
+  const [pendingForms, setPendingForms] = useState<Map<string, { formId: string; schema: FormSchema; toolCallId: string }>>(new Map());
 
   // 判断当前应用是否支持图片输入
   const currentAppInfo = state.installedApps.find(a => a.id === appId);
@@ -550,6 +553,40 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         const cId = currentConvIdRef.current;
         if (cId) loadMessages(cId);
         break;
+      case 'form_request': {
+        const formId = event.data.formId as string;
+        const schema = event.data.schema as FormSchema;
+        if (formId && schema) {
+          setPendingForms(prev => {
+            const next = new Map(prev);
+            next.set(formId, { formId, schema, toolCallId: '' });
+            return next;
+          });
+          // 表单已出现，关闭 loading 状态让用户填写
+          setIsLoading(false);
+          setThinkingText('');
+          setStreamingText('');
+          setToolCalls([]);
+        }
+        break;
+      }
+      case 'form_response':
+      case 'form_cancelled': {
+        const respondFormId = event.data.formId as string;
+        if (respondFormId) {
+          setPendingForms(prev => {
+            const next = new Map(prev);
+            next.delete(respondFormId);
+            return next;
+          });
+          // 表单已提交/取消，重新进入 loading 等待 AI 回复
+          setIsLoading(true);
+          setThinkingText('处理中...');
+          setStreamingText('');
+          setToolCalls([]);
+        }
+        break;
+      }
       case 'error':
         const errorMsg = event.data.message as string;
         console.error('[AI Error]', errorMsg);
@@ -611,6 +648,46 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     try {
       const conv = await api.getConversation(appId, convId);
       setMessages(conv.messages);
+      // 从消息列表中推导待填表单：检查每个 assistant 消息是否有 form toolCall 且无对应 toolResult
+      const restored = new Map<string, { formId: string; schema: FormSchema; toolCallId: string }>();
+      for (let i = 0; i < conv.messages.length; i++) {
+        const msg = conv.messages[i];
+        if (msg.role !== 'assistant') continue;
+        for (const c of msg.content) {
+          const tc = c as any;
+          if (tc.type === 'toolCall' && (tc.name === 'mcp_form_requestInput' || tc.name === 'mcp.form.requestInput')) {
+            // 检查后面是否有对应的 toolResult
+            let hasResult = false;
+            for (let j = i + 1; j < conv.messages.length; j++) {
+              const next = conv.messages[j];
+              if (next.role === 'toolResult' && next.toolResultMeta?.toolCallId === tc.id) {
+                // 排除 pending 状态的 toolResult（这只表示表单已发送，还没填写）
+                const text = next.content.filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');
+                if (text.includes('"status":"pending"') || text.includes('"status": "pending"')) continue;
+                hasResult = true;
+                break;
+              }
+            }
+            if (!hasResult) {
+              const formId = `form-${tc.id}`;
+              restored.set(formId, {
+                formId,
+                toolCallId: tc.id,
+                schema: {
+                  title: (tc.arguments as any)?.title || '请填写表单',
+                  description: (tc.arguments as any)?.description || '',
+                  fields: ((tc.arguments as any)?.fields || []).map((f: any) => ({
+                    name: f.name, label: f.label, type: f.type || 'text',
+                    required: f.required, options: f.options, placeholder: f.placeholder,
+                    accept: f.accept, description: f.description,
+                  })),
+                },
+              });
+            }
+          }
+        }
+      }
+      setPendingForms(restored);
     } catch (error) {
       console.error('Failed to load messages:', error);
     }
@@ -774,7 +851,8 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     if (!ok) return;
     try {
       await api.deleteMessage(appId, currentConvId, msgId);
-      setMessages(prev => prev.filter(m => m.id !== msgId));
+      // 重新加载消息确保前后端一致（后端已处理 toolResult 连带删除）
+      loadMessages(currentConvId);
       addToast('success', '消息已删除');
     } catch {
       addToast('error', '删除失败');
@@ -1308,6 +1386,33 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
             )}
           </>
         )}
+        {/* 内嵌表单 — 在消息列表中渲染 pending 表单 */}
+        {pendingForms.size > 0 && (
+          <div className="chat-pending-forms">
+            {Array.from(pendingForms.entries()).map(([formId, pf]) => (
+              <div key={formId} className="chat-message assistant">
+                <div className="chat-message-content">
+                  <FormComponent
+                    appId={appId}
+                    convId={currentConvId!}
+                    formId={formId}
+                    toolCallId={pf.toolCallId}
+                    schema={pf.schema}
+                    onSubmitted={() => {
+                      setPendingForms(prev => { const n = new Map(prev); n.delete(formId); return n; });
+                      // 延迟一下再重新加载，等服务端处理好
+                      setTimeout(() => loadMessages(currentConvId!), 500);
+                    }}
+                    onCancelled={() => {
+                      setPendingForms(prev => { const n = new Map(prev); n.delete(formId); return n; });
+                      setTimeout(() => loadMessages(currentConvId!), 500);
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -1335,6 +1440,13 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         <div className="reply-bar">
           <span className="reply-bar-icon">✎ 编辑消息</span>
           <button className="reply-bar-cancel" onClick={cancelEdit}>取消</button>
+        </div>
+      )}
+      {/* 表单锁定提示条 — 有待填表单时锁定输入区 */}
+      {pendingForms.size > 0 && (
+        <div className="reply-bar form-lock-bar">
+          <span className="reply-bar-icon">📋 待填表单</span>
+          <span className="reply-bar-text">请先填写并提交上方的表单</span>
         </div>
       )}
       <div className="chat-input-area">
@@ -1394,10 +1506,10 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder={replyToId ? '输入回复...' : '输入消息...'}
-                disabled={!currentConvId || isLoading}
+                disabled={!currentConvId || isLoading || pendingForms.size > 0}
                 rows={1}
               />
-              <button onClick={() => sendMessage(replyToId || undefined)} disabled={!currentConvId || isLoading || (!input.trim() && attachments.length === 0)}>
+              <button onClick={() => sendMessage(replyToId || undefined)} disabled={!currentConvId || isLoading || pendingForms.size > 0 || (!input.trim() && attachments.length === 0)}>
                 发送
               </button>
             </div>

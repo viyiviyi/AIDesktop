@@ -192,7 +192,7 @@ router.post('/:convId/abort', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /:convId/messages/:msgId — 删除单条消息
+// DELETE /:convId/messages/:msgId — 删除单条消息（同时删除关联的 toolResult）
 router.delete('/:convId/messages/:msgId', async (req: Request, res: Response) => {
   try {
     const { appId, convId, msgId } = req.params;
@@ -202,13 +202,156 @@ router.delete('/:convId/messages/:msgId', async (req: Request, res: Response) =>
     const idx = conversation.messages.findIndex(m => m.id === msgId);
     if (idx === -1) return res.status(404).json({ error: 'Message not found' });
 
-    conversation.messages.splice(idx, 1);
+    const msg = conversation.messages[idx];
+
+    // 收集需要删除的消息 id 列表
+    const idsToDelete = new Set<string>([msgId]);
+
+    // 如果是 assistant 消息并且有 toolCall blocks，删除后续关联的 toolResult 消息
+    if (msg.role === 'assistant') {
+      const toolCallIds: string[] = [];
+      for (const c of msg.content) {
+        if ((c as any).type === 'toolCall') {
+          toolCallIds.push((c as any).id);
+        }
+      }
+      if (toolCallIds.length > 0) {
+        for (let i = idx + 1; i < conversation.messages.length; i++) {
+          const nextMsg = conversation.messages[i];
+          if (nextMsg.role === 'toolResult' && nextMsg.toolResultMeta && toolCallIds.includes(nextMsg.toolResultMeta.toolCallId)) {
+            idsToDelete.add(nextMsg.id);
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
+    // 过滤掉所有需要删除的消息
+    conversation.messages = conversation.messages.filter(m => !idsToDelete.has(m.id));
     conversation.updatedAt = new Date().toISOString();
 
-    const { writeJsonFile } = await import('../utils/file.js');
-    const path = await import('path');
-    const { APPS_DATA_DIR } = await import('../utils/file.js');
-    await writeJsonFile(path.join(APPS_DATA_DIR, appId, 'conversations', `${convId}.json`), conversation);
+    // 使用 updateConversation 持久化（内部处理文件夹路径）
+    await conversationService.updateConversation(appId, convId, { messages: conversation.messages } as any);
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// POST /:convId/form-response — 提交/取消表单
+router.post('/:convId/form-response', async (req: Request, res: Response) => {
+  try {
+    const { appId, convId } = req.params;
+    const { formId, toolCallId, data, cancelled } = req.body;
+
+    if (!formId) return res.status(400).json({ error: 'formId is required' });
+
+    const conversation = await conversationService.getConversation(appId, convId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+    const tcid = toolCallId || '';
+
+    // 保存 toolResult 到消息列表
+    if (cancelled) {
+      const toolResultMeta = { toolCallId: tcid, toolName: 'mcp_form_requestInput', isError: false };
+      const saveMsg = await conversationService.addMessage(appId, convId, 'toolResult' as any, [
+        { type: 'text', text: JSON.stringify({ status: 'cancelled', message: '用户取消了表单填写' }) },
+      ]);
+      if (saveMsg) {
+        const conv = await conversationService.getConversation(appId, convId);
+        if (conv) {
+          const saved = conv.messages.find((m: any) => m.id === saveMsg.id);
+          if (saved) {
+            saved.toolResultMeta = toolResultMeta;
+            await conversationService.updateConversation(appId, convId, { messages: conv.messages } as any);
+          }
+        }
+      }
+      serverLogger.info('system', `Form ${formId} cancelled for ${appId}/${convId}`);
+    } else {
+      const toolResultMeta = { toolCallId: tcid, toolName: 'mcp_form_requestInput', isError: false };
+      const formDataStr = JSON.stringify(data || {});
+      const saveMsg = await conversationService.addMessage(appId, convId, 'toolResult' as any, [
+        { type: 'text', text: formDataStr },
+      ]);
+      if (saveMsg) {
+        const conv = await conversationService.getConversation(appId, convId);
+        if (conv) {
+          const saved = conv.messages.find((m: any) => m.id === saveMsg.id);
+          if (saved) {
+            saved.toolResultMeta = toolResultMeta;
+            await conversationService.updateConversation(appId, convId, { messages: conv.messages } as any);
+          }
+        }
+      }
+      serverLogger.info('system', `Form ${formId} submitted for ${appId}/${convId}: ${JSON.stringify(data)}`);
+    }
+
+    // 通过 eventBus 通知等待中的 agent
+    eventBus.emit({
+      type: cancelled ? 'form_cancelled' : 'form_response',
+      appId,
+      convId,
+      data: {
+        formId,
+        toolCallId: tcid,
+        formData: data || {},
+        cancelled: !!cancelled,
+      },
+    });
+
+    // 检查是否还有其他未提交的表单
+    const updatedConv = await conversationService.getConversation(appId, convId);
+    let hasMorePendingForms = false;
+    if (updatedConv && updatedConv.messages) {
+      for (let i = 0; i < updatedConv.messages.length; i++) {
+        const msg = updatedConv.messages[i];
+        if (msg.role !== 'assistant') continue;
+        for (const c of msg.content) {
+          const tc = c as any;
+          if (tc.type === 'toolCall' && (tc.name === 'mcp_form_requestInput' || tc.name === 'mcp.form.requestInput')) {
+            let hasResult = false;
+            for (let j = i + 1; j < updatedConv.messages.length; j++) {
+              const next = updatedConv.messages[j];
+              if (next.role === 'toolResult' && next.toolResultMeta?.toolCallId === tc.id) {
+                const text = (next.content as any[])
+                  .filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');
+                if (text.includes('"status":"pending"') || text.includes('"status": "pending"')) continue;
+                hasResult = true;
+                break;
+              }
+            }
+            if (!hasResult) {
+              hasMorePendingForms = true;
+              break;
+            }
+          }
+        }
+        if (hasMorePendingForms) break;
+      }
+    }
+
+    // 如果没有更多待填表单，恢复 agent 继续处理
+    if (!hasMorePendingForms && !cancelled) {
+      try {
+        const appLoader = (await import('../services/appLoader.js')).appLoader;
+        const app = appLoader.getApp(appId);
+        if (!app) {
+          serverLogger.error('system', `Cannot resume: app ${appId} not found`);
+        } else {
+          const { runAgentAsync } = await import('../agents/pi-agent-session.js');
+          serverLogger.info('system', `Form submitted, resuming agent for ${appId}/${convId}`);
+          setImmediate(() => {
+            runAgentAsync(appId, convId, app, updatedConv?.messages || [], [{ type: 'text', text: '(continue)' }])
+              .catch((err: any) => serverLogger.error('agent', `Form submit resume error: ${err.message}`));
+          });
+        }
+      } catch (err: any) {
+        serverLogger.error('system', `Failed to resume agent after form submit: ${err.message}`);
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {

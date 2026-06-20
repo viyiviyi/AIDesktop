@@ -124,7 +124,9 @@ class ConversationService {
     if (!this.cache.get(appId)!.has(convId)) {
       await this.loadConversations(appId);
     }
-    return this.cache.get(appId)!.get(convId) || null;
+    const conv = this.cache.get(appId)!.get(convId) || null;
+
+    return conv;
   }
 
   // 创建新会话
@@ -160,7 +162,7 @@ class ConversationService {
   async addMessage(
     appId: string,
     convId: string,
-    role: 'user' | 'assistant' | 'system',
+    role: 'user' | 'assistant' | 'system' | 'toolResult',
     content: Content[],
     toolCalls?: { id: string; tool: string; method: string; args: Record<string, unknown> }[],
     replyTo?: string,

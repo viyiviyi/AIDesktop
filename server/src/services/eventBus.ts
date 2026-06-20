@@ -19,7 +19,10 @@ export type ConvEventType =
   | 'user_input_response'
   | 'agent_call_start'
   | 'agent_call_end'
-  | 'agent_call_end_auto';
+  | 'agent_call_end_auto'
+  | 'form_request'
+  | 'form_response'
+  | 'form_cancelled';
 
 export interface ConvEvent {
   type: ConvEventType;

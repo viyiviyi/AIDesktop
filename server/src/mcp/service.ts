@@ -1,4 +1,5 @@
 import type { MCPService, Content } from '../types/index.js';
+import type { FormSchema } from '../types/index.js';
 import { mcpClientRegistry } from './clientRegistry.js';
 import { logger } from '../utils/logger.js';
 import { eventBus } from '../services/eventBus.js';
@@ -42,6 +43,11 @@ const builtInServices: Record<string, MCPService> = {
     name: 'mcp.http',
     description: 'Make HTTP requests with full control over URL, method, headers, and body.',
     methods: ['request']
+  },
+  'mcp.form': {
+    name: 'mcp.form',
+    description: 'Request structured input from the user by displaying a form. Use this when you need the user to provide multiple fields of information at once. The form is sent to the user, and the filled data comes back later as a tool result.',
+    methods: ['requestInput']
   },
 };
 
@@ -121,6 +127,8 @@ class MCPServiceRegistry {
         return this.handleHttpMethod(method, args, context);
       case 'mcp.browser':
         return this.handleBrowserMethod(method, args, context);
+      case 'mcp.form':
+        return this.handleFormMethod(method, args, context);
       default:
         throw new Error(`Service ${serviceName} not implemented`);
     }
@@ -623,6 +631,64 @@ class MCPServiceRegistry {
         };
       }
 
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleFormMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    switch (method) {
+      case 'requestInput': {
+        const title = args.title as string;
+        const description = args.description as string | undefined;
+        const fields = args.fields as Array<Record<string, unknown>> | undefined;
+
+        if (!title) throw new Error('title is required');
+        if (!fields || !Array.isArray(fields) || fields.length === 0) throw new Error('fields is required');
+
+        const schema: FormSchema = {
+          title,
+          description,
+          fields: fields.map(f => ({
+            name: f.name as string,
+            label: f.label as string,
+            type: (f.type as any) || 'text',
+            required: f.required as boolean | undefined,
+            options: f.options as string[] | undefined,
+            placeholder: f.placeholder as string | undefined,
+            accept: f.accept as string | undefined,
+            description: f.description as string | undefined,
+          })),
+        };
+
+        const formId = `form-${uuidv4()}`;
+        const formInfo = {
+          formId,
+          toolCallId: args._toolCallId as string || '',
+          schema,
+          createdAt: new Date().toISOString(),
+        };
+
+        // 如果提供了 appId/convId，推送 form_request 事件给前端
+        if (context.appId && context.convId) {
+          eventBus.emit({
+            type: 'form_request',
+            appId: context.appId,
+            convId: context.convId,
+            data: { formId, schema, conversationId: context.convId, appId: context.appId, createdAt: formInfo.createdAt },
+          });
+        }
+
+        return {
+          status: 'pending',
+          formId,
+          message: `表单"${title}"已发送给用户，等待用户填写...`,
+        };
+      }
       default:
         throw new Error(`Unknown method: ${method}`);
     }

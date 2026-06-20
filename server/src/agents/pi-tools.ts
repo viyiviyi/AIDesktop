@@ -14,6 +14,35 @@ import type { App } from "../types/index.js";
 import { mcpServiceRegistry } from "../mcp/service.js";
 import { mcpClientRegistry } from "../mcp/clientRegistry.js";
 
+/** 当前正在运行的 convId，由 pi-agent-session 在执行前设置 */
+let _currentConvId = '';
+export function setCurrentConvId(convId: string) { _currentConvId = convId; }
+
+/** mcp.form.requestInput 的参数 schema */
+const formRequestSchema = Type.Object({
+  title: Type.String({ description: '表单标题' }),
+  description: Type.Optional(Type.String({ description: '表单描述说明' })),
+  fields: Type.Array(Type.Object({
+    name: Type.String({ description: '字段名（英文，用于数据键）' }),
+    label: Type.String({ description: '字段标签（中文显示名）' }),
+    type: Type.Optional(Type.Union([
+      Type.Literal('text'),
+      Type.Literal('textarea'),
+      Type.Literal('number'),
+      Type.Literal('select'),
+      Type.Literal('radio'),
+      Type.Literal('checkbox'),
+      Type.Literal('confirm'),
+      Type.Literal('file'),
+    ], { description: '字段类型，默认 text' })),
+    required: Type.Optional(Type.Boolean({ description: '是否必填' })),
+    options: Type.Optional(Type.Array(Type.String(), { description: 'select/radio 的选项列表' })),
+    placeholder: Type.Optional(Type.String({ description: '输入提示文字' })),
+    accept: Type.Optional(Type.String({ description: 'file 类型的接受格式，如 .pdf,.doc' })),
+    description: Type.Optional(Type.String({ description: '字段说明文字' })),
+  }, { additionalProperties: false }), { minItems: 1, description: '表单项列表' }),
+}, { additionalProperties: false, description: '向用户展示一个表单收集结构化信息' });
+
 /** 将 service.name.method 转为 LLM 兼容的 tool name（. → _） */
 function safeToolName(serviceName: string, method: string): string {
   return `${serviceName.replace(/\./g, "_")}_${method}`.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -56,7 +85,11 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
     for (const method of service.methods) {
       const name = safeToolName(service.name, method);
 
-      const parameters = Type.Object({}, { additionalProperties: true });
+      // mcp.form.requestInput 需要完整的参数 schema
+      let parameters = Type.Object({}, { additionalProperties: true });
+      if (service.name === 'mcp.form' && method === 'requestInput') {
+        parameters = formRequestSchema;
+      }
 
       tools.push({
         name,
@@ -66,15 +99,23 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
         execute: async (toolCallId, params, signal, onUpdate) => {
           try {
             const { serviceName, method: m } = parseToolName(name);
+            const enrichedParams = {
+              ...(params as any) || {},
+              _toolCallId: toolCallId,
+            };
             const result = await mcpServiceRegistry.callMethod(
               serviceName,
               m,
-              (params as any) || {},
-              { appId: app.meta.id },
+              enrichedParams,
+              { appId: app.meta.id, convId: _currentConvId },
             );
+            // 如果表单工具返回 pending，设置 terminate 让 agent 停止后续调用
+            const rawResult = result as any;
+            const terminateLoop = serviceName === 'mcp.form' && rawResult?.status === 'pending';
             return {
               content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
               details: result,
+              terminate: terminateLoop || undefined,
             };
           } catch (error) {
             return {

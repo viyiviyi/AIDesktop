@@ -16,6 +16,7 @@ import { appLoader } from "../services/appLoader.js";
 import { settingsService } from "../services/settings.js";
 import { findModel } from "../models/pi-adapter.js";
 import { buildPiToolsForApp } from "./pi-tools.js";
+import { setCurrentConvId } from "./pi-tools.js";
 import { serverLogger } from "../utils/logger.js";
 import { DATA_DIR } from "../utils/file.js";
 import * as crypto from 'node:crypto';
@@ -91,7 +92,7 @@ function adMsgToPiMsg(m: AdMsg, appId: string, provider: string, modelId: string
       role: "toolResult",
       toolCallId: meta.toolCallId,
       toolName: meta.toolName,
-      content: text || "",
+      content: [{ type: "text", text: text || "" }],
       isError: meta.isError,
       timestamp: ts,
     } as any;
@@ -306,6 +307,88 @@ export class PiAgentManager {
 export const piAgentManager = new PiAgentManager();
 
 /**
+ * 处理表单暂停：保存消息，等待用户提交/取消，恢复 agent
+ */
+async function handleFormPendingInternal(
+  appId: string,
+  convId: string,
+  session: PiAgentSession,
+  app: any,
+): Promise<void> {
+  const { conversationService } = await import('../services/conversation.js');
+  const { eventBus: evBus } = await import('../services/eventBus.js');
+
+  // 保存 agent 本轮产生的所有消息（跳过 pending toolResult，只保留 assistant）
+  const piMsgs = session.agent.state.messages as any[];
+  const newAssistantMsgs = piMsgs.filter((m: any) => m.role === 'assistant');
+  for (const msg of newAssistantMsgs) {
+    const content: Content[] = [];
+    for (const block of (msg.content || [])) {
+      if (block.type === 'text') content.push({ type: 'text', text: block.text });
+      else if (block.type === 'thinking') content.push({ type: 'thinking', text: block.thinking || block.text || '' });
+      else if (block.type === 'toolCall') {
+        content.push({ type: 'toolCall', id: block.id, name: block.name, arguments: block.arguments } as any);
+      }
+    }
+    if (content.length > 0) {
+      await conversationService.addMessage(appId, convId, 'assistant', content);
+    }
+  }
+
+  serverLogger.info('agent', `Agent paused for ${appId}/${convId}, waiting for form response...`);
+
+  // 等待表单响应
+  const formResponse = await new Promise<{ type: 'form_response' | 'form_cancelled'; data: Record<string, unknown> }>((resolve) => {
+    const unsub = evBus.subscribe(convId, (event) => {
+      if (event.type === 'form_response' || event.type === 'form_cancelled') {
+        unsub();
+        resolve({ type: event.type, data: event.data });
+      }
+    });
+  });
+
+  serverLogger.info('agent', `Agent resuming for ${appId}/${convId}, form response received`);
+
+  // 插入 toolResult 到 agent state
+  if (formResponse.type === 'form_cancelled') {
+    const toolCallId = formResponse.data.toolCallId as string || '';
+    session.agent.state.messages.push({
+      role: 'toolResult',
+      toolCallId,
+      toolName: 'mcp.form.requestInput',
+      content: JSON.stringify({ status: 'cancelled', message: '用户取消了表单填写' }),
+    } as any);
+    await saveAppendedToolResult(appId, convId, conversationService, {
+      role: 'toolResult',
+      toolCallId,
+      toolName: 'mcp.form.requestInput',
+      content: JSON.stringify({ status: 'cancelled', message: '用户取消了表单填写' }),
+      isError: false,
+    });
+  } else {
+    const toolCallId = formResponse.data.toolCallId as string || '';
+    const formData = formResponse.data.formData as Record<string, unknown> || {};
+    session.agent.state.messages.push({
+      role: 'toolResult',
+      toolCallId,
+      toolName: 'mcp.form.requestInput',
+      content: JSON.stringify(formData),
+    } as any);
+    await saveAppendedToolResult(appId, convId, conversationService, {
+      role: 'toolResult',
+      toolCallId,
+      toolName: 'mcp.form.requestInput',
+      content: JSON.stringify(formData),
+      isError: false,
+    });
+  }
+
+  // 不再在这里恢复 agent，由 form-response 路由统一负责
+  // runAgentAsync 会在 form-response 路由中被调用
+  serverLogger.info('agent', `Form resume data prepared for ${appId}/${convId}, agent will be resumed by form-response route`);
+}
+
+/**
  * 后台异步运行 agent，所有事件推送到 EventBus
  * 供 conversations.ts 和 mcp/service.ts 共享使用
  */
@@ -319,8 +402,19 @@ export async function runAgentAsync(
   const { eventBus } = await import('../services/eventBus.js');
   const { conversationService } = await import('../services/conversation.js');
 
-  const fullHistory = [...existingMessages, { role: 'user', content: userContent }];
+  // 过滤掉 pending 状态的 toolResult（避免发给模型时产生冲突）
+  const filteredMessages = existingMessages.filter((m: any) => {
+    if (m.role === 'toolResult' && m.content) {
+      const text = (m.content as any[]).filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');
+      if (text.includes('"status":"pending"') || text.includes('"status": "pending"')) return false;
+    }
+    return true;
+  });
+
+  const fullHistory = [...filteredMessages, { role: 'user', content: userContent }];
+  serverLogger.info('agent', `runAgentAsync getOrCreate for ${appId}/${convId}`);
   const session = await piAgentManager.getOrCreate(appId, app);
+  serverLogger.info('agent', `runAgentAsync got session for ${appId}/${convId}, activeRun: ${!!session.agent.activeRun}`);
   session.currentConvId = convId;
 
   // 如果 agent 正在处理，忽略本次请求
@@ -328,6 +422,8 @@ export async function runAgentAsync(
     serverLogger.warn('agent', `Agent already processing for ${appId}/${convId}, skipping`);
     return;
   }
+
+  serverLogger.info('agent', `runAgentAsync starting for ${appId}/${convId}, existingMsgs: ${existingMessages.length}, userContent: ${JSON.stringify(userContent).slice(0, 100)}`);
 
   const unsub = session.agent.subscribe((event: any) => {
     const emit = (type: string, data: Record<string, unknown>) => {
@@ -357,6 +453,13 @@ export async function runAgentAsync(
         emit('tool_call', { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
         break;
       case 'tool_execution_end':
+        if ((event.toolName?.includes('requestInput') || event.toolName?.includes('mcp.form'))
+            && !event.isError) {
+          // 表单工具执行成功（非错误），停止 agent 后续思考
+          (session as any)._formPending = true;
+          try { session.agent.abort(); } catch {}
+          break;
+        }
         emit('tool_result', { toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError });
         break;
     }
@@ -368,6 +471,7 @@ export async function runAgentAsync(
 
   try {
     session.syncHistory(fullHistory);
+    setCurrentConvId(convId);
     const userText = userContent
       .filter((c: any): c is { type: 'text'; text: string } => c.type === 'text')
       .map((c: any) => c.text)
@@ -393,16 +497,28 @@ export async function runAgentAsync(
     // 如果没有文本也没有图片，报错
     if (!userText.trim() && userImages.length === 0) throw new Error('No text in user message');
 
+    serverLogger.info('agent', `Calling agent.prompt for ${appId}/${convId}, text: "${userText.slice(0, 50)}"`);
     await session.agent.prompt(userText || '(image input)', userImages.length > 0 ? userImages : undefined);
+    serverLogger.info('agent', `agent.prompt completed for ${appId}/${convId}`);
 
-    // 检查 agent 内部是否产生了错误（例如 API 调用失败但被 pi-agent-core 静默处理了）
-    if (session.agent.state.errorMessage) {
-      // 用户主动中止不算错误
-      if (session.agent.state.errorMessage !== 'The operation was aborted') {
-        throw new Error(session.agent.state.errorMessage);
-      }
+    // === 检测是否存在 pending 表单 ===
+    const convAfterPrompt = await conversationService.getConversation(appId, convId);
+    if (convAfterPrompt?.pendingForms && convAfterPrompt.pendingForms.length > 0) {
+      await handleFormPendingInternal(appId, convId, session, app);
+      unsub();
+      unsub2();
+      return;
     }
-  } catch (error) {
+  } catch (error: any) {
+    // 表单暂停：agent 被 abort 了，检查是否有 pendingForms
+    const convAfterCatch = await conversationService.getConversation(appId, convId);
+    if (convAfterCatch?.pendingForms && convAfterCatch.pendingForms.length > 0) {
+      await handleFormPendingInternal(appId, convId, session, app);
+      unsub();
+      unsub2();
+      return;
+    }
+    // 其他错误正常处理
     const msg = error instanceof Error ? error.message : 'Unknown error';
     serverLogger.error('agent', `Agent error for ${appId}/${convId}: ${msg}`);
     eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
@@ -608,4 +724,33 @@ export async function replaceLargeContentWithFileRef(
     processed[key] = await processValue(val, key);
   }
   return processed;
+}
+
+/**
+ * 在现有会话末尾追加一条 toolResult 消息（带 toolResultMeta）。
+ * 与 saveNewMessages 中的 toolResult 保存逻辑保持一致。
+ */
+async function saveAppendedToolResult(
+  appId: string,
+  convId: string,
+  convService: any,
+  piMsg: { role: string; toolCallId: string; toolName: string; content: string; isError: boolean },
+): Promise<void> {
+  const toolResultMeta: ToolResultMeta = {
+    toolCallId: piMsg.toolCallId,
+    toolName: piMsg.toolName,
+    isError: piMsg.isError,
+  };
+  const resultContent: Content[] = [{ type: 'text', text: piMsg.content }];
+  const saveMsg = await convService.addMessage(appId, convId, 'toolResult', resultContent);
+  if (saveMsg) {
+    const conv = await convService.getConversation(appId, convId);
+    if (conv) {
+      const savedMsg = conv.messages.find((m: any) => m.id === saveMsg.id);
+      if (savedMsg) {
+        savedMsg.toolResultMeta = toolResultMeta;
+        await convService.updateConversation(appId, convId, { messages: conv.messages } as any);
+      }
+    }
+  }
 }
