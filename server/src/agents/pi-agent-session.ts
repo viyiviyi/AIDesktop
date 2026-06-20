@@ -15,8 +15,7 @@ import type { App, Message as AdMsg, Content, ToolResultMeta } from "../types/in
 import { appLoader } from "../services/appLoader.js";
 import { settingsService } from "../services/settings.js";
 import { findModel } from "../models/pi-adapter.js";
-import { buildPiToolsForApp } from "./pi-tools.js";
-import { setCurrentConvId } from "./pi-tools.js";
+import { buildPiToolsForApp, buildWorkspaceTools, setCurrentConvId } from "./pi-tools.js";
 import { serverLogger } from "../utils/logger.js";
 import { DATA_DIR } from "../utils/file.js";
 import * as crypto from 'node:crypto';
@@ -252,6 +251,16 @@ export class PiAgentSession {
     if (tools.length > 0) this.agent.state.tools = tools as any;
   }
 
+  /** 注入 workspace 工具（需要会话上下文） */
+  injectWorkspaceTools(app: App, convId: string): void {
+    const wsTools = buildWorkspaceTools(app, convId);
+    const existingTools = this.agent.state.tools || [];
+    // 避免重复注入——检查是否已有 workspace 工具
+    const wsNames = new Set(wsTools.map((t: any) => t.name));
+    const filtered = existingTools.filter((t: any) => !wsNames.has(t.name));
+    this.agent.state.tools = [...filtered, ...wsTools] as any;
+  }
+
   syncHistory(msgs: AdMsg[]): void {
     const history = msgs.length > 0 && msgs[msgs.length - 1]?.role === "user" ? msgs.slice(0, -1) : msgs;
     const piMsgs: PiMsg[] = [];
@@ -415,6 +424,7 @@ export async function runAgentAsync(
   serverLogger.info('agent', `runAgentAsync getOrCreate for ${appId}/${convId}`);
   const session = await piAgentManager.getOrCreate(appId, app);
   serverLogger.info('agent', `runAgentAsync got session for ${appId}/${convId}, activeRun: ${!!session.agent.activeRun}`);
+
   session.currentConvId = convId;
 
   // 如果 agent 正在处理，忽略本次请求
@@ -422,6 +432,9 @@ export async function runAgentAsync(
     serverLogger.warn('agent', `Agent already processing for ${appId}/${convId}, skipping`);
     return;
   }
+
+  // 标记是否因 workspace 授权被中止（非错误）
+  let workspaceAuthAbort = false;
 
   serverLogger.info('agent', `runAgentAsync starting for ${appId}/${convId}, existingMsgs: ${existingMessages.length}, userContent: ${JSON.stringify(userContent).slice(0, 100)}`);
 
@@ -472,6 +485,8 @@ export async function runAgentAsync(
   try {
     session.syncHistory(fullHistory);
     setCurrentConvId(convId);
+    // 注入 workspace 工具（需要 convId 上下文）
+    session.injectWorkspaceTools(app, convId);
     const userText = userContent
       .filter((c: any): c is { type: 'text'; text: string } => c.type === 'text')
       .map((c: any) => c.text)
@@ -519,9 +534,14 @@ export async function runAgentAsync(
       return;
     }
     // 其他错误正常处理
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    serverLogger.error('agent', `Agent error for ${appId}/${convId}: ${msg}`);
-    eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
+    if (workspaceAuthAbort || (session as any)._workspaceAuthAbort) {
+      // 因 workspace 授权而中止，不发送 error
+      serverLogger.info('agent', `Agent aborted for workspace auth ${appId}/${convId}`);
+    } else {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      serverLogger.error('agent', `Agent error for ${appId}/${convId}: ${msg}`);
+      eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
+    }
     unsub();
     unsub2();
     eventBus.emit({ type: 'done', appId, convId, data: {} });

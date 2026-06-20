@@ -22,7 +22,10 @@ export type ConvEventType =
   | 'agent_call_end_auto'
   | 'form_request'
   | 'form_response'
-  | 'form_cancelled';
+  | 'form_cancelled'
+  | 'workspace_request'
+  | 'workspace_response'
+  | 'workspace_cancelled';
 
 export interface ConvEvent {
   type: ConvEventType;

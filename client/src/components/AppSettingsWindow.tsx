@@ -39,6 +39,8 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   const [saveMsg, setSaveMsg] = useState('');
   // 外部 MCP 展开状态
   const [expandedMcpConns, setExpandedMcpConns] = useState<Record<string, boolean>>({});
+  // 描述文本展开状态：{ 服务名: true/false }
+  const [showToolDescs, setShowToolDescs] = useState<Record<string, boolean>>({});
 
   // Form state
   const [formData, setFormData] = useState({
@@ -275,34 +277,67 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   );
 
   const renderTools = () => {
-    const builtinServices = availableTools.length > 0 ? availableTools : [
-      { name: 'mcp.filesystem', description: '文件系统服务' },
-      { name: 'mcp.window', description: '窗口管理服务' },
-      { name: 'mcp.settings', description: '设置服务' },
-      { name: 'mcp.agent', description: 'Agent 管理服务' },
-      { name: 'mcp.sleep', description: '等待一段时间（最多600秒）' },
-      { name: 'mcp.exec', description: '执行 shell 命令' },
-      { name: 'mcp.http', description: '发送 HTTP 请求' },
-    ];
+    const allServices = availableTools.length > 0 ? availableTools : [];
+
+    // 按分类分组
+    const adminServices = allServices.filter((s: any) => s.category === 'admin');
+    const builtinServices = allServices.filter((s: any) => s.category === 'builtin');
+    const workspaceServices = allServices.filter((s: any) => s.category === 'workspace');
+    const fallbackServices = allServices.length === 0 ? [
+      { name: 'mcp.filesystem', description: '文件系统服务', category: 'admin' },
+      { name: 'mcp.window', description: '窗口管理服务', category: 'admin' },
+      { name: 'mcp.settings', description: '设置服务', category: 'admin' },
+      { name: 'mcp.agent', description: 'Agent 管理服务', category: 'builtin' },
+      { name: 'mcp.sleep', description: '等待一段时间（最多600秒）', category: 'builtin' },
+      { name: 'mcp.exec', description: '执行 shell 命令', category: 'builtin' },
+      { name: 'mcp.http', description: '发送 HTTP 请求', category: 'builtin' },
+      { name: 'mcp.browser', description: '浏览器控制', category: 'builtin' },
+      { name: 'mcp.form', description: '表单交互', category: 'builtin' },
+    ] : [];
+
+    const adminList = adminServices.length > 0 ? adminServices : fallbackServices.filter(s => s.category === 'admin');
+    const builtinList = builtinServices.length > 0 ? builtinServices : fallbackServices.filter(s => s.category === 'builtin');
+    const workspaceList = workspaceServices.length > 0 ? workspaceServices : [];
+
+    // checkbox + 名称 + 说明同一行
+    const renderServiceItem = (s: any) => {
+      return (
+        <div key={s.name} className="app-settings-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
+          <input
+            type="checkbox"
+            checked={formData.tools.includes(s.name)}
+            onChange={() => canModifyAll && toggleTool(s.name)}
+            disabled={!canModifyAll}
+          />
+          <label style={{ cursor: 'pointer', fontWeight: 500, fontSize: 12, userSelect: 'none' }}
+            onClick={() => canModifyAll && toggleTool(s.name)}>
+            {s.name}
+          </label>
+          <span style={{ flex: 1, textAlign: 'right', color: 'var(--text-secondary)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', userSelect: 'text', cursor: 'default' }}>
+            {s.description || ''}
+          </span>
+        </div>
+      );
+    };
+
     return (
       <div className="app-settings-section">
-        <h4>内置 MCP 服务</h4>
-        <p className="app-settings-hint">选择该应用可调用的内置 MCP 服务。</p>
+        <h4>内置管理工具</h4>
+        <p className="app-settings-hint">系统管理和维护工具，用于控制桌面环境。</p>
         <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
-          {builtinServices.map(s => (
-            <label key={s.name} className="app-settings-checkbox">
-              <input
-                type="checkbox"
-                checked={formData.tools.includes(s.name)}
-                onChange={() => canModifyAll && toggleTool(s.name)}
-                disabled={!canModifyAll}
-              />
-              <span style={{ flex: 1 }}>{s.name}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>
-                {s.description}
-              </span>
-            </label>
-          ))}
+          {adminList.map(renderServiceItem)}
+        </div>
+
+        <h4>内置通用工具</h4>
+        <p className="app-settings-hint">通用的辅助工具，可供所有应用调用。</p>
+        <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
+          {builtinList.map(renderServiceItem)}
+        </div>
+
+        <h4>工作工具</h4>
+        <p className="app-settings-hint">需要授权的工作区工具，首次使用时会弹出确认。</p>
+        <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
+          {workspaceList.map(renderServiceItem)}
         </div>
 
         {(mcpExternals || []).filter(c => c.isConnected).length > 0 && (

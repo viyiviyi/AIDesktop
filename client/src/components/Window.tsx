@@ -7,6 +7,7 @@ import { useAgentEventStream } from '../services/useAgentEventStream';
 import type { WsConvEvent } from '../services/useAgentEventStream';
 import { MarkdownView } from './MarkdownView';
 import { FormComponent } from './FormComponent';
+import { WorkspaceDirSelector } from './WorkspaceDirSelector';
 import { PictureFilled } from '@ant-design/icons';
 
 // 流式 tool call 的展开状态管理（独立于 Window 内部展开状态，因为 toolCalls 不是 msg.content）
@@ -308,7 +309,7 @@ interface ChatAppProps {
 export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const { addToast, confirm } = useToast();
   const { state } = useDesktop();
-  const [conversations, setConversations] = useState<{ id: string; title: string; preview?: string; createdAt?: string }[]>([]);
+  const [conversations, setConversations] = useState<{ id: string; title: string; preview?: string; createdAt?: string; workspaceDir?: string | null }[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(
     conversationId && !conversationId.startsWith('conv-') ? conversationId : null
   );
@@ -339,6 +340,8 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 表单状态 — 等待用户填写的表单
   const [pendingForms, setPendingForms] = useState<Map<string, { formId: string; schema: FormSchema; toolCallId: string }>>(new Map());
+  // 待处理的工作目录授权请求
+  const [workspaceRequest, setWorkspaceRequest] = useState<{ toolCallId: string; requestedPath?: string } | null>(null);
 
   // 判断当前应用是否支持图片输入
   const currentAppInfo = state.installedApps.find(a => a.id === appId);
@@ -444,6 +447,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         title: c.title,
         preview: undefined as string | undefined,
         createdAt: c.createdAt,
+        workspaceDir: c.workspaceDir,
       }));
       setConversations(mapped);
 
@@ -454,7 +458,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       } else {
         // 没有会话，创建一个
         return api.createConversation(appId, `窗口 ${Date.now()}`).then(conv => {
-          setConversations([{ id: conv.id, title: conv.title, createdAt: conv.createdAt }]);
+          setConversations([{ id: conv.id, title: conv.title, createdAt: conv.createdAt, workspaceDir: conv.workspaceDir }]);
           setCurrentConvId(conv.id);
         });
       }
@@ -552,6 +556,21 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         setIsLoading(false);
         const cId = currentConvIdRef.current;
         if (cId) loadMessages(cId);
+        // 刷新会话列表以更新 workspaceDir
+        api.getConversations(appId).then(convs => {
+          const updated = convs.map(c => ({
+            id: c.id,
+            title: c.title,
+            preview: c.messages.length > 0
+              ? c.messages.filter(m => m.role === 'user')
+                .map(m => m.content.filter((x: any) => x.type === 'text').map((x: any) => x.text).join(''))
+                .pop()?.slice(0, 100)
+              : undefined,
+            createdAt: c.createdAt,
+            workspaceDir: c.workspaceDir,
+          }));
+          setConversations(updated);
+        });
         break;
       case 'form_request': {
         const formId = event.data.formId as string;
@@ -585,6 +604,18 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
           setStreamingText('');
           setToolCalls([]);
         }
+        break;
+      }
+      case 'workspace_request': {
+        const wsData = event.data as any;
+        setWorkspaceRequest({
+          toolCallId: wsData.toolCallId as string || '',
+          requestedPath: wsData.requestedPath as string || undefined,
+        });
+        // 关闭 loading，显示授权选择器
+        setIsLoading(false);
+        setThinkingText('');
+        // 保留 toolCalls，授权选择器会叠加在已有的 tool call 卡片下面
         break;
       }
       case 'error':
@@ -627,7 +658,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
             .join('')
             .slice(0, 100)
           : undefined;
-        return { id: c.id, title: c.title, preview, createdAt: c.createdAt };
+        return { id: c.id, title: c.title, preview, createdAt: c.createdAt, workspaceDir: c.workspaceDir };
       });
       setConversations(mapped);
       // 自动设置当前会话：优先用传入的 preserveConvId，否则用最新的有消息的，否则用最新的
@@ -697,7 +728,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const createNewConversation = async () => {
     try {
       const conv = await api.createConversation(appId, `会话 ${conversations.length + 1}`);
-      setConversations([...conversations, { id: conv.id, title: conv.title }]);
+      setConversations([...conversations, { id: conv.id, title: conv.title, workspaceDir: conv.workspaceDir }]);
       setCurrentConvId(conv.id);
       setMessages([]);
       setShowConvList(false);
@@ -721,7 +752,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         } else {
           // 没有会话了，创建一个新的
           const conv = await api.createConversation(appId, `会话 1`);
-          setConversations([{ id: conv.id, title: conv.title }]);
+          setConversations([{ id: conv.id, title: conv.title, workspaceDir: conv.workspaceDir }]);
           setCurrentConvId(conv.id);
         }
       }
@@ -1145,6 +1176,14 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
             <span className="chat-header-time">{formatShortDateTime(currentConv.createdAt)}</span>
           ) : null;
         })()}
+        {(() => {
+          const currentConv = conversations.find((c) => c.id === currentConvId);
+          return currentConv?.workspaceDir ? (
+            <span className="chat-header-workspace" title={`工作目录: ${currentConv.workspaceDir}`}>
+              📁 {currentConv.workspaceDir}
+            </span>
+          ) : null;
+        })()}
         <button className="chat-header-btn chat-header-btn-primary" onClick={createNewConversation} title="新建会话">
           +
         </button>
@@ -1429,6 +1468,35 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+        {/* 工作目录授权选择器 */}
+        {workspaceRequest && (
+          <div className="chat-message assistant">
+            <div className="chat-message-content">
+              <WorkspaceDirSelector
+                appId={appId!}
+                convId={currentConvId!}
+                toolCallId={workspaceRequest.toolCallId}
+                requestedPath={workspaceRequest.requestedPath}
+                onSubmitted={() => {
+                  setWorkspaceRequest(null);
+                  // 先加载消息让授权结果显示出来
+                  loadMessages(currentConvId!).then(() => {
+                    // 再进入 loading 等待 agent 继续
+                    setIsLoading(true);
+                    setThinkingText('处理中...');
+                  }).catch(() => {
+                    setIsLoading(true);
+                    setThinkingText('处理中...');
+                  });
+                }}
+                onCancelled={() => {
+                  setWorkspaceRequest(null);
+                  setTimeout(() => loadMessages(currentConvId!), 500);
+                }}
+              />
+            </div>
           </div>
         )}
         <div ref={messagesEndRef} />

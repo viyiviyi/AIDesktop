@@ -99,6 +99,7 @@ export interface Conversation {
     schema: FormSchema;
     createdAt: string;
   }>;
+  workspaceDir?: string | null;
 }
 
 export interface FormField {

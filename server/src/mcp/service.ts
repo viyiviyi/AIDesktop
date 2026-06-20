@@ -9,50 +9,76 @@ import * as os from 'os';
 
 // 内置MCP服务定义
 const builtInServices: Record<string, MCPService> = {
-  'mcp.agent': {
-    name: 'mcp.agent',
-    description: 'Agent management service - list, call, get information about agents',
-    methods: ['list', 'call', 'getInfo']
-  },
+  // ===== 内置管理工具（admin）=====
   'mcp.window': {
     name: 'mcp.window',
-    description: 'Window management service - open, close, list windows',
-    methods: ['open', 'close', 'list', 'focus', 'minimize', 'maximize']
+    description: '窗口管理服务 - 打开、关闭、列出、聚焦、最小化、最大化窗口',
+    methods: ['open', 'close', 'list', 'focus', 'minimize', 'maximize'],
+    category: 'admin',
   },
   'mcp.filesystem': {
     name: 'mcp.filesystem',
-    description: 'File system service - read, write, list files',
-    methods: ['read', 'write', 'list', 'mkdir', 'delete']
+    description: '文件系统服务 - 读取、写入、列出、创建目录、删除文件',
+    methods: ['read', 'write', 'list', 'mkdir', 'delete'],
+    category: 'admin',
   },
   'mcp.settings': {
     name: 'mcp.settings',
-    description: 'Settings service - get and update desktop settings',
-    methods: ['get', 'update']
+    description: '系统设置服务 - 获取和更新桌面设置（主题、字体、背景等）',
+    methods: ['get', 'update'],
+    category: 'admin',
+  },
+
+  // ===== 内置通用工具（builtin）=====
+  'mcp.agent': {
+    name: 'mcp.agent',
+    description: 'Agent 管理服务 - 列出、调用、获取其他 Agent 的信息',
+    methods: ['list', 'call', 'getInfo'],
+    category: 'builtin',
   },
   'mcp.sleep': {
     name: 'mcp.sleep',
-    description: 'Sleep/wait for a specified number of seconds. Maximum 600 seconds (10 minutes).',
-    methods: ['sleep']
+    description: '等待一段时间 - 暂停执行指定秒数（最长 600 秒/10 分钟）',
+    methods: ['sleep'],
+    category: 'builtin',
   },
   'mcp.exec': {
     name: 'mcp.exec',
-    description: `Execute a shell command and return its output. Current OS: ${os.platform()} ${os.release()}. The command runs with a timeout and waits for completion.`,
-    methods: ['exec']
+    description: `执行 shell 命令 - 运行一条命令并返回输出。当前系统: ${os.platform()} ${os.release()}`,
+    methods: ['exec'],
+    category: 'builtin',
   },
   'mcp.http': {
     name: 'mcp.http',
-    description: 'Make HTTP requests with full control over URL, method, headers, and body.',
-    methods: ['request']
+    description: 'HTTP 请求 - 发送 HTTP 请求，完全控制 URL、方法、请求头和请求体',
+    methods: ['request'],
+    category: 'builtin',
+  },
+  'mcp.browser': {
+    name: 'mcp.browser',
+    description: '浏览器控制 - 导航、点击、输入、截图、执行 JS',
+    methods: ['navigate', 'snapshot', 'click', 'type', 'scroll', 'back', 'vision', 'console', 'press'],
+    category: 'builtin',
   },
   'mcp.form': {
     name: 'mcp.form',
-    description: 'Request structured input from the user by displaying a form. Use this when you need the user to provide multiple fields of information at once. The form is sent to the user, and the filled data comes back later as a tool result.',
-    methods: ['requestInput']
+    description: '表单交互 - 向用户展示结构化输入表单，收集用户填写的数据后返回',
+    methods: ['requestInput'],
+    category: 'builtin',
   },
   'mcp.code': {
     name: 'mcp.code',
-    description: 'Code and document editing service - read, write, patch, search, and list files. All paths are relative to the app data directory.',
-    methods: ['read', 'write', 'patch', 'search', 'list']
+    description: '代码与文档编辑 - 读取、写入、替换、搜索、列出文件（路径相对于应用数据目录）',
+    methods: ['read', 'write', 'patch', 'search', 'list'],
+    category: 'admin',
+  },
+
+  // ===== 工作工具（workspace）=====
+  'workspace.code': {
+    name: 'workspace.code',
+    description: '工作区文件编辑 - 读取、写入、替换、搜索、列出文件（路径相对于会话工作目录，支持绝对路径）',
+    methods: ['read', 'write', 'patch', 'search', 'list'],
+    category: 'workspace',
   },
 };
 
@@ -136,6 +162,8 @@ class MCPServiceRegistry {
         return this.handleFormMethod(method, args, context);
       case 'mcp.code':
         return this.handleCodeMethod(method, args, context);
+      case 'workspace.code':
+        return this.handleWorkspaceCodeMethod(method, args, context);
       default:
         throw new Error(`Service ${serviceName} not implemented`);
     }
@@ -235,7 +263,17 @@ class MCPServiceRegistry {
         const callId = uuidv4();
         if (!targetConvId) {
           const callChain = context.appId ? [{ callerAppId: context.appId, callerConvId: callerConvId, callId, timestamp: new Date().toISOString() }] : undefined;
+          // 继承调用者的工作目录
+          let workspaceDir: string | undefined;
+          if (context.appId && callerConvId) {
+            const callerConv = await conversationService.getConversation(context.appId, callerConvId);
+            workspaceDir = callerConv?.workspaceDir || undefined;
+          }
           const newConv = await conversationService.createConversation(agentId, `来自 ${context.appId || '未知'} 的调用`, 'agent', callChain);
+          if (workspaceDir) {
+            await conversationService.updateConversation(agentId, newConv.id, { workspaceDir } as any);
+            newConv.workspaceDir = workspaceDir;
+          }
           targetConvId = newConv.id;
           conversation = newConv;
         } else {
@@ -441,6 +479,7 @@ class MCPServiceRegistry {
   private async handleSleepMethod(
     method: string,
     args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     switch (method) {
       case 'sleep': {
@@ -457,6 +496,7 @@ class MCPServiceRegistry {
   private async handleExecMethod(
     method: string,
     args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     switch (method) {
       case 'exec': {
@@ -490,6 +530,7 @@ class MCPServiceRegistry {
   private async handleHttpMethod(
     method: string,
     args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     switch (method) {
       case 'request': {
@@ -814,6 +855,224 @@ class MCPServiceRegistry {
         }
       }
 
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleWorkspaceCodeMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    // 获取会话工作目录
+    const { conversationService } = await import('../services/conversation.js');
+    const conv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
+    let workspaceDirVal = conv?.workspaceDir;
+    if (!workspaceDirVal) {
+      // 无工作目录——直接在工具内部触发授权流程
+      // 与 mcp.form 类似，但这是完全阻塞的：授权不通过就不继续
+      if (!context.appId || !context.convId) {
+        throw new Error('Workspace directory not set and no conversation context available to prompt the user.');
+      }
+      const { eventBus } = await import('../services/eventBus.js');
+
+      // 发送授权请求到前端
+      const toolCallId = args._toolCallId as string || 'direct';
+      const displayPath = (args.baseDir as string) || (args.path as string) || '';
+      eventBus.emit({
+        type: 'workspace_request',
+        appId: context.appId,
+        convId: context.convId,
+        data: { toolCallId, requestedPath: displayPath },
+      });
+
+      // 阻塞等待用户授权或取消
+      const response = await new Promise<{ type: 'workspace_response' | 'workspace_cancelled'; data: any }>((resolve) => {
+        const unsub = eventBus.subscribe(context.convId || '', (event) => {
+          if (event.type === 'workspace_response' || event.type === 'workspace_cancelled') {
+            if (event.data?.toolCallId && event.data.toolCallId !== toolCallId) return;
+            unsub();
+            resolve({ type: event.type, data: event.data });
+          }
+        });
+        setTimeout(() => { unsub(); resolve({ type: 'workspace_cancelled' as any, data: { reason: '超时' } }); }, 300000);
+      });
+
+      if (response.type === 'workspace_cancelled') {
+        throw new Error('用户拒绝了工作目录授权，操作已取消');
+      }
+
+      const chosenPath = response.data?.path as string;
+      if (!chosenPath) throw new Error('未提供目录路径');
+
+      // 验证并保存工作目录
+      const fs = await import('fs');
+      const p = await import('path');
+      const absDir = p.resolve(chosenPath);
+      if (!fs.existsSync(absDir)) throw new Error(`目录不存在: ${absDir}`);
+      if (!fs.statSync(absDir).isDirectory()) throw new Error(`不是目录: ${absDir}`);
+      await conversationService.updateConversation(context.appId, context.convId, { workspaceDir: absDir } as any);
+      workspaceDirVal = absDir;
+    }
+
+    // 将所有路径参数解析为相对于工作目录的绝对路径
+    const path = await import('path');
+    const fs = await import('fs/promises');
+    const filePath = args.path as string || '';
+    // 如果 filePath 是绝对路径，直接用
+    let targetPath = filePath;
+    if (path.isAbsolute(targetPath)) {
+      // 绝对路径，直接用
+    } else {
+      // 相对路径，拼接工作目录
+      const testPath = path.join(workspaceDirVal, targetPath);
+      // 检查拼接后的路径是否真实存在
+      try {
+        await fs.access(testPath);
+      } catch {
+        // 路径不存在，可能是授权前后路径含义变化了
+        // 此时用工作目录自身代替
+        targetPath = '.';
+      }
+    }
+    const fullPath = path.isAbsolute(targetPath) ? targetPath : path.join(workspaceDirVal, targetPath);
+
+    // 安全检查
+    if (path.relative(workspaceDirVal, fullPath).startsWith('..')) {
+      throw new Error('Path traversal denied: path must be within workspace directory');
+    }
+
+    switch (method) {
+      case 'read': {
+        if (!filePath) throw new Error('path is required');
+        const content = await fs.readFile(fullPath, 'utf-8');
+        const stat = await fs.stat(fullPath);
+        return { content, size: stat.size, path: filePath };
+      }
+      case 'write': {
+        if (!filePath) throw new Error('path is required');
+        const content = args.content as string;
+        if (content === undefined) throw new Error('content is required');
+        await fs.mkdir(path.dirname(fullPath), { recursive: true });
+        await fs.writeFile(fullPath, content, 'utf-8');
+        return { success: true, path: filePath };
+      }
+      case 'patch': {
+        if (!filePath) throw new Error('path is required');
+        const oldStr = args.old_string as string;
+        const newStr = args.new_string as string;
+        if (!oldStr) throw new Error('old_string is required');
+        const replaceAll = !!args.replace_all;
+        let content = await fs.readFile(fullPath, 'utf-8');
+        const occurrences = content.split(oldStr).length - 1;
+        if (occurrences === 0) throw new Error('String not found in file');
+        if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
+        content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
+        await fs.writeFile(fullPath, content, 'utf-8');
+        return { success: true, path: filePath, replacements: occurrences > 1 ? occurrences : 1 };
+      }
+      case 'search': {
+        const pattern = args.pattern as string;
+        if (!pattern) throw new Error('pattern is required');
+        const fileGlob = args.file_glob as string | undefined;
+        const maxResults = (args.max_results as number) || 50;
+        const { execSync } = await import('child_process');
+        let cmd = `rg -n --no-heading -m 5 '${pattern.replace(/'/g, "'\\''")}'`;
+        if (fileGlob) cmd += ` -g '${fileGlob.replace(/'/g, "'\\''")}'`;
+        cmd += ` '${workspaceDirVal!.replace(/'/g, "'\\''")}' 2>/dev/null | head -${maxResults}`;
+        try {
+          const output = execSync(cmd, { encoding: 'utf-8', maxBuffer: 1024 * 1024 });
+          const lines = output.trim().split('\n').filter(Boolean);
+          const results = lines.map(line => {
+            const sepIdx = line.indexOf(':');
+            const lineSep = line.indexOf(':', sepIdx + 1);
+            return { file: line.slice(0, sepIdx), line: parseInt(line.slice(sepIdx + 1, lineSep), 10) || 0, content: line.slice(lineSep + 1) };
+          });
+          return { results, total: results.length, workspaceDir: workspaceDirVal };
+        } catch { return { results: [], total: 0, workspaceDir: workspaceDirVal }; }
+      }
+      case 'list': {
+        const dirPath = filePath || '.';
+        const entries = await fs.readdir(fullPath, { withFileTypes: true });
+        const items = await Promise.all(entries.map(async e => {
+          const stat = e.isFile() ? await fs.stat(path.join(fullPath, e.name)).catch(() => null) : null;
+          return { name: e.name, type: e.isDirectory() ? 'directory' : 'file', size: stat?.size || 0, modified: stat?.mtime?.toISOString() || '' };
+        }));
+        return { items, path: dirPath, workspaceDir: workspaceDirVal };
+      }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleWorkspaceFormMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    // workspace.form 复用 mcp.form 的逻辑，但检查工作目录
+    const { conversationService } = await import('../services/conversation.js');
+    const conv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
+    if (conv && !conv.workspaceDir) {
+      throw new Error('Workspace directory not set. Use workspace.dir.set first.');
+    }
+    return this.handleFormMethod(method, args, context);
+  }
+
+  private async handleWorkspaceDirMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    const { conversationService } = await import('../services/conversation.js');
+    const fs = await import('fs');
+    const path = await import('path');
+
+    switch (method) {
+      case 'get': {
+        if (!context.appId || !context.convId) return { workspaceDir: null };
+        const conv = await conversationService.getConversation(context.appId, context.convId);
+        return { workspaceDir: conv?.workspaceDir || null };
+      }
+      case 'set': {
+        if (!context.appId || !context.convId) throw new Error('Conversation context required');
+        const dir = args.path as string;
+        if (!dir) throw new Error('path is required');
+        // 解析为绝对路径
+        const absDir = path.resolve(dir);
+        // 验证目录存在
+        if (!fs.existsSync(absDir)) throw new Error(`Directory does not exist: ${absDir}`);
+        if (!fs.statSync(absDir).isDirectory()) throw new Error(`Not a directory: ${absDir}`);
+        await conversationService.updateConversation(context.appId, context.convId, { workspaceDir: absDir } as any);
+        return { success: true, workspaceDir: absDir };
+      }
+      case 'requestAccess': {
+        // 弹出目录选择表单（通过 mcp.form 机制）
+        const toolCallId = args._toolCallId as string || 'direct';
+        const formResult = await this.handleFormMethod('requestInput', {
+          title: '工作目录选择',
+          description: '请选择一个会话工作目录。该目录下的所有文件操作将不再受限。',
+          fields: [
+            {
+              id: 'path',
+              label: '目录路径',
+              type: 'text',
+              placeholder: '例如: /mnt/c/apps/my-project',
+              required: true,
+              description: '工作目录的绝对路径',
+            },
+          ],
+          schema: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: '工作目录的绝对路径' },
+            },
+            required: ['path'],
+          },
+        } as any, { ...context as any, _toolCallId: toolCallId });
+        return { status: 'pending', form: formResult, message: 'Please select a workspace directory.' };
+      }
       default:
         throw new Error(`Unknown method: ${method}`);
     }

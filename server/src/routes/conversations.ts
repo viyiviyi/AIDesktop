@@ -3,6 +3,8 @@ import { conversationService } from '../services/conversation.js';
 import { appLoader } from '../services/appLoader.js';
 import { agentEngine } from '../agents/engine.js';
 import { piAgentManager, runAgentAsync } from '../agents/pi-agent-session.js';
+import { mcpServiceRegistry } from '../mcp/service.js';
+import { parseToolName } from '../agents/pi-tools.js';
 import { eventBus } from '../services/eventBus.js';
 import { serverLogger } from '../utils/logger.js';
 import path from 'path';
@@ -209,13 +211,89 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
       return res.status(409).json({ error: 'Agent is already processing' });
     }
 
+    const messages = conversation.messages;
+
+    // 检测最后一条是否为未完成的 toolCall（无对应 toolResult）
+    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+    let needsToolRetry = false;
+    let toolCallId = '';
+    let toolName = '';
+    let toolArgs: Record<string, unknown> = {};
+
+    if (lastMsg && lastMsg.role === 'assistant') {
+      for (const c of lastMsg.content) {
+        const tc = c as any;
+        if (tc.type === 'toolCall' && tc.id && tc.name) {
+          // 检查是否有对应的 toolResult
+          let hasResult = false;
+          for (let j = messages.length - 2; j >= 0; j--) {
+            const prev = messages[j];
+            if (prev.role === 'toolResult' && (prev as any).toolResultMeta?.toolCallId === tc.id) {
+              hasResult = true;
+              break;
+            }
+          }
+          if (!hasResult) {
+            needsToolRetry = true;
+            toolCallId = tc.id;
+            toolName = tc.name;
+            toolArgs = (tc.arguments || {}) as Record<string, unknown>;
+          }
+        }
+      }
+    }
+
     res.json({ success: true });
 
-    // 后台异步启动 agent，用已有消息历史 + (continue) 提示
-    const messages = conversation.messages;
     const { runAgentAsync } = await import('../agents/pi-agent-session.js');
-    runAgentAsync(appId, convId, app, messages, [{ type: 'text', text: '(continue)' }])
-      .catch((err: any) => serverLogger.error('agent', `Continue error: ${err.message}`));
+
+    if (needsToolRetry) {
+      // 重新执行工具调用，保存结果
+      serverLogger.info('agent', `Continue: retrying tool call ${toolName} for ${appId}/${convId}`);
+      try {
+        const { serviceName, method: parsedMethod } = parseToolName(toolName);
+        const result = await mcpServiceRegistry.callMethod(
+          serviceName,
+          parsedMethod,
+          toolArgs,
+          { appId, convId }
+        );
+        const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+        await conversationService.addMessage(appId, convId, 'toolResult', [
+          { type: 'text', text: resultStr },
+        ]);
+        // 发送 tool_result 事件到前端
+        eventBus.emit({
+          type: 'tool_result' as any,
+          appId,
+          convId,
+          data: { toolCallId, toolName, result, isError: false },
+        });
+        // 工具执行完成后，重新启动 agent 继续处理
+        const updatedConv = await conversationService.getConversation(appId, convId);
+        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [{ type: 'text', text: '(continue)' }])
+          .catch((err: any) => serverLogger.error('agent', `Continue after retry error: ${err.message}`));
+      } catch (err: any) {
+        serverLogger.error('agent', `Continue tool retry failed: ${err.message}`);
+        // 失败时也插入错误结果，然后启动 agent
+        await conversationService.addMessage(appId, convId, 'toolResult', [
+          { type: 'text', text: JSON.stringify({ error: err.message }) },
+        ]);
+        eventBus.emit({
+          type: 'tool_result' as any,
+          appId,
+          convId,
+          data: { toolCallId, toolName, result: { error: err.message }, isError: true },
+        });
+        const updatedConv = await conversationService.getConversation(appId, convId);
+        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [{ type: 'text', text: '(continue)' }])
+          .catch((err2: any) => serverLogger.error('agent', `Continue after retry error: ${err2.message}`));
+      }
+    } else {
+      // 正常继续——用已有消息历史 + (continue) 提示
+      runAgentAsync(appId, convId, app, messages, [{ type: 'text', text: '(continue)' }])
+        .catch((err: any) => serverLogger.error('agent', `Continue error: ${err.message}`));
+    }
 
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -382,6 +460,48 @@ router.post('/:convId/form-response', async (req: Request, res: Response) => {
         serverLogger.error('system', `Failed to resume agent after form submit: ${err.message}`);
       }
     }
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// POST /:convId/workspace-response — 提交/取消工作目录选择
+router.post('/:convId/workspace-response', async (req: Request, res: Response) => {
+  try {
+    const { appId, convId } = req.params;
+    const { toolCallId, path, cancelled } = req.body;
+
+    serverLogger.info('system', `Workspace response for ${appId}/${convId}: ${cancelled ? 'CANCELLED' : `path=${path}`}`);
+
+    // 保存用户选择（如果确认）
+    if (!cancelled && path) {
+      const fs = await import('fs');
+      const p = await import('path');
+      const absDir = p.resolve(path);
+      if (!fs.existsSync(absDir)) {
+        return res.status(400).json({ error: `目录不存在: ${absDir}` });
+      }
+      if (!fs.statSync(absDir).isDirectory()) {
+        return res.status(400).json({ error: `不是目录: ${absDir}` });
+      }
+      await conversationService.updateConversation(appId, convId, { workspaceDir: absDir } as any);
+    }
+
+    // 通知等待中的 handleWorkspaceCodeMethod
+    eventBus.emit({
+      type: cancelled ? 'workspace_cancelled' : 'workspace_response',
+      appId,
+      convId,
+      data: {
+        toolCallId,
+        path: cancelled ? undefined : path,
+        cancelled: !!cancelled,
+      },
+    });
+
+    serverLogger.info('system', `Workspace response sent to eventBus for ${appId}/${convId}`);
 
     res.json({ success: true });
   } catch (error) {

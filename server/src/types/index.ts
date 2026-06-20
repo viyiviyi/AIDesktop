@@ -113,6 +113,8 @@ export interface Conversation {
     schema: FormSchema;
     createdAt: string;
   }>;
+  /** 会话工作目录绝对路径 */
+  workspaceDir?: string | null;
 }
 
 export interface FormField {
@@ -221,6 +223,7 @@ export interface MCPService {
   name: string;
   description: string;
   methods: string[];
+  category?: 'admin' | 'builtin' | 'workspace';
 }
 
 export interface MCPConnection {

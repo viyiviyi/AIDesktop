@@ -839,6 +839,22 @@ body {
   white-space: nowrap;
   margin-left: 8px;
 }
+.chat-header-workspace {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  margin-left: 8px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+.form-input-error {
+  border-color: var(--danger) !important;
+}
+.form-input-valid {
+  border-color: var(--success) !important;
+}
 .chat-header-btn {
   width: 28px;
   height: 28px;

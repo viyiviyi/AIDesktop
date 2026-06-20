@@ -345,7 +345,9 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
   // 刷新单个应用
   const refreshApp = useCallback(async (appId: string): Promise<AppInfo | null> => {
     try {
-      const app = await api.getApp(appId);
+      const data = await api.getApp(appId);
+      // api.getApp 返回扁平结构（非嵌套 meta 的格式）
+      const app = data as any;
       const info: AppInfo = {
         id: app.id,
         name: app.name,
@@ -354,6 +356,13 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
         type: app.type,
         icon: app.icon,
         enabled: app.enabled,
+        models: app.models || [],
+        supportedInputs: app.supportedInputs || ['text'],
+        inputDescription: app.inputDescription || '',
+        outputDescription: app.outputDescription || '',
+        visibleApps: app.visibleApps || [],
+        visibleServices: app.visibleServices || [],
+        tools: app.tools || [],
       };
       // 更新 installedApps 中对应的条目
       dispatch({

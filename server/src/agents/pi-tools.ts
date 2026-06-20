@@ -75,13 +75,44 @@ const codeListSchema = Type.Object({
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
 }, { additionalProperties: false, description: '列出目录内容' });
 
+const codeReadSchema_w = Type.Object({
+  path: Type.String({ description: '文件路径（相对工作目录）' }),
+  baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
+}, { additionalProperties: false, description: '读取文件内容' });
+
+const codeWriteSchema_w = Type.Object({
+  path: Type.String({ description: '文件路径（相对工作目录）' }),
+  content: Type.String({ description: '写入的内容' }),
+  baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
+}, { additionalProperties: false, description: '写入文件（自动创建父目录）' });
+
+const codePatchSchema_w = Type.Object({
+  path: Type.String({ description: '文件路径（相对工作目录）' }),
+  old_string: Type.String({ description: '要替换的旧文本（须唯一，除非 replace_all=true）' }),
+  new_string: Type.String({ description: '替换的新文本' }),
+  replace_all: Type.Optional(Type.Boolean({ description: '替换所有匹配项而非仅第一个' })),
+  baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
+}, { additionalProperties: false, description: '在文件中查找替换文本' });
+
+const codeSearchSchema_w = Type.Object({
+  pattern: Type.String({ description: '搜索的正则表达式' }),
+  file_glob: Type.Optional(Type.String({ description: '文件过滤 glob，如 "*.ts"' })),
+  max_results: Type.Optional(Type.Number({ description: '最大结果数，默认 50' })),
+  baseDir: Type.Optional(Type.String({ description: '搜索的基础目录（相对工作目录），默认为空' })),
+}, { additionalProperties: false, description: '在文件中搜索文本（使用 ripgrep）' });
+
+const codeListSchema_w = Type.Object({
+  path: Type.Optional(Type.String({ description: '目录路径（相对工作目录），默认为根目录' })),
+  baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
+}, { additionalProperties: false, description: '列出目录内容' });
+
 /** 将 service.name.method 转为 LLM 兼容的 tool name（. → _） */
 function safeToolName(serviceName: string, method: string): string {
   return `${serviceName.replace(/\./g, "_")}_${method}`.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 /** 从 safeToolName 解析回 serviceName 和 method */
-function parseToolName(toolName: string): { serviceName: string; method: string } {
+export function parseToolName(toolName: string): { serviceName: string; method: string } {
   // 格式: mcp_filesystem_read
   // 需要找到最后一个 _ 作为 method 分隔符
   const lastUnderscore = toolName.lastIndexOf("_");
@@ -100,6 +131,8 @@ function parseToolName(toolName: string): { serviceName: string; method: string 
 
 /**
  * 为指定 app 构建 AgentTool 列表
+ * 只包含 builtin 类型的服务（通用的辅助工具）
+ * admin 类型（系统管理工具）和 workspace 类型（由 buildWorkspaceTools 单独注入）不会被包含在这里
  */
 export function buildPiToolsForApp(app: App): AgentTool[] {
   const allowedTools = new Set([...(app.config.tools || []), ...(app.meta.tools || [])]);
@@ -107,6 +140,8 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
   const tools: AgentTool[] = [];
 
   for (const service of services) {
+    // 排除 admin 和 workspace 类型
+    if (service.category === 'admin' || service.category === 'workspace') continue;
     if (allowedTools.size > 0 && !allowedTools.has(service.name)) continue;
 
     // 外部 MCP 服务的工具单独处理（每个工具生成一个 AgentTool）
@@ -284,4 +319,68 @@ export async function executePiTool(
   const { serviceName, method } = parseToolName(toolName);
   const result = await mcpServiceRegistry.callMethod(serviceName, method, args, {});
   return JSON.stringify(result, null, 2);
+}
+
+/** workspace 类型服务的参数 schema 映射 */
+const workspaceSchemaMap: Record<string, Record<string, any>> = {
+  'workspace.code': {
+    read: codeReadSchema_w,
+    write: codeWriteSchema_w,
+    patch: codePatchSchema_w,
+    search: codeSearchSchema_w,
+    list: codeListSchema_w,
+  },
+};
+
+/**
+ * 为指定 app 和会话构建 workspace 类型工具的 AgentTool 列表
+ * workspace 工具需要会话上下文（工作目录、convId）
+ */
+export function buildWorkspaceTools(app: App, convId: string): AgentTool[] {
+  const services = mcpServiceRegistry.getAllServices();
+  const tools: AgentTool[] = [];
+
+  for (const service of services) {
+    if (service.category !== 'workspace') continue;
+
+    for (const method of service.methods) {
+      const name = safeToolName(service.name, method);
+      let parameters = Type.Object({}, { additionalProperties: true });
+      if (workspaceSchemaMap[service.name]?.[method]) {
+        parameters = workspaceSchemaMap[service.name][method];
+      }
+
+      tools.push({
+        name,
+        label: `${service.name} - ${method}`,
+        description: `${method} - ${service.description}`,
+        parameters,
+        execute: async (toolCallId, params, signal, onUpdate) => {
+          try {
+            const { serviceName, method: m } = parseToolName(name);
+            const enrichedParams = {
+              ...(params as any) || {},
+              _toolCallId: toolCallId,
+            };
+            const result = await mcpServiceRegistry.callMethod(
+              serviceName, m, enrichedParams,
+              { appId: app.meta.id, convId },
+            );
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+              details: result,
+              terminate: (result as any)?.status === 'pending' || undefined,
+            };
+          } catch (error) {
+            return {
+              content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+              details: null,
+            };
+          }
+        },
+      });
+    }
+  }
+
+  return tools;
 }
