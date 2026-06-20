@@ -166,16 +166,8 @@ export class PiAgentSession {
     const tools = buildPiToolsForApp(app);
     const systemPrompt = buildSystemPrompt(app);
 
-    // 收集应用的额外参数（优先从 config 读取，回退到 meta）
-    const modelBodyParams = (app.config.models?.[0]) || app.meta.models?.[0];
-    const bodyParams: Record<string, unknown> = {};
-    if (modelBodyParams?.bodyParams) {
-      for (const p of modelBodyParams.bodyParams) {
-        if (p.enabled) {
-          try { bodyParams[p.key] = JSON.parse(p.value); } catch { bodyParams[p.key] = p.value; }
-        }
-      }
-    }
+    // bodyParams 和 headerParams 在每次 streamFn 调用时动态读取，不在 init 时固定
+    // 这样设置修改后立即生效，无需重启
 
     this.agent = new Agent({
       initialState: { model: this.model as any, systemPrompt },
@@ -183,6 +175,20 @@ export class PiAgentSession {
         const textPreview = context.messages.filter((m: any) => m.role === "user").slice(-1).map((m: any) => typeof m.content === "string" ? m.content.slice(0, 100) : "").join("");
         serverLogger.ai(`${model.provider}/${model.id}`, `>>> ${textPreview}`, { messages: context.messages.length });
         const start = Date.now();
+
+        // 每次流式调用时从当前 app 配置读取 bodyParams（支持运行时修改）
+        const currentApp = appLoader.getApp(app.meta.id);
+        serverLogger.debug('PiAgentSession', `currentApp config.models: ${JSON.stringify(currentApp?.config.models)}`);
+        const currentModelConfig = (currentApp?.config.models?.[0]) || currentApp?.meta.models?.[0];
+        const bodyParams: Record<string, unknown> = {};
+        if (currentModelConfig?.bodyParams) {
+          for (const p of currentModelConfig.bodyParams) {
+            if (p.enabled) {
+              try { bodyParams[p.key] = JSON.parse(p.value); } catch { bodyParams[p.key] = p.value; }
+            }
+          }
+        }
+        serverLogger.debug('PiAgentSession', `Dynamic bodyParams: ${JSON.stringify(bodyParams)} from ${app.meta.id}`);
 
         // 注入 body 参数（如 thinking: { type: "disabled" }）
         let streamOptions = { ...options, apiKey: this.apiKey };
@@ -195,7 +201,6 @@ export class PiAgentSession {
               if (p === undefined) p = { ...payload };
               // 注入 body 参数
               Object.assign(p, bodyParams);
-              serverLogger.debug('PiAgentSession', `Injected body params: ${JSON.stringify(bodyParams)}`);
               return p;
             },
           };
@@ -224,9 +229,9 @@ export class PiAgentSession {
         };
 
         // 注入 header 参数
-        if (modelBodyParams?.headerParams) {
+        if (currentModelConfig?.headerParams) {
           const headers: Record<string, string> = {};
-          for (const hp of modelBodyParams.headerParams) {
+          for (const hp of currentModelConfig.headerParams) {
             if (hp.enabled) headers[hp.key] = hp.value;
           }
           if (Object.keys(headers).length > 0) {
