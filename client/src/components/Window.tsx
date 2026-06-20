@@ -873,6 +873,24 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     }
   };
 
+  // 继续 AI 输出（不带新用户输入）
+  const handleContinue = async () => {
+    if (!currentConvId) return;
+    setIsLoading(true);
+    setThinkingText('继续中...');
+    setStreamingText('');
+    setToolCalls([]);
+    try {
+      await api.continueConversation(appId, currentConvId);
+    } catch {
+      addToast('error', '继续失败');
+      setIsLoading(false);
+    }
+  };
+
+  // 判断最后一条 assistant 消息是否可以继续（没有在加载且会话有 assistant 消息）
+  const canContinue = !isLoading && messages.length > 0 && messages[messages.length - 1]?.role === 'assistant';
+
   // 键盘事件处理 - 按配置的快捷键发送消息
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const sendKey = state.settings.sendKey || 'alt+s';
@@ -1417,7 +1435,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       </div>
 
       {/* 输入区 */}
-      {/* 停止按钮 — 浮动在发送按钮上方 */}
+      {/* 停止按钮 — loading 时浮动显示 */}
       {isLoading && (
         <div className="stop-bar">
           <button className="stop-btn" onClick={handleAbort}>
@@ -1509,8 +1527,18 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 disabled={!currentConvId || isLoading || pendingForms.size > 0}
                 rows={1}
               />
-              <button onClick={() => sendMessage(replyToId || undefined)} disabled={!currentConvId || isLoading || pendingForms.size > 0 || (!input.trim() && attachments.length === 0)}>
-                发送
+              <button
+                onClick={() => {
+                  if (input.trim() || attachments.length > 0) {
+                    sendMessage(replyToId || undefined);
+                  } else if (currentConvId && !isLoading && pendingForms.size === 0) {
+                    // 输入为空时当作"继续"按钮，用当前上下文继续
+                    handleContinue();
+                  }
+                }}
+                disabled={!currentConvId || isLoading || pendingForms.size > 0 || (input.trim() || attachments.length > 0 ? false : messages.length === 0)}
+              >
+                {(input.trim() || attachments.length > 0) ? '发送' : (messages.length > 0 ? '继续' : '发送')}
               </button>
             </div>
           </>

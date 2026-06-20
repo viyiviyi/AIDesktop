@@ -3032,6 +3032,21 @@ button {
 }
 .stop-btn:hover { background: rgba(239, 68, 68, 0.25); }
 
+.continue-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: rgba(52, 152, 219, 0.15);
+  border: 1px solid rgba(52, 152, 219, 0.3);
+  border-radius: 8px;
+  color: var(--accent-color);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.continue-btn:hover { background: rgba(52, 152, 219, 0.25); }
+
 /* ============ 确认对话框 ============ */
 .confirm-overlay {
   position: fixed;

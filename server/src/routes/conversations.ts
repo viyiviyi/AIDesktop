@@ -192,6 +192,36 @@ router.post('/:convId/abort', async (req: Request, res: Response) => {
   }
 });
 
+// POST /:convId/continue — 让 agent 继续输出（不带用户新输入）
+router.post('/:convId/continue', async (req: Request, res: Response) => {
+  try {
+    const { appId, convId } = req.params;
+
+    const app = appLoader.getApp(appId);
+    if (!app) return res.status(404).json({ error: 'App not found' });
+
+    const conversation = await conversationService.getConversation(appId, convId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+    // 检查是否已经有 agent 在运行
+    const session = piAgentManager.get(appId);
+    if (session && session.agent.activeRun) {
+      return res.status(409).json({ error: 'Agent is already processing' });
+    }
+
+    res.json({ success: true });
+
+    // 后台异步启动 agent，用已有消息历史 + (continue) 提示
+    const messages = conversation.messages;
+    const { runAgentAsync } = await import('../agents/pi-agent-session.js');
+    runAgentAsync(appId, convId, app, messages, [{ type: 'text', text: '(continue)' }])
+      .catch((err: any) => serverLogger.error('agent', `Continue error: ${err.message}`));
+
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // DELETE /:convId/messages/:msgId — 删除单条消息（同时删除关联的 toolResult）
 router.delete('/:convId/messages/:msgId', async (req: Request, res: Response) => {
   try {

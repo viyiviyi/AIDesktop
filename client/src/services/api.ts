@@ -562,6 +562,15 @@ export async function updateSkillSettings(skills: { skills: Skill[]; globalEnabl
   });
 }
 
+// ============ 继续输出 ============
+
+// 让 agent 继续输出（不带新用户输入）
+export async function continueConversation(appId: string, convId: string): Promise<{ success: boolean }> {
+  return fetchJson<{ success: boolean }>(`/apps/${appId}/conversations/${convId}/continue`, {
+    method: 'POST',
+  });
+}
+
 // ============ 表单相关API ============
 
 // 提交或取消表单
