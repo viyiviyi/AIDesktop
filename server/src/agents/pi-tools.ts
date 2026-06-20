@@ -43,6 +43,38 @@ const formRequestSchema = Type.Object({
   }, { additionalProperties: false }), { minItems: 1, description: '表单项列表' }),
 }, { additionalProperties: false, description: '向用户展示一个表单收集结构化信息' });
 
+/** mcp.code 各方法的参数 schema */
+const codeReadSchema = Type.Object({
+  path: Type.String({ description: '文件路径（相对 apps_data）' }),
+  baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
+}, { additionalProperties: false, description: '读取文件内容' });
+
+const codeWriteSchema = Type.Object({
+  path: Type.String({ description: '文件路径（相对 apps_data）' }),
+  content: Type.String({ description: '写入的内容' }),
+  baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
+}, { additionalProperties: false, description: '写入文件（自动创建父目录）' });
+
+const codePatchSchema = Type.Object({
+  path: Type.String({ description: '文件路径（相对 apps_data）' }),
+  old_string: Type.String({ description: '要替换的旧文本（须唯一，除非 replace_all=true）' }),
+  new_string: Type.String({ description: '替换的新文本' }),
+  replace_all: Type.Optional(Type.Boolean({ description: '替换所有匹配项而非仅第一个' })),
+  baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
+}, { additionalProperties: false, description: '在文件中查找替换文本' });
+
+const codeSearchSchema = Type.Object({
+  pattern: Type.String({ description: '搜索的正则表达式' }),
+  file_glob: Type.Optional(Type.String({ description: '文件过滤 glob，如 "*.ts"' })),
+  max_results: Type.Optional(Type.Number({ description: '最大结果数，默认 50' })),
+  baseDir: Type.Optional(Type.String({ description: '搜索的基础目录（相对 apps_data），默认为空' })),
+}, { additionalProperties: false, description: '在文件中搜索文本（使用 ripgrep）' });
+
+const codeListSchema = Type.Object({
+  path: Type.Optional(Type.String({ description: '目录路径（相对 apps_data），默认为根目录' })),
+  baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
+}, { additionalProperties: false, description: '列出目录内容' });
+
 /** 将 service.name.method 转为 LLM 兼容的 tool name（. → _） */
 function safeToolName(serviceName: string, method: string): string {
   return `${serviceName.replace(/\./g, "_")}_${method}`.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -86,9 +118,19 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
       const name = safeToolName(service.name, method);
 
       // mcp.form.requestInput 需要完整的参数 schema
+      // mcp.code 各方法也需要完整参数 schema
       let parameters = Type.Object({}, { additionalProperties: true });
       if (service.name === 'mcp.form' && method === 'requestInput') {
         parameters = formRequestSchema;
+      } else if (service.name === 'mcp.code') {
+        const schemaMap: Record<string, any> = {
+          read: codeReadSchema,
+          write: codeWriteSchema,
+          patch: codePatchSchema,
+          search: codeSearchSchema,
+          list: codeListSchema,
+        };
+        if (schemaMap[method]) parameters = schemaMap[method];
       }
 
       tools.push({

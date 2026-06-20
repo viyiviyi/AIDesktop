@@ -49,6 +49,11 @@ const builtInServices: Record<string, MCPService> = {
     description: 'Request structured input from the user by displaying a form. Use this when you need the user to provide multiple fields of information at once. The form is sent to the user, and the filled data comes back later as a tool result.',
     methods: ['requestInput']
   },
+  'mcp.code': {
+    name: 'mcp.code',
+    description: 'Code and document editing service - read, write, patch, search, and list files. All paths are relative to the app data directory.',
+    methods: ['read', 'write', 'patch', 'search', 'list']
+  },
 };
 
 /**
@@ -129,6 +134,8 @@ class MCPServiceRegistry {
         return this.handleBrowserMethod(method, args, context);
       case 'mcp.form':
         return this.handleFormMethod(method, args, context);
+      case 'mcp.code':
+        return this.handleCodeMethod(method, args, context);
       default:
         throw new Error(`Service ${serviceName} not implemented`);
     }
@@ -689,6 +696,124 @@ class MCPServiceRegistry {
           message: `表单"${title}"已发送给用户，等待用户填写...`,
         };
       }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleCodeMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { APPS_DATA_DIR } = await import('../utils/file.js');
+
+    // 路径安全：限制在 apps_data 目录下
+    const baseDir = args.baseDir as string || '';
+    const filePath = args.path as string || '';
+    const fullDir = path.join(APPS_DATA_DIR, baseDir);
+    const fullPath = path.join(APPS_DATA_DIR, baseDir, filePath);
+
+    // 安全检查：防止路径穿越
+    if (path.relative(APPS_DATA_DIR, fullPath).startsWith('..') || path.relative(APPS_DATA_DIR, fullDir).startsWith('..')) {
+      throw new Error('Path traversal denied');
+    }
+
+    switch (method) {
+      case 'read': {
+        if (!filePath) throw new Error('path is required');
+        try {
+          const content = await fs.readFile(fullPath, 'utf-8');
+          const stat = await fs.stat(fullPath);
+          return { content, size: stat.size, path: filePath };
+        } catch (err: any) {
+          throw new Error(`Failed to read file: ${err.message}`);
+        }
+      }
+
+      case 'write': {
+        if (!filePath) throw new Error('path is required');
+        const content = args.content as string;
+        if (content === undefined) throw new Error('content is required');
+        try {
+          await fs.mkdir(path.dirname(fullPath), { recursive: true });
+          await fs.writeFile(fullPath, content, 'utf-8');
+          return { success: true, path: filePath };
+        } catch (err: any) {
+          throw new Error(`Failed to write file: ${err.message}`);
+        }
+      }
+
+      case 'patch': {
+        if (!filePath) throw new Error('path is required');
+        const oldStr = args.old_string as string;
+        const newStr = args.new_string as string;
+        if (!oldStr) throw new Error('old_string is required');
+        if (newStr === undefined) throw new Error('new_string is required');
+        const replaceAll = !!args.replace_all;
+        try {
+          let content = await fs.readFile(fullPath, 'utf-8');
+          const occurrences = content.split(oldStr).length - 1;
+          if (occurrences === 0) throw new Error(`String not found in file`);
+          if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
+          content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
+          await fs.writeFile(fullPath, content, 'utf-8');
+          return { success: true, path: filePath, replacements: occurrences > 1 ? occurrences : 1 };
+        } catch (err: any) {
+          if (err.message.startsWith('String not found') || err.message.startsWith('Found')) throw err;
+          throw new Error(`Failed to patch file: ${err.message}`);
+        }
+      }
+
+      case 'search': {
+        const pattern = args.pattern as string;
+        if (!pattern) throw new Error('pattern is required');
+        const fileGlob = args.file_glob as string | undefined;
+        const maxResults = (args.max_results as number) || 50;
+        try {
+          // 用 ripgrep 搜索文件内容
+          const { execSync } = await import('child_process');
+          let cmd = `rg -n --no-heading -m 5 '${pattern.replace(/'/g, "'\\''")}'`;
+          if (fileGlob) cmd += ` -g '${fileGlob.replace(/'/g, "'\\''")}'`;
+          cmd += ` '${fullDir.replace(/'/g, "'\\''")}' 2>/dev/null | head -${maxResults}`;
+          const output = execSync(cmd, { encoding: 'utf-8', maxBuffer: 1024 * 1024 });
+          const lines = output.trim().split('\n').filter(Boolean);
+          const results = lines.map(line => {
+            const sepIdx = line.indexOf(':');
+            const lineSep = line.indexOf(':', sepIdx + 1);
+            return {
+              file: line.slice(0, sepIdx),
+              line: parseInt(line.slice(sepIdx + 1, lineSep), 10) || 0,
+              content: line.slice(lineSep + 1),
+            };
+          });
+          return { results, total: results.length, path: baseDir || '.' };
+        } catch {
+          return { results: [], total: 0, path: baseDir || '.' };
+        }
+      }
+
+      case 'list': {
+        const dirPath = filePath || '.';
+        try {
+          const entries = await fs.readdir(fullPath, { withFileTypes: true });
+          const items = await Promise.all(entries.map(async e => {
+            const stat = e.isFile() ? await fs.stat(path.join(fullPath, e.name)).catch(() => null) : null;
+            return {
+              name: e.name,
+              type: e.isDirectory() ? 'directory' : 'file',
+              size: stat?.size || 0,
+              modified: stat?.mtime?.toISOString() || '',
+            };
+          }));
+          return { items, path: dirPath };
+        } catch (err: any) {
+          throw new Error(`Failed to list directory: ${err.message}`);
+        }
+      }
+
       default:
         throw new Error(`Unknown method: ${method}`);
     }
