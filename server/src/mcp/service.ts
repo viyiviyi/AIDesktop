@@ -186,20 +186,32 @@ class MCPServiceRegistry {
           ...(callerApp?.config.visibleApps || []),
           ...(callerApp?.meta.visibleApps || [])
         ])];
+        const visibleServices = [...new Set([
+          ...(callerApp?.config.visibleServices || []),
+          ...(callerApp?.meta.visibleServices || [])
+        ])];
 
         return {
           agents: appLoader.getAllApps()
             .filter(a => {
-              // 过滤掉自己
-              if (a.meta.id === context.appId) return false;
               // 只返回 desktop 和 background 类型的应用
               if (a.meta.type !== 'desktop' && a.meta.type !== 'background') return false;
-              // 如果调用者配置了 visibleApps，则只返回在列表中的；如果没有配置，只返回自己
-              if (visibleApps.length > 0) {
-                if (!visibleApps.includes(a.meta.id)) return false;
-              } else {
-                // 没有配置可见应用，不允许看到其他应用
-                return false;
+              if (a.meta.type === 'desktop') {
+                // 桌面应用：用 visibleApps 控制
+                if (visibleApps.length > 0) {
+                  if (!visibleApps.includes(a.meta.id) && a.meta.id !== context.appId) return false;
+                } else {
+                  // 没有配置可见应用，只返回自己
+                  if (a.meta.id !== context.appId) return false;
+                }
+              } else if (a.meta.type === 'background') {
+                // 后台服务：用 visibleServices 控制
+                if (visibleServices.length > 0) {
+                  if (!visibleServices.includes(a.meta.id)) return false;
+                } else {
+                  // 没有配置可见后台服务，不返回任何后台服务
+                  return false;
+                }
               }
               return true;
             })
@@ -217,6 +229,31 @@ class MCPServiceRegistry {
         const app = appLoader.getApp(args.id as string);
         if (!app) {
           return { error: 'Agent not found' };
+        }
+        // 可见性检查
+        if (context.appId && args.id !== context.appId) {
+          const callerApp = appLoader.getApp(context.appId);
+          if (app.meta.type === 'desktop') {
+            const callerVisibleApps = [...new Set([
+              ...(callerApp?.config.visibleApps || []),
+              ...(callerApp?.meta.visibleApps || [])
+            ])];
+            if (callerVisibleApps.length > 0 && !callerVisibleApps.includes(args.id as string)) {
+              return { error: 'Agent not visible' };
+            } else if (callerVisibleApps.length === 0) {
+              return { error: 'Agent not visible' };
+            }
+          } else if (app.meta.type === 'background') {
+            const callerVisibleServices = [...new Set([
+              ...(callerApp?.config.visibleServices || []),
+              ...(callerApp?.meta.visibleServices || [])
+            ])];
+            if (callerVisibleServices.length > 0 && !callerVisibleServices.includes(args.id as string)) {
+              return { error: 'Agent not visible' };
+            } else if (callerVisibleServices.length === 0) {
+              return { error: 'Agent not visible' };
+            }
+          }
         }
         return {
           id: app.meta.id,
@@ -243,7 +280,6 @@ class MCPServiceRegistry {
           message = [{ type: 'text', text: message }];
         }
         if (!Array.isArray(message) || message.length === 0) throw new Error('message is required');
-        if (agentId === context.appId) throw new Error('Cannot call yourself');
 
         const targetApp = appLoader.getApp(agentId);
         if (!targetApp) throw new Error(`Agent ${agentId} not found`);
@@ -253,17 +289,36 @@ class MCPServiceRegistry {
         // 可见性检查
         if (context.appId) {
           const callerApp = appLoader.getApp(context.appId);
-          const callerVisibleApps = [...new Set([
-            ...(callerApp?.config.visibleApps || []),
-            ...(callerApp?.meta.visibleApps || [])
-          ])];
-          if (callerVisibleApps.length > 0) {
-            if (!callerVisibleApps.includes(agentId)) {
+          const targetApp_check = appLoader.getApp(agentId);
+          if (!targetApp_check) throw new Error(`Agent ${agentId} not found`);
+
+          if (targetApp_check.meta.type === 'desktop') {
+            const callerVisibleApps = [...new Set([
+              ...(callerApp?.config.visibleApps || []),
+              ...(callerApp?.meta.visibleApps || [])
+            ])];
+            if (callerVisibleApps.length > 0) {
+              if (!callerVisibleApps.includes(agentId)) {
+                throw new Error(`Agent ${agentId} is not visible`);
+              }
+            } else {
+              // 没有配置可见应用，只能调用自己
+              if (agentId !== context.appId) {
+                throw new Error(`Agent ${agentId} is not visible`);
+              }
+            }
+          } else if (targetApp_check.meta.type === 'background') {
+            const callerVisibleServices = [...new Set([
+              ...(callerApp?.config.visibleServices || []),
+              ...(callerApp?.meta.visibleServices || [])
+            ])];
+            if (callerVisibleServices.length > 0) {
+              if (!callerVisibleServices.includes(agentId)) {
+                throw new Error(`Agent ${agentId} is not visible`);
+              }
+            } else {
               throw new Error(`Agent ${agentId} is not visible`);
             }
-          } else {
-            // 没有配置可见应用，不允许调用其他应用
-            throw new Error(`Agent ${agentId} is not visible`);
           }
         }
 

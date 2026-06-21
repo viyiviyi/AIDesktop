@@ -42,7 +42,10 @@ class AppLoader {
         if (await isDirectory(entryPath)) {
           const app = await this.loadApp(entryPath, source);
           if (app) {
-            this.apps.set(app.meta.id, app);
+            // 如果已有相同 id 的应用，保留先加载的（system > user > marketplace）
+            if (!this.apps.has(app.meta.id)) {
+              this.apps.set(app.meta.id, app);
+            }
           }
         }
       }
@@ -84,9 +87,19 @@ class AppLoader {
     let appMd = '';
     try {
       const { readFile } = await import('fs/promises');
+      // 先读取安装目录的默认 app.md
       appMd = await readFile(appMdPath, 'utf-8');
     } catch {
       appMd = '';
+    }
+    // 再检查数据目录是否有用户自定义的 app.md，有则覆盖
+    const userAppMdPath = path.join(APPS_DATA_DIR, meta.id, 'app.md');
+    try {
+      const { readFile } = await import('fs/promises');
+      const userAppMd = await readFile(userAppMdPath, 'utf-8');
+      if (userAppMd) appMd = userAppMd;
+    } catch {
+      // 用户未自定义 app.md，使用默认值
     }
 
     let mcpServices: string[] = [];

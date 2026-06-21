@@ -136,6 +136,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         visibleApps: formData.visibleApps,
         visibleServices: formData.visibleServices,
         tools: formData.tools,
+        appMd: formData.appMd,
         // headerParams/bodyParams 写入 models[0]，不在顶层
         models: app.models?.length ? [{
           ...app.models[0],
@@ -158,12 +159,17 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
 
   async function handleSaveAppMd() {
     if (!app) return;
-    if (app.source === 'system') {
-      showSaveMsg('系统应用不支持修改 app.md', true);
-      return;
+    setIsSaving(true);
+    try {
+      await api.updateApp(app.id, { appMd: formData.appMd } as any);
+      setApp({ ...app, appMd: formData.appMd } as App);
+      await refreshApp(appId);
+      showSaveMsg('提示已保存');
+    } catch (error) {
+      showSaveMsg('保存失败', true);
+    } finally {
+      setIsSaving(false);
     }
-    // app.md 暂未开放 API 后端修改
-    showSaveMsg('修改 app.md 功能暂时仅支持手动编辑文件', true);
   }
 
   function showSaveMsg(msg: string, _isError = false) {
@@ -463,15 +469,10 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
                 <input
                   type="checkbox"
                   checked={formData.visibleServices.includes(a.id)}
-                  onChange={() => canModifyAll && a.replySchema && toggleVisibleService(a.id)}
-                  disabled={!canModifyAll || !a.replySchema}
+                  onChange={() => canModifyAll && toggleVisibleService(a.id)}
+                  disabled={!canModifyAll}
                 />
                 {a.name}
-                {!a.replySchema && (
-                  <span style={{ fontSize: 11, color: 'var(--danger)', marginLeft: 8 }}>
-                    未定义返回数据格式
-                  </span>
-                )}
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
                   {a.source === 'system' ? '系统' : '用户'}
                 </span>
@@ -553,16 +554,36 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
             color: 'var(--text-primary)',
             resize: 'vertical',
           }}
-          readOnly={!isUserApp}
+          readOnly={false}
         />
       </div>
       {isUserApp && (
-        <button className="btn-primary" onClick={handleSaveAppMd} disabled={isSaving}>
-          {isSaving ? '保存中...' : '保存 app.md'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn-primary" onClick={handleSaveAppMd} disabled={isSaving}>
+            {isSaving ? '保存中...' : '保存 app.md'}
+          </button>
+          <button className="btn-secondary" onClick={async () => {
+            if (!app) return;
+            setIsSaving(true);
+            try {
+              // 发送 __reset__ 标记让服务端删除数据目录的 app.md
+              await api.updateApp(app.id, { appMd: '__reset__' } as any);
+              await refreshApp(appId);
+              // 重新加载后 appMd 会变成安装目录的默认值
+              setFormData(prev => ({ ...prev, appMd: app?.appMd || '' }));
+              showSaveMsg('已还原为默认提示');
+            } catch (error) {
+              showSaveMsg('还原失败', true);
+            } finally {
+              setIsSaving(false);
+            }
+          }} disabled={isSaving}>
+            还原默认值
+          </button>
+        </div>
       )}
       {!isUserApp && (
-        <p className="app-settings-hint">系统应用不可修改 app.md，如需修改请直接编辑文件</p>
+        <p className="app-settings-hint">系统应用的提示词会被保存到数据目录，不会修改原始安装文件。</p>
       )}
     </div>
   );

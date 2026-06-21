@@ -17,7 +17,7 @@ import { settingsService } from "../services/settings.js";
 import { findModel } from "../models/pi-adapter.js";
 import { buildPiToolsForApp, buildWorkspaceTools, setCurrentConvId } from "./pi-tools.js";
 import { serverLogger } from "../utils/logger.js";
-import { DATA_DIR } from "../utils/file.js";
+import { DATA_DIR, APPS_DATA_DIR } from "../utils/file.js";
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
@@ -492,6 +492,22 @@ export async function runAgentAsync(
     setCurrentConvId(convId);
     // 注入 workspace 工具（需要 convId 上下文）
     session.injectWorkspaceTools(app, convId);
+    // 每次 prompt 前从最新 app 配置刷新 system prompt（支持 appMd 运行时修改）
+    try {
+      const fs = await import('fs/promises');
+      const p = await import('path');
+      const userAppMdPath = p.join(APPS_DATA_DIR, appId, 'app.md');
+      let latestAppMd: string;
+      try {
+        latestAppMd = await fs.readFile(userAppMdPath, 'utf-8');
+      } catch {
+        latestAppMd = app.appMd || '';
+      }
+      const updatedPrompt = buildSystemPrompt({ ...app, appMd: latestAppMd } as any);
+      if (session.agent.state.systemPrompt !== updatedPrompt) {
+        session.agent.state.systemPrompt = updatedPrompt;
+      }
+    } catch {}
     const userText = userContent
       .filter((c: any): c is { type: 'text'; text: string } => c.type === 'text')
       .map((c: any) => c.text)

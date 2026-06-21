@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { appLoader } from '../services/appLoader.js';
 import type { AppSource } from '../types/index.js';
+import { APPS_DATA_DIR } from '../utils/file.js';
 
 const router = Router();
 
@@ -104,6 +105,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
       models, enabled, backgroundImage, supportedInputs,
       inputDescription, outputDescription,
       visibleApps, visibleServices, tools,
+      appMd,
     } = req.body;
 
     const configUpdates: Record<string, unknown> = {};
@@ -117,7 +119,28 @@ router.put('/:appId', async (req: Request, res: Response) => {
     if (tools !== undefined) configUpdates.tools = tools;
     if (models !== undefined) configUpdates.models = models;
 
-    if (Object.keys(configUpdates).length === 0) {
+    // appMd 单独写入数据目录 apps_data/{id}/app.md
+    if (appMd !== undefined) {
+      const { ensureDir } = await import('../utils/file.js');
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const userAppMdPath = path.join(APPS_DATA_DIR, req.params.appId, 'app.md');
+      if (appMd === null || appMd === '__reset__') {
+        // 还原到默认值：删除用户自定义的 app.md
+        try { await fs.rm(userAppMdPath, { force: true }); } catch {}
+      } else {
+        await ensureDir(path.dirname(userAppMdPath));
+        await fs.writeFile(userAppMdPath, appMd, 'utf-8');
+      }
+      // 同时更新内存中的 appMd，让下次 `getApp` 返回正确的值
+      const memApp = appLoader.getApp(req.params.appId);
+      if (memApp) {
+        const updatedApp = { ...memApp, appMd: appMd === '__reset__' ? '' : appMd };
+        (appLoader as any).apps.set(req.params.appId, updatedApp);
+      }
+    }
+
+    if (Object.keys(configUpdates).length === 0 && appMd === undefined) {
       return res.status(400).json({ error: 'No configurable fields provided' });
     }
 
