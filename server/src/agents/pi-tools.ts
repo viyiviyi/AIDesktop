@@ -139,10 +139,12 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
   const services = mcpServiceRegistry.getAllServices();
   const tools: AgentTool[] = [];
 
+  // 如果 allowedTools 为空，不注入任何工具
+  if (allowedTools.size === 0) return tools;
+
   for (const service of services) {
-    // 排除 admin 和 workspace 类型
-    if (service.category === 'admin' || service.category === 'workspace') continue;
-    if (allowedTools.size > 0 && !allowedTools.has(service.name)) continue;
+    // 只注入 allowedTools 中明确列出的服务
+    if (!allowedTools.has(service.name)) continue;
 
     // 外部 MCP 服务的工具单独处理（每个工具生成一个 AgentTool）
     if (service.name === 'mcp.external') {
@@ -153,11 +155,11 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
       const name = safeToolName(service.name, method);
 
       // mcp.form.requestInput 需要完整的参数 schema
-      // mcp.code 各方法也需要完整参数 schema
+      // mcp.filesystem 的 patch/search 需要完整参数 schema
       let parameters = Type.Object({}, { additionalProperties: true });
       if (service.name === 'mcp.form' && method === 'requestInput') {
         parameters = formRequestSchema;
-      } else if (service.name === 'mcp.code') {
+      } else if (service.name === 'mcp.filesystem') {
         const schemaMap: Record<string, any> = {
           read: codeReadSchema,
           write: codeWriteSchema,
@@ -208,6 +210,63 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
   // 为外部 MCP 工具的每个启用的工具生成独立的 AgentTool
   const externalTools = buildExternalMcpAgentTools(allowedTools);
   tools.push(...externalTools);
+
+  // 如果 app 有授权的技能，自动注入三个技能工具
+  const appSkillIds = [...(app.config.skills || []), ...(app.meta.skills || [])];
+  if (appSkillIds.length > 0) {
+    // mcp.skill.list — 获取当前 app 已授权的技能列表
+    tools.push({
+      name: 'mcp_skill_list',
+      label: 'mcp.skill - list',
+      description: 'list - Get the list of skills that this app has access to, including their files and scripts.',
+      parameters: Type.Object({}, { additionalProperties: false }),
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        try {
+          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'list', {}, { appId: app.meta.id });
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        } catch (error) {
+          return { content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }], details: null };
+        }
+      },
+    });
+    // mcp.skill.read — 读取技能文件（相对路径）
+    tools.push({
+      name: 'mcp_skill_read',
+      label: 'mcp.skill - read',
+      description: 'read - Read a file from a skill by skill ID and relative path.',
+      parameters: Type.Object({
+        skillId: Type.String({ description: '技能 ID' }),
+        path: Type.String({ description: '文件相对于技能目录的路径' }),
+      }, { additionalProperties: false }),
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        try {
+          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'read', (params as any) || {}, { appId: app.meta.id });
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        } catch (error) {
+          return { content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }], details: null };
+        }
+      },
+    });
+    // mcp.skill.exec — 执行技能脚本（绑定会话工作目录）
+    tools.push({
+      name: 'mcp_skill_exec',
+      label: 'mcp.skill - exec',
+      description: 'exec - Execute a script in a skill by skill ID and script name. The script runs in the conversation workspace directory.',
+      parameters: Type.Object({
+        skillId: Type.String({ description: '技能 ID' }),
+        script: Type.String({ description: '脚本文件名（必须在 scripts/ 目录下）' }),
+        args: Type.Optional(Type.Array(Type.String(), { description: '脚本参数列表' })),
+      }, { additionalProperties: false }),
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        try {
+          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'exec', (params as any) || {}, { appId: app.meta.id, convId: _currentConvId });
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        } catch (error) {
+          return { content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }], details: null };
+        }
+      },
+    });
+  }
 
   return tools;
 }
@@ -337,11 +396,14 @@ const workspaceSchemaMap: Record<string, Record<string, any>> = {
  * workspace 工具需要会话上下文（工作目录、convId）
  */
 export function buildWorkspaceTools(app: App, convId: string): AgentTool[] {
+  const allowedTools = new Set([...(app.config.tools || []), ...(app.meta.tools || [])]);
   const services = mcpServiceRegistry.getAllServices();
   const tools: AgentTool[] = [];
 
   for (const service of services) {
     if (service.category !== 'workspace') continue;
+    // 如果 allowedTools 不为空，检查 workspace 工具是否在允许列表中
+    if (allowedTools.size > 0 && !allowedTools.has(service.name)) continue;
 
     for (const method of service.methods) {
       const name = safeToolName(service.name, method);

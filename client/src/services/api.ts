@@ -180,6 +180,7 @@ export async function getApp(appId: string): Promise<App> {
     visibleApps: data.meta.visibleApps || [],
     visibleServices: data.meta.visibleServices || [],
     tools: data.meta.tools || [],
+    skills: data.skills || [],
     appMd: data.appMd,
   };
 }
@@ -559,6 +560,35 @@ export async function updateSkillSettings(skills: { skills: Skill[]; globalEnabl
   return fetchJson<{ skills: Skill[]; globalEnabled: boolean }>('/settings/skills', {
     method: 'PUT',
     body: JSON.stringify(skills),
+  });
+}
+
+// 从会话生成技能
+export async function generateSkillFromConversations(conversations: Array<{
+  appId: string;
+  conversationId: string;
+  title: string;
+  messages: any[];
+}>): Promise<{ skill: Skill; allSkills: Skill[] }> {
+  return fetchJson<{ skill: Skill; allSkills: Skill[] }>('/settings/skills/generate', {
+    method: 'POST',
+    body: JSON.stringify({ conversations }),
+  });
+}
+
+// ============ 技能 API（基于 skillService） ============
+
+// 获取所有技能列表（含启用状态）
+export async function getAllSkills(): Promise<Array<{ id: string; name: string; description: string; version: string; enabled: boolean; files: string[]; scripts: string[] }>> {
+  const data = await fetchJson<{ skills: any[] }>('/settings/skills/list');
+  return data.skills || [];
+}
+
+// 切换技能启用/禁用
+export async function toggleSkillEnabled(dir: string, enabled: boolean): Promise<void> {
+  await fetchJson(`/settings/skills/${encodeURIComponent(dir)}/toggle`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
   });
 }
 

@@ -99,7 +99,7 @@ function adMsgToPiMsg(m: AdMsg, appId: string, provider: string, modelId: string
   return null;
 }
 
-function buildSystemPrompt(app: App): string {
+async function buildSystemPrompt(app: App): Promise<string> {
   let prompt = app.appMd || "";
   const visibleApps = app.config.visibleApps || app.meta.visibleApps || [];
   if (visibleApps.length > 0) {
@@ -109,6 +109,35 @@ function buildSystemPrompt(app: App): string {
     });
     prompt += `\n\n## 可调用的 Agent\n你可以通过 mcp.agent.call 调用以下 Agent：${names.join("、")}`;
   }
+
+  // 注入应用关联的技能（只注入名称和描述，内容按需读取）
+  const skillIds = app.skills || [];
+  if (skillIds.length > 0) {
+    try {
+      const { skillService } = await import('../services/skillService.js');
+      const enabledSkills = await skillService.getEnabledSkillsForApp(skillIds);
+      if (enabledSkills.length > 0) {
+        prompt += `\n\n## 已加载的技能\n此应用已启用以下技能，你可以在需要时使用 mcp.skill 工具读取完整的技能文档或执行脚本：\n`;
+        for (const skill of enabledSkills) {
+          prompt += `\n- **${skill.name}**: ${skill.description}`;
+        }
+        // 提示可以用 mcp.skill 工具
+        const appTools = [...(app.config.tools || []), ...(app.meta.tools || [])];
+        if (appTools.includes('mcp.skill')) {
+          prompt += `\n\n你可以使用 mcp.skill 工具来：\n`;
+          prompt += `- list - 列出可用的技能\n`;
+          prompt += `- readEntry - 读取技能的入口文档（roadmap.md）\n`;
+          prompt += `- read - 读取技能中任意文件的内容\n`;
+          prompt += `- listFiles - 列出技能目录下的所有文件\n`;
+          prompt += `- listScripts - 列出技能可用的脚本\n`;
+          prompt += `- exec - 执行技能脚本\n`;
+        }
+      }
+    } catch {
+      // skills 加载失败不影响主流程
+    }
+  }
+
   return prompt;
 }
 
@@ -164,7 +193,7 @@ export class PiAgentSession {
     if (providerConfig.baseUrl) this.model = { ...this.model, baseUrl: providerConfig.baseUrl };
 
     const tools = buildPiToolsForApp(app);
-    const systemPrompt = buildSystemPrompt(app);
+    const systemPrompt = await buildSystemPrompt(app);
 
     // bodyParams 和 headerParams 在每次 streamFn 调用时动态读取，不在 init 时固定
     // 这样设置修改后立即生效，无需重启
@@ -513,7 +542,7 @@ export async function runAgentAsync(
       } catch {
         latestAppMd = app.appMd || '';
       }
-      const updatedPrompt = buildSystemPrompt({ ...app, appMd: latestAppMd } as any);
+      const updatedPrompt = await buildSystemPrompt({ ...app, appMd: latestAppMd } as any);
       if (session.agent.state.systemPrompt !== updatedPrompt) {
         session.agent.state.systemPrompt = updatedPrompt;
       }

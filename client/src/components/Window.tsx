@@ -1702,6 +1702,8 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [connEnabledTools, setConnEnabledTools] = useState<Record<string, string[]>>({});
   // 技能列表
   const [skills, setSkills] = useState<{ skills: Skill[]; globalEnabled: boolean }>({ skills: [], globalEnabled: true });
+  // 新技能系统列表（从 public_data/skills/ 加载）
+  const [allSkills, setAllSkills] = useState<any[]>([]);
   // 已安装的应用列表
   const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
   // 应用配置映射
@@ -2004,6 +2006,13 @@ export function SettingsApp(_props: SettingsAppProps) {
       setSkills(data);
     } catch (error) {
       console.error('Failed to load skill settings:', error);
+    }
+    // 同时加载新技能系统的技能列表
+    try {
+      const newSkills = await api.getAllSkills();
+      setAllSkills(newSkills || []);
+    } catch (error) {
+      console.error('Failed to load new skill list:', error);
     }
   };
 
@@ -3639,45 +3648,73 @@ export function SettingsApp(_props: SettingsAppProps) {
       case 'skill':
         return (
           <div className="settings-section">
-            <h3>技能设置</h3>
-            <div className="settings-item" style={{ marginBottom: 16 }}>
-              <label>全局启用</label>
-              <input
-                type="checkbox"
-                checked={skills.globalEnabled}
-                onChange={(e) => handleSkillUpdate({ ...skills, globalEnabled: e.target.checked })}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>技能管理</h3>
+              <button
+                onClick={async () => {
+                  try {
+                    const data = await api.getAllSkills();
+                    setAllSkills(data || []);
+                  } catch (e) {
+                    console.error('Failed to refresh skills', e);
+                  }
+                }}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 6,
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                }}
+              >
+                刷新
+              </button>
             </div>
-            {skills.skills.length === 0 ? (
+            <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 12 }}>
+              技能存储在 <code>public_data/skills/</code> 目录下。启用后可在 应用设置 中为应用勾选。
+            </p>
+            {allSkills.length === 0 ? (
               <div style={{ color: 'var(--text-secondary)', padding: 20, textAlign: 'center' }}>
-                暂无技能配置
+                暂无技能，请先在 skills 目录下创建。
               </div>
             ) : (
-              skills.skills.map((skill) => (
-                <div key={skill.id} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
-                  <div className="settings-item" style={{ marginBottom: 8 }}>
-                    <label>名称</label>
-                    <span style={{ color: 'var(--text-primary)' }}>{skill.name}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {allSkills.map((skill: any) => (
+                  <div key={skill.id} style={{ padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 14, flex: 1 }}>{skill.name}</span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>v{skill.version}</span>
+                      {skill.scripts?.length > 0 && (
+                        <span style={{ color: 'var(--accent-color)', fontSize: 11, background: 'var(--bg-tertiary)', padding: '1px 6px', borderRadius: 4 }}>
+                          {skill.scripts.length} 个脚本
+                        </span>
+                      )}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none' }}>
+                        <input
+                          type="checkbox"
+                          checked={skill.enabled}
+                          onChange={async (e) => {
+                            try {
+                              await api.toggleSkillEnabled(skill.id, e.target.checked);
+                              const data = await api.getAllSkills();
+                              setAllSkills(data || []);
+                            } catch (err) {
+                              console.error('Failed to toggle skill', err);
+                            }
+                          }}
+                        />
+                        启用
+                      </label>
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 4 }}>{skill.description}</div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: 11 }}>
+                      文件: {skill.files?.length || 0} 个
+                    </div>
                   </div>
-                  <div className="settings-item" style={{ marginBottom: 8 }}>
-                    <label>描述</label>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{skill.description}</span>
-                  </div>
-                  <div className="settings-item">
-                    <label>启用</label>
-                    <input
-                      type="checkbox"
-                      checked={skill.enabled}
-                      onChange={(e) => {
-                        const newSkills = skills.skills.map(s =>
-                          s.id === skill.id ? { ...s, enabled: e.target.checked } : s
-                        );
-                        handleSkillUpdate({ ...skills, skills: newSkills });
-                      }}
-                    />
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         );

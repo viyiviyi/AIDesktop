@@ -108,7 +108,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
     const {
       models, enabled, icon, backgroundImage, supportedInputs,
       inputDescription, outputDescription,
-      visibleApps, visibleServices, tools,
+      visibleApps, visibleServices, tools, skills,
       appMd,
     } = req.body;
 
@@ -122,6 +122,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
     if (visibleApps !== undefined) configUpdates.visibleApps = visibleApps;
     if (visibleServices !== undefined) configUpdates.visibleServices = visibleServices;
     if (tools !== undefined) configUpdates.tools = tools;
+    if (skills !== undefined) configUpdates.skills = skills;
     if (models !== undefined) configUpdates.models = models;
 
     // appMd 单独写入数据目录 apps_data/{id}/app.md

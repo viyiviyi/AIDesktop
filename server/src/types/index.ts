@@ -184,6 +184,7 @@ export interface AppConfig {
   visibleApps?: string[];
   visibleServices?: string[];
   tools?: string[];
+  skills?: string[];
   models?: ModelConfig[];
 }
 

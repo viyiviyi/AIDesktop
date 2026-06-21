@@ -18,14 +18,14 @@ const builtInServices: Record<string, MCPService> = {
   },
   'mcp.filesystem': {
     name: 'mcp.filesystem',
-    description: '文件系统服务 - 读取、写入、列出、创建目录、删除文件',
-    methods: ['read', 'write', 'list', 'mkdir', 'delete'],
+    description: '文件系统服务 - 读取、写入、搜索、替换、列出、创建、删除文件（相对路径相对于 public_data 目录）',
+    methods: ['read', 'write', 'patch', 'search', 'list', 'mkdir', 'delete'],
     category: 'admin',
   },
   'mcp.settings': {
     name: 'mcp.settings',
-    description: '系统设置服务 - 获取和更新桌面设置（主题、字体、背景等）',
-    methods: ['get', 'update'],
+    description: '系统设置与技能管理服务 - 获取更新设置、从会话生成技能、管理应用技能配置',
+    methods: ['get', 'update', 'generateSkill', 'addSkillToApp', 'getSkills', 'getApps', 'getConversations', 'getConversation'],
     category: 'admin',
   },
 
@@ -66,12 +66,6 @@ const builtInServices: Record<string, MCPService> = {
     methods: ['requestInput'],
     category: 'builtin',
   },
-  'mcp.code': {
-    name: 'mcp.code',
-    description: '代码与文档编辑 - 读取、写入、替换、搜索、列出文件（路径相对于应用数据目录）',
-    methods: ['read', 'write', 'patch', 'search', 'list'],
-    category: 'admin',
-  },
 
   // ===== 工作工具（workspace）=====
   'workspace.code': {
@@ -79,6 +73,12 @@ const builtInServices: Record<string, MCPService> = {
     description: '工作区文件编辑 - 读取、写入、替换、搜索、列出文件（路径相对于会话工作目录，支持绝对路径）',
     methods: ['read', 'write', 'patch', 'search', 'list'],
     category: 'workspace',
+  },
+  'mcp.skill': {
+    name: 'mcp.skill',
+    description: '技能服务 - 列出可用技能、读取技能文档（入口/详情文件）、列出和执行脚本',
+    methods: ['list', 'read', 'readEntry', 'listFiles', 'listScripts', 'exec'],
+    category: 'admin',
   },
 };
 
@@ -160,10 +160,10 @@ class MCPServiceRegistry {
         return this.handleBrowserMethod(method, args, context);
       case 'mcp.form':
         return this.handleFormMethod(method, args, context);
-      case 'mcp.code':
-        return this.handleCodeMethod(method, args, context);
       case 'workspace.code':
         return this.handleWorkspaceCodeMethod(method, args, context);
+      case 'mcp.skill':
+        return this.handleSkillMethod(method, args, context);
       default:
         throw new Error(`Service ${serviceName} not implemented`);
     }
@@ -472,38 +472,103 @@ class MCPServiceRegistry {
   ): Promise<unknown> {
     const fs = await import('fs/promises');
     const path = await import('path');
-    const { DATA_DIR } = await import('../utils/file.js');
+    const { PUBLIC_DATA_DIR } = await import('../utils/file.js');
 
-    const basePath = args.basePath as string || '';
-    const fullPath = path.join(DATA_DIR, basePath, args.path as string || '');
+    // 相对路径以 public_data 为基准，绝对路径直接使用
+    const filePath = args.path as string || '';
+    let baseDir: string;
+    if (path.isAbsolute(filePath)) {
+      baseDir = '';
+    } else {
+      baseDir = PUBLIC_DATA_DIR;
+    }
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(PUBLIC_DATA_DIR, filePath);
+
+    // 安全检查：防止相对路径穿越到 public_data 之外
+    if (!path.isAbsolute(filePath)) {
+      if (path.relative(PUBLIC_DATA_DIR, fullPath).startsWith('..')) {
+        throw new Error('Path traversal denied: path must be within public_data directory');
+      }
+    }
 
     switch (method) {
       case 'read':
         try {
           const content = await fs.readFile(fullPath, 'utf-8');
-          return { content };
-        } catch {
-          throw new Error(`Failed to read file: ${args.path}`);
+          const stat = await fs.stat(fullPath);
+          return { content, size: stat.size, path: filePath };
+        } catch (err: any) {
+          throw new Error(`Failed to read file: ${err.message}`);
         }
       case 'write':
         try {
+          await fs.mkdir(path.dirname(fullPath), { recursive: true });
           await fs.writeFile(fullPath, args.content as string, 'utf-8');
-          return { success: true };
-        } catch {
-          throw new Error(`Failed to write file: ${args.path}`);
+          return { success: true, path: filePath };
+        } catch (err: any) {
+          throw new Error(`Failed to write file: ${err.message}`);
         }
+      case 'patch': {
+        if (!filePath) throw new Error('path is required');
+        const oldStr = args.old_string as string;
+        const newStr = args.new_string as string;
+        if (!oldStr) throw new Error('old_string is required');
+        if (newStr === undefined) throw new Error('new_string is required');
+        const replaceAll = !!args.replace_all;
+        try {
+          let content = await fs.readFile(fullPath, 'utf-8');
+          const occurrences = content.split(oldStr).length - 1;
+          if (occurrences === 0) throw new Error('String not found in file');
+          if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
+          content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
+          await fs.writeFile(fullPath, content, 'utf-8');
+          return { success: true, path: filePath, replacements: occurrences > 1 ? occurrences : 1 };
+        } catch (err: any) {
+          if (err.message.startsWith('String not found') || err.message.startsWith('Found')) throw err;
+          throw new Error(`Failed to patch file: ${err.message}`);
+        }
+      }
+      case 'search': {
+        const pattern = args.pattern as string;
+        if (!pattern) throw new Error('pattern is required');
+        const fileGlob = args.file_glob as string | undefined;
+        const maxResults = (args.max_results as number) || 50;
+        try {
+          const { execSync } = await import('child_process');
+          let cmd = `rg -n --no-heading -m 5 '${pattern.replace(/'/g, "'\\''")}'`;
+          if (fileGlob) cmd += ` -g '${fileGlob.replace(/'/g, "'\\''")}'`;
+          cmd += ` '${baseDir.replace(/'/g, "'\\''")}' 2>/dev/null | head -${maxResults}`;
+          const output = execSync(cmd, { encoding: 'utf-8', maxBuffer: 1024 * 1024 });
+          const lines = output.trim().split('\n').filter(Boolean);
+          const results = lines.map(line => {
+            const sepIdx = line.indexOf(':');
+            const lineSep = line.indexOf(':', sepIdx + 1);
+            return {
+              file: line.slice(0, sepIdx),
+              line: parseInt(line.slice(sepIdx + 1, lineSep), 10) || 0,
+              content: line.slice(lineSep + 1),
+            };
+          });
+          return { results, total: results.length, path: baseDir || '.' };
+        } catch {
+          return { results: [], total: 0, path: baseDir || '.' };
+        }
+      }
       case 'list':
         try {
           const entries = await fs.readdir(fullPath, { withFileTypes: true });
-          return {
-            entries: entries.map(e => ({
+          const items = await Promise.all(entries.map(async e => {
+            const stat = e.isFile() ? await fs.stat(path.join(fullPath, e.name)).catch(() => null) : null;
+            return {
               name: e.name,
-              isDirectory: e.isDirectory(),
-              isFile: e.isFile()
-            }))
-          };
-        } catch {
-          throw new Error(`Failed to list directory: ${args.path}`);
+              type: e.isDirectory() ? 'directory' : 'file',
+              size: stat?.size || 0,
+              modified: stat?.mtime?.toISOString() || '',
+            };
+          }));
+          return { items, path: filePath || '.' };
+        } catch (err: any) {
+          throw new Error(`Failed to list directory: ${err.message}`);
         }
       case 'mkdir':
         try {
@@ -530,12 +595,141 @@ class MCPServiceRegistry {
     context: { appId?: string; convId?: string }
   ): Promise<unknown> {
     const { settingsService } = await import('../services/settings.js');
+    const { appLoader } = await import('../services/appLoader.js');
 
     switch (method) {
       case 'get':
         return settingsService.getSettings();
       case 'update':
         return settingsService.updateSettings(args as Record<string, unknown>);
+      case 'getSkills':
+        return settingsService.getSkills();
+      case 'getApps': {
+        const apps = appLoader.getAllApps();
+        return { apps: apps.map(a => ({ id: a.meta.id, name: a.meta.name, skills: a.skills || [] })) };
+      }
+      case 'getConversations': {
+        // args: { appId: string }
+        const { conversationService } = await import('../services/conversation.js');
+        const targetAppId = args.appId as string;
+        if (!targetAppId) throw new Error('appId is required');
+        const convs = await conversationService.getConversations(targetAppId);
+        return { conversations: convs.map((c: any) => ({ id: c.id, title: c.title, messageCount: c.messages?.length || 0 })) };
+      }
+      case 'getConversation': {
+        // args: { appId: string, conversationId: string }
+        const { conversationService: convSvc } = await import('../services/conversation.js');
+        const appId = args.appId as string;
+        const convId = args.conversationId as string;
+        if (!appId || !convId) throw new Error('appId and conversationId are required');
+        const conv = await convSvc.getConversation(appId, convId);
+        if (!conv) throw new Error('Conversation not found');
+        return {
+          id: conv.id,
+          title: conv.title,
+          messages: conv.messages?.map((m: any) => ({
+            role: m.role,
+            content: m.content?.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(' '),
+            timestamp: m.timestamp,
+          })) || [],
+        };
+      }
+      case 'generateSkill': {
+        // args: { conversations: [{ appId, conversationId, title, messages }] }
+        const conversations = args.conversations as any[];
+        if (!conversations || !Array.isArray(conversations) || conversations.length === 0) {
+          throw new Error('conversations array is required');
+        }
+        // 调用 POST /settings/skills/generate 的相同逻辑
+        const modes = await settingsService.getModes();
+        const defaultModelConfig = await settingsService.getDefaultModel();
+        let providerId = defaultModelConfig.providerId;
+        let modelId = defaultModelConfig.modelId;
+        if (!providerId || !modelId) throw new Error('No default model configured');
+
+        const { randomUUID } = await import('crypto');
+        const { streamSimple } = await import('@earendil-works/pi-ai');
+        const { findModel } = await import('../models/pi-adapter.js');
+        const providerConfig = modes.providers.find((p: any) => p.id === providerId);
+        if (!providerConfig) throw new Error(`Provider "${providerId}" not found.`);
+        const modelObj = findModel(modes.providers, providerId, modelId);
+        if (!modelObj) throw new Error(`Model "${modelId}" not found.`);
+
+        const conversationText = conversations.map((conv: any, i: number) => {
+          const msgs = (conv.messages || []).map((m: any) =>
+            `[${m.role}] ${m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(' ')}`
+          ).join('\n');
+          return `=== 会话 ${i + 1}: ${conv.title || conv.conversationId} ===\n${msgs}`;
+        }).join('\n\n');
+
+        const systemPrompt = `你是一个技能制作助手。...`;
+        const userMessage = `请根据以下对话记录制作一个技能：\n\n${conversationText}`;
+
+        const aiContext: any[] = [
+          { role: 'system', content: [{ type: 'text', text: systemPrompt + `\n\n输出格式：\n---skill-name\n技能名称\n---skill-description\n技能描述\n---skill-prompt\n技能提示词内容` }] },
+          { role: 'user', content: [{ type: 'text', text: userMessage }] },
+        ];
+
+        const streamOptions: any = {};
+        if (providerConfig.baseUrl) streamOptions.baseUrl = providerConfig.baseUrl;
+        const headers: Record<string, string> = {};
+        if (providerConfig.apiKey) {
+          if (providerConfig.apiType === 'anthropic') headers['x-api-key'] = providerConfig.apiKey;
+          else headers['authorization'] = `Bearer ${providerConfig.apiKey}`;
+        }
+        streamOptions.headers = headers;
+
+        let fullText = '';
+        const stream = streamSimple(modelObj, aiContext as any, streamOptions);
+        for await (const chunk of stream as any) {
+          if (chunk.type === 'text_delta' && chunk.text) fullText += chunk.text;
+        }
+
+        const nameMatch = fullText.match(/---skill-name\s*\n([\s\S]*?)(?:\n---|$)/);
+        const descMatch = fullText.match(/---skill-description\s*\n([\s\S]*?)(?:\n---|$)/);
+        const promptMatch = fullText.match(/---skill-prompt\s*\n([\s\S]*)$/);
+
+        const skillName = nameMatch ? nameMatch[1].trim() : '未命名技能';
+        const skillDesc = descMatch ? descMatch[1].trim() : '';
+        const skillPrompt = promptMatch ? promptMatch[1].trim() : fullText;
+
+        const newSkill = { id: randomUUID(), name: skillName, description: skillDesc, prompt: skillPrompt, enabled: true, config: {} };
+        const currentSkills = await settingsService.getSkills();
+        currentSkills.skills.push(newSkill);
+        await settingsService.updateSkills({ skills: currentSkills.skills });
+
+        return { skill: newSkill, allSkills: currentSkills.skills };
+      }
+      case 'addSkillToApp': {
+        // args: { appId: string, skillId: string }
+        const targetAppId = args.appId as string;
+        const skillId = args.skillId as string;
+        if (!targetAppId || !skillId) throw new Error('appId and skillId are required');
+        const app = appLoader.getApp(targetAppId);
+        if (!app) throw new Error(`App "${targetAppId}" not found`);
+        const currentSkills = app.skills || [];
+        if (!currentSkills.includes(skillId)) {
+          currentSkills.push(skillId);
+        }
+        // 写回磁盘
+        const path = await import('path');
+        const { writeJsonFile, APPS_DIR } = await import('../utils/file.js');
+        const includePath = path.default.join(APPS_DIR, app.meta.source, targetAppId, 'skills', 'include.json');
+        await writeJsonFile(includePath, { skills: currentSkills });
+        // 刷新内存中该应用的 skills
+        const apps = appLoader.getAllApps();
+        const target = apps.find((a: any) => a.meta.id === targetAppId);
+        if (target) {
+          try {
+            const { readJsonFile } = await import('../utils/file.js');
+            const includeData = await readJsonFile<{ skills: string[] }>(path.default.join(APPS_DIR, app.meta.source, targetAppId, 'skills', 'include.json'));
+            if (includeData) {
+              target.skills = includeData.skills;
+            }
+          } catch {}
+        }
+        return { success: true, appId: targetAppId, skills: currentSkills };
+      }
       default:
         throw new Error(`Unknown method: ${method}`);
     }
@@ -935,50 +1129,15 @@ class MCPServiceRegistry {
     const conv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
     let workspaceDirVal = conv?.workspaceDir;
     if (!workspaceDirVal) {
-      // 无工作目录——直接在工具内部触发授权流程
-      // 与 mcp.form 类似，但这是完全阻塞的：授权不通过就不继续
-      if (!context.appId || !context.convId) {
-        throw new Error('Workspace directory not set and no conversation context available to prompt the user.');
-      }
-      const { eventBus } = await import('../services/eventBus.js');
-
-      // 发送授权请求到前端
-      const toolCallId = args._toolCallId as string || 'direct';
-      const displayPath = (args.baseDir as string) || (args.path as string) || '';
-      eventBus.emit({
-        type: 'workspace_request',
-        appId: context.appId,
-        convId: context.convId,
-        data: { toolCallId, requestedPath: displayPath },
-      });
-
-      // 阻塞等待用户授权或取消
-      const response = await new Promise<{ type: 'workspace_response' | 'workspace_cancelled'; data: any }>((resolve) => {
-        const unsub = eventBus.subscribe(context.convId || '', (event) => {
-          if (event.type === 'workspace_response' || event.type === 'workspace_cancelled') {
-            if (event.data?.toolCallId && event.data.toolCallId !== toolCallId) return;
-            unsub();
-            resolve({ type: event.type, data: event.data });
-          }
-        });
-        setTimeout(() => { unsub(); resolve({ type: 'workspace_cancelled' as any, data: { reason: '超时' } }); }, 300000);
-      });
-
-      if (response.type === 'workspace_cancelled') {
-        throw new Error('用户拒绝了工作目录授权，操作已取消');
-      }
-
-      const chosenPath = response.data?.path as string;
-      if (!chosenPath) throw new Error('未提供目录路径');
-
-      // 验证并保存工作目录
-      const fs = await import('fs');
+      // 没有工作目录时，使用 public_data 作为默认起始目录
+      const { PUBLIC_DATA_DIR } = await import('../utils/file.js');
       const p = await import('path');
-      const absDir = p.resolve(chosenPath);
-      if (!fs.existsSync(absDir)) throw new Error(`目录不存在: ${absDir}`);
-      if (!fs.statSync(absDir).isDirectory()) throw new Error(`不是目录: ${absDir}`);
-      await conversationService.updateConversation(context.appId, context.convId, { workspaceDir: absDir } as any);
-      workspaceDirVal = absDir;
+      workspaceDirVal = p.default.resolve(PUBLIC_DATA_DIR);
+      // 确保目录存在
+      const fs = await import('fs');
+      if (!fs.existsSync(workspaceDirVal)) {
+        await fs.promises.mkdir(workspaceDirVal, { recursive: true });
+      }
     }
 
     // 将所有路径参数解析为相对于工作目录的绝对路径
@@ -1137,6 +1296,96 @@ class MCPServiceRegistry {
           },
         } as any, { ...context as any, _toolCallId: toolCallId });
         return { status: 'pending', form: formResult, message: 'Please select a workspace directory.' };
+      }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleSkillMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    const { skillService } = await import('../services/skillService.js');
+
+    switch (method) {
+      case 'list': {
+        // 只返回当前应用被授权的技能（含文件列表）
+        const { appLoader } = await import('../services/appLoader.js');
+        const app = context.appId ? appLoader.getApp(context.appId) : null;
+        const appSkillIds = app?.skills || [];
+        const skills = await skillService.getEnabledSkillsForApp(appSkillIds);
+        // 获取完整信息（含文件列表）
+        const allSkills = await skillService.getSkills();
+        const filtered = allSkills.filter(s => appSkillIds.includes(s.id));
+        return { skills: filtered };
+      }
+      case 'read': {
+        // 读取技能中的任意文件
+        const skillId = args.skillId as string;
+        const filePath = args.path as string;
+        if (!skillId || !filePath) throw new Error('skillId and path are required');
+        const content = await skillService.readSkillFile(skillId, filePath);
+        if (content === null) throw new Error(`File "${filePath}" not found in skill "${skillId}"`);
+        return { skillId, path: filePath, content };
+      }
+      case 'readEntry': {
+        // 读取技能入口文档（roadmap.md）
+        const skillId = args.skillId as string;
+        if (!skillId) throw new Error('skillId is required');
+        const content = await skillService.getSkillEntry(skillId);
+        if (content === null) throw new Error(`Skill "${skillId}" not found or has no entry document`);
+        return { skillId, content };
+      }
+      case 'listFiles': {
+        // 列出技能目录下的所有文件
+        const skillId = args.skillId as string;
+        if (!skillId) throw new Error('skillId is required');
+        const files = await skillService.listSkillFiles(skillId);
+        return { skillId, files };
+      }
+      case 'listScripts': {
+        // 列出技能可用的脚本
+        const skillId = args.skillId as string;
+        if (!skillId) throw new Error('skillId is required');
+        const scripts = await skillService.listSkillScripts(skillId);
+        return { skillId, scripts };
+      }
+      case 'exec': {
+        const skillId = args.skillId as string;
+        const scriptName = args.script as string;
+        const scriptArgs = (args.args as string[]) || [];
+        if (!skillId || !scriptName) throw new Error('skillId and script are required');
+
+        // 安全检查：只允许纯文件名（不能包含路径分隔符）
+        if (scriptName.includes('/') || scriptName.includes('\\') || scriptName.includes('..')) {
+          throw new Error('Path traversal denied: script must be a filename within scripts/ directory');
+        }
+
+        const path_mod = await import('path');
+
+        // 确定工作目录
+        let cwd: string | undefined;
+        if (context.convId) {
+          const { conversationService } = await import('../services/conversation.js');
+          const conv = await conversationService.getConversation(context.appId || '', context.convId);
+          if (conv?.workspaceDir) {
+            cwd = conv.workspaceDir;
+          } else if (context.appId) {
+            // 没有 workspaceDir，在 desktop_data/workspaces/{appId}/{convId}/ 创建
+            const { DATA_DIR } = await import('../utils/file.js');
+            const workspaceRoot = path_mod.join(DATA_DIR, 'workspaces', context.appId, context.convId);
+            const fs_mod = await import('fs/promises');
+            await fs_mod.mkdir(workspaceRoot, { recursive: true });
+            cwd = workspaceRoot;
+            // 保存到会话
+            await conversationService.updateConversation(context.appId, context.convId, { workspaceDir: cwd } as any);
+          }
+        }
+
+        const output = await skillService.execSkillScript(skillId, scriptName, scriptArgs, cwd);
+        return { skillId, script: scriptName, output, cwd };
       }
       default:
         throw new Error(`Unknown method: ${method}`);

@@ -5,7 +5,7 @@ import * as api from '../services/api';
 import { AppModelConfig } from './AppModelConfig';
 import { MediaSelector } from './MediaSelector';
 
-type SettingsTab = 'basic' | 'model' | 'tools' | 'visibility' | 'prompt';
+type SettingsTab = 'basic' | 'model' | 'tools' | 'skills' | 'visibility' | 'prompt';
 
 interface AppSettingsWindowProps {
   appId: string;
@@ -25,6 +25,8 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [installedApps, setInstalledApps] = useState<App[]>([]);
   const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
+  // 技能列表
+  const [allSkills, setAllSkills] = useState<Array<{ id: string; name: string; description: string }>>([]);
   // 已连接的外部 MCP 服务器信息，用于在工具列表中显示 "mcp.external"
   const [mcpExternals, setMcpExternals] = useState<Array<{
     connectionId: string;
@@ -54,6 +56,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
     visibleApps: [] as string[],
     visibleServices: [] as string[],
     tools: [] as string[],
+    skills: [] as string[],
     appMd: '',
     headerParams: [] as { key: string; value: string; enabled: boolean }[],
     bodyParams: [] as { key: string; value: string; enabled: boolean }[],
@@ -70,18 +73,20 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [fullApp, modesData, appsData, servicesRes, mcpConnectionsRes] = await Promise.all([
+      const [fullApp, modesData, appsData, servicesRes, mcpConnectionsRes, skillsData] = await Promise.all([
         api.getApp(appId),
         api.getModes(),
         api.getApps(),
         api.getMcpServices ? api.getMcpServices() : fetch('/api/mcp/services').then(r => r.json()).catch(() => ({ services: [] })),
         api.getMcpConnections().catch(() => []),
+        api.getAllSkills().catch(() => []),
       ]);
 
       setApp(fullApp);
       setProviders(modesData.providers);
       setInstalledApps(appsData as any);
       setAvailableTools((servicesRes as any)?.services || []);
+      setAllSkills(skillsData || []);
 
       // 处理已连接的外部 MCP
       const connectedList = (mcpConnectionsRes as any[] || []).filter((c: any) => c.isConnected);
@@ -104,6 +109,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         visibleApps: fullApp.visibleApps || [],
         visibleServices: fullApp.visibleServices || [],
         tools: fullApp.tools || [],
+        skills: fullApp.skills || [],
         appMd: fullApp.appMd || '',
         headerParams: fullApp.models?.[0]?.headerParams || [],
         bodyParams: fullApp.models?.[0]?.bodyParams || [],
@@ -140,6 +146,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         visibleApps: formData.visibleApps,
         visibleServices: formData.visibleServices,
         tools: formData.tools,
+        skills: formData.skills,
         appMd: formData.appMd,
         // headerParams/bodyParams 写入 models[0]，不在顶层
         models: app.models?.length ? [{
@@ -217,6 +224,15 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
       tools: prev.tools.includes(name)
         ? prev.tools.filter(t => t !== name)
         : [...prev.tools, name],
+    }));
+  }
+
+  function toggleSkill(skillId: string) {
+    setFormData(prev => ({
+      ...prev,
+      skills: prev.skills.includes(skillId)
+        ? prev.skills.filter(s => s !== skillId)
+        : [...prev.skills, skillId],
     }));
   }
 
@@ -637,6 +653,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         <button className={`app-settings-tab ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>基本</button>
         <button className={`app-settings-tab ${activeTab === 'model' ? 'active' : ''}`} onClick={() => setActiveTab('model')}>模型</button>
         <button className={`app-settings-tab ${activeTab === 'tools' ? 'active' : ''}`} onClick={() => setActiveTab('tools')}>工具</button>
+        <button className={`app-settings-tab ${activeTab === 'skills' ? 'active' : ''}`} onClick={() => setActiveTab('skills')}>技能</button>
         <button className={`app-settings-tab ${activeTab === 'visibility' ? 'active' : ''}`} onClick={() => setActiveTab('visibility')}>权限</button>
         <button className={`app-settings-tab ${activeTab === 'prompt' ? 'active' : ''}`} onClick={() => setActiveTab('prompt')}>提示</button>
       </div>
@@ -732,6 +749,34 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
           </div>
         )}
         {activeTab === 'tools' && renderTools()}
+        {activeTab === 'skills' && (
+          <div className="app-settings-section">
+            <h4>可用技能</h4>
+            <p className="app-settings-hint">只显示已在系统设置中启用的技能。勾选的技能会在 AI 对话时自动加载其入口文档。（如需管理技能启用，请前往 设置 → 技能）</p>
+            <div className="app-settings-checklist">
+              {allSkills.filter((s: any) => s.enabled).length === 0 && (
+                <span className="app-settings-empty">暂无已启用的技能，请先在 系统设置 → 技能 中启用。</span>
+              )}
+              {allSkills.filter((s: any) => s.enabled).map((skill: any) => (
+                <div key={skill.id} className="app-settings-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.skills.includes(skill.id)}
+                    onChange={() => canModifyAll && toggleSkill(skill.id)}
+                    disabled={!canModifyAll}
+                  />
+                  <label style={{ cursor: 'pointer', fontWeight: 500, fontSize: 12, userSelect: 'none' }}
+                    onClick={() => canModifyAll && toggleSkill(skill.id)}>
+                    {skill.name}
+                  </label>
+                  <span style={{ flex: 1, textAlign: 'right', color: 'var(--text-secondary)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {skill.description || ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {activeTab === 'visibility' && renderVisibility()}
         {activeTab === 'prompt' && renderPrompt()}
       </div>

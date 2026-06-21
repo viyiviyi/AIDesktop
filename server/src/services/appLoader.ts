@@ -109,19 +109,11 @@ class AppLoader {
     }
 
     let skills: string[] = [];
-    try {
-      const { readFile } = await import('fs/promises');
-      const includePath = path.join(skillsDir, 'include.json');
-      const includeData = await readJsonFile<{ skills: string[] }>(includePath);
-      if (includeData) {
-        skills = includeData.skills;
-      }
-    } catch {
-      // Skills目录可能不存在
-    }
-
-    // 读取用户运行时配置（覆盖 meta 默认值）
+    // 从 config.json 读取技能勾选（与应用配置一起）
     const config = await this.readConfig(meta.id);
+    if (config.skills) {
+      skills = config.skills;
+    }
 
     return {
       meta,
