@@ -1,6 +1,6 @@
 {
   "theme": "dark",
-  "wallpaper": "/wallpapers/default.jpg",
+  "wallpaper": "/api/files/desktop/media/bg_1782027870122.png",
   "dock": {
     "position": "bottom",
     "magnification": true,
@@ -8,8 +8,8 @@
   },
   "window": {
     "defaultSize": {
-      "width": 800,
-      "height": 600
+      "width": 1000,
+      "height": 700
     },
     "minSize": {
       "width": 400,

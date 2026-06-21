@@ -8,6 +8,7 @@ import type { WsConvEvent } from '../services/useAgentEventStream';
 import { MarkdownView } from './MarkdownView';
 import { FormComponent } from './FormComponent';
 import { WorkspaceDirSelector } from './WorkspaceDirSelector';
+import { MediaSelector } from './MediaSelector';
 import { PictureFilled } from '@ant-design/icons';
 
 // 流式 tool call 的展开状态管理（独立于 Window 内部展开状态，因为 toolCalls 不是 msg.content）
@@ -249,14 +250,18 @@ export function Window({ windowState, children }: WindowProps) {
           <div className="window-control close" onClick={() => closeWindow(windowState.id)} />
         </div>
       </div>
-      <div className="window-content" style={
-        (state.installedApps.find(a => a.id === windowState.appId)?.backgroundImage || windowState.app?.backgroundImage)
+      <div className="window-content" style={{
+        ...((state.installedApps.find(a => a.id === windowState.appId)?.backgroundImage || windowState.app?.backgroundImage)
         ? {
           backgroundImage: `url(${state.installedApps.find(a => a.id === windowState.appId)?.backgroundImage || windowState.app?.backgroundImage})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-        } : undefined}>
+        } : {}),
+        '--chat-max-width': windowState.size.width <= 800 ? '75%'
+          : windowState.size.width >= 1200 ? '85%'
+          : '80%',
+      } as React.CSSProperties}>
         {children}
       </div>
       {!windowState.isMaximized && (
@@ -2394,18 +2399,13 @@ export function SettingsApp(_props: SettingsAppProps) {
               </div>
               <div className="settings-item">
                 <label>壁纸</label>
-                <input
-                  type="text"
-                  value={localSettings.wallpaper}
-                  onChange={(e) => setLocalSettings({ ...localSettings, wallpaper: e.target.value })}
-                  onBlur={() => updateSettings({ wallpaper: localSettings.wallpaper })}
-                  style={{
-                    padding: '6px 12px',
-                    background: 'var(--bg-primary)',
-                    border: 'none',
-                    borderRadius: 6,
-                    color: 'var(--text-primary)',
-                    width: 200,
+                <MediaSelector
+                  appId="desktop"
+                  type="background"
+                  currentUrl={localSettings.wallpaper}
+                  onSelect={(url) => {
+                    setLocalSettings({ ...localSettings, wallpaper: url });
+                    updateSettings({ wallpaper: url });
                   }}
                 />
               </div>
@@ -2463,9 +2463,74 @@ export function SettingsApp(_props: SettingsAppProps) {
               <h3>窗口</h3>
               <div className="settings-item">
                 <label>默认大小</label>
-                <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                  {state.settings.window.defaultSize.width} x {state.settings.window.defaultSize.height}
-                </span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    className="btn-secondary"
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: 12,
+                      background: state.settings.window.defaultSize.width === 800 && state.settings.window.defaultSize.height === 600
+                        ? 'var(--accent-color)' : 'var(--bg-primary)',
+                      color: state.settings.window.defaultSize.width === 800 && state.settings.window.defaultSize.height === 600
+                        ? 'white' : 'var(--text-primary)',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      const size = { width: 800, height: 600 };
+                      setLocalSettings({ ...localSettings, window: { ...localSettings.window, defaultSize: size } });
+                      updateSettings({ window: { ...localSettings.window, defaultSize: size } });
+                    }}
+                  >
+                    小 800×600
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: 12,
+                      background: state.settings.window.defaultSize.width === 1000 && state.settings.window.defaultSize.height === 700
+                        ? 'var(--accent-color)' : 'var(--bg-primary)',
+                      color: state.settings.window.defaultSize.width === 1000 && state.settings.window.defaultSize.height === 700
+                        ? 'white' : 'var(--text-primary)',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      const size = { width: 1000, height: 700 };
+                      setLocalSettings({ ...localSettings, window: { ...localSettings.window, defaultSize: size } });
+                      updateSettings({ window: { ...localSettings.window, defaultSize: size } });
+                    }}
+                  >
+                    中 1000×700
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: 12,
+                      background: state.settings.window.defaultSize.width === 1200 && state.settings.window.defaultSize.height === 800
+                        ? 'var(--accent-color)' : 'var(--bg-primary)',
+                      color: state.settings.window.defaultSize.width === 1200 && state.settings.window.defaultSize.height === 800
+                        ? 'white' : 'var(--text-primary)',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      const size = { width: 1200, height: 800 };
+                      setLocalSettings({ ...localSettings, window: { ...localSettings.window, defaultSize: size } });
+                      updateSettings({ window: { ...localSettings.window, defaultSize: size } });
+                    }}
+                  >
+                    大 1200×800
+                  </button>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: 13, marginLeft: 4 }}>
+                    {state.settings.window.defaultSize.width} x {state.settings.window.defaultSize.height}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="settings-section">
