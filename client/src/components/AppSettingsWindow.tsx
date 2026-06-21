@@ -140,7 +140,6 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         // headerParams/bodyParams 写入 models[0]，不在顶层
         models: app.models?.length ? [{
           ...app.models[0],
-          overrideParams: formData.headerParams.length > 0 || formData.bodyParams.length > 0,
           headerParams: formData.headerParams,
           bodyParams: formData.bodyParams,
         }] : [],

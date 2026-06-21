@@ -320,6 +320,8 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  // 输入框 ref，用于发送后重置高度和聚焦
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
   // 流式消息累积状态（WebSocket 事件驱动）
   const [streamingText, setStreamingText] = useState<string>('');
   const [toolCalls, setToolCalls] = useState<Array<{ toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean }>>([]);
@@ -807,6 +809,12 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
 
     setInput('');
     setAttachments([]);
+    // 重置输入框高度
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
+    // 发送后保持焦点在输入框（延迟到 React 批量更新后）
+    setTimeout(() => { inputRef.current?.focus(); }, 0);
     setIsLoading(true);
     setStreamingText('');
     setToolCalls([]);
@@ -1587,12 +1595,13 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
                 </>
               )}
               <textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => { setInput(e.target.value); autoResize(e); }}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder={replyToId ? '输入回复...' : '输入消息...'}
-                disabled={!currentConvId || isLoading || pendingForms.size > 0}
+                disabled={!currentConvId || pendingForms.size > 0}
                 rows={1}
               />
               <button

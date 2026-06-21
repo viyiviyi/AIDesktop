@@ -178,10 +178,20 @@ export class PiAgentSession {
 
         // 每次流式调用时从当前 app 配置读取 bodyParams（支持运行时修改）
         const currentApp = appLoader.getApp(app.meta.id);
-        serverLogger.debug('PiAgentSession', `currentApp config.models: ${JSON.stringify(currentApp?.config.models)}`);
-        const currentModelConfig = (currentApp?.config.models?.[0]) || currentApp?.meta.models?.[0];
+        // 使用 mergeConfig 统一合并 meta+config，与前端显示保持一致
+        const mergedMeta: any = { ...(currentApp?.meta || {}) };
+        const mergedConfig: any = currentApp?.config || {};
+        // 手动合并（与 mergeConfig 逻辑一致）
+        if (mergedConfig.enabled !== undefined) mergedMeta.enabled = mergedConfig.enabled;
+        for (const key of ['backgroundImage', 'supportedInputs', 'inputDescription', 'outputDescription',
+                           'visibleApps', 'visibleServices', 'tools', 'models']) {
+          if (mergedConfig[key] !== undefined) {
+            mergedMeta[key] = mergedConfig[key];
+          }
+        }
+        const currentModelConfig: any = mergedMeta.models?.[0] || {};
         const bodyParams: Record<string, unknown> = {};
-        if (currentModelConfig?.bodyParams) {
+        if (currentModelConfig.bodyParams) {
           for (const p of currentModelConfig.bodyParams) {
             if (p.enabled) {
               try { bodyParams[p.key] = JSON.parse(p.value); } catch { bodyParams[p.key] = p.value; }
@@ -229,7 +239,7 @@ export class PiAgentSession {
         };
 
         // 注入 header 参数
-        if (currentModelConfig?.headerParams) {
+        if (currentModelConfig.headerParams) {
           const headers: Record<string, string> = {};
           for (const hp of currentModelConfig.headerParams) {
             if (hp.enabled) headers[hp.key] = hp.value;
@@ -737,7 +747,7 @@ export async function replaceLargeContentWithFileRef(
     if (typeof v === 'string' && (v.length > threshold || v.includes('\n'))) {
       const uuid = crypto.randomUUID();
       const relPath = `${appId}/${convId}/${uuid}.txt`;
-      const absDir = path.join(DATA_DIR, 'apps_data', appId, 'conversations', 'attachments');
+      const absDir = path.join(DATA_DIR, 'apps_data', appId, 'conversations', convId, 'attachments');
       const absPath = path.join(absDir, `${uuid}.txt`);
       try {
         await fs.mkdir(absDir, { recursive: true });

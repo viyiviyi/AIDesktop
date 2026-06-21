@@ -58,7 +58,7 @@ router.get('/:appId', async (req: Request, res: Response) => {
  * 将 meta 默认值与 config 运行时覆盖合并
  * config 中有定义的字段覆盖 meta，config 中没有的保留 meta 值
  */
-function mergeConfig(meta: any, config: any): any {
+export function mergeConfig(meta: any, config: any): any {
   const result = { ...meta };
   // enabled 特殊处理：config 有定义则用，否则默认 true
   result.enabled = config.enabled !== undefined ? config.enabled : true;
