@@ -16,16 +16,20 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     res.json({
-      apps: apps.map(a => ({
-        id: a.meta.id,
-        name: a.meta.name,
-        description: a.meta.description,
-        source: a.meta.source,
-        type: a.meta.type,
-        icon: a.meta.icon,
-        enabled: a.config.enabled !== undefined ? a.config.enabled : true,
-        supportedInputs: a.config.supportedInputs !== undefined ? a.config.supportedInputs : a.meta.supportedInputs,
-      }))
+      apps: apps.map(a => {
+        const merged = mergeConfig(a.meta, a.config);
+        return {
+          id: a.meta.id,
+          name: a.meta.name,
+          description: a.meta.description,
+          source: a.meta.source,
+          type: a.meta.type,
+          icon: merged.icon,
+          backgroundImage: merged.backgroundImage,
+          enabled: merged.enabled,
+          supportedInputs: merged.supportedInputs || ['text'],
+        };
+      })
     });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -63,7 +67,7 @@ export function mergeConfig(meta: any, config: any): any {
   // enabled 特殊处理：config 有定义则用，否则默认 true
   result.enabled = config.enabled !== undefined ? config.enabled : true;
 
-  for (const key of ['backgroundImage', 'supportedInputs', 'inputDescription', 'outputDescription',
+  for (const key of ['backgroundImage', 'icon', 'supportedInputs', 'inputDescription', 'outputDescription',
                      'visibleApps', 'visibleServices', 'tools', 'models']) {
     if (config[key] !== undefined) {
       result[key] = config[key];
@@ -102,7 +106,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
 
     // 从请求体中提取用户可配置的字段
     const {
-      models, enabled, backgroundImage, supportedInputs,
+      models, enabled, icon, backgroundImage, supportedInputs,
       inputDescription, outputDescription,
       visibleApps, visibleServices, tools,
       appMd,
@@ -110,6 +114,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
 
     const configUpdates: Record<string, unknown> = {};
     if (enabled !== undefined) configUpdates.enabled = enabled;
+    if (icon !== undefined) configUpdates.icon = icon;
     if (backgroundImage !== undefined) configUpdates.backgroundImage = backgroundImage;
     if (supportedInputs !== undefined) configUpdates.supportedInputs = supportedInputs;
     if (inputDescription !== undefined) configUpdates.inputDescription = inputDescription;

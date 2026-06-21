@@ -3,6 +3,7 @@ import { useDesktop } from '../contexts/DesktopContext';
 import type { App, ModelProvider, ModelConfig, ContentType } from '../types';
 import * as api from '../services/api';
 import { AppModelConfig } from './AppModelConfig';
+import { MediaSelector } from './MediaSelector';
 
 type SettingsTab = 'basic' | 'model' | 'tools' | 'visibility' | 'prompt';
 
@@ -45,6 +46,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   // Form state
   const [formData, setFormData] = useState({
     enabled: true,
+    icon: '',
     backgroundImage: '',
     supportedInputs: ['text'] as ContentType[],
     inputDescription: '',
@@ -94,6 +96,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
 
       setFormData({
         enabled: fullApp.enabled !== false,
+        icon: fullApp.icon || '',
         backgroundImage: fullApp.backgroundImage || '',
         supportedInputs: fullApp.supportedInputs || ['text'],
         inputDescription: fullApp.inputDescription || '',
@@ -129,6 +132,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
     try {
       const updates: Record<string, unknown> = {
         enabled: formData.enabled,
+        icon: formData.icon,
         backgroundImage: formData.backgroundImage,
         supportedInputs: formData.supportedInputs,
         inputDescription: formData.inputDescription,
@@ -269,12 +273,21 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
       </div>
       {canModifyAll && (
         <div className="app-settings-field">
-          <label>背景图片 URL</label>
-          <input
-            type="text"
-            value={formData.backgroundImage}
-            onChange={(e) => setFormData(prev => ({ ...prev, backgroundImage: e.target.value }))}
-            placeholder="输入背景图片路径..."
+          <MediaSelector
+            appId={appId}
+            type="icon"
+            currentUrl={formData.icon}
+            onSelect={(url) => setFormData(prev => ({ ...prev, icon: url }))}
+          />
+        </div>
+      )}
+      {canModifyAll && (
+        <div className="app-settings-field">
+          <MediaSelector
+            appId={appId}
+            type="background"
+            currentUrl={formData.backgroundImage}
+            onSelect={(url) => setFormData(prev => ({ ...prev, backgroundImage: url }))}
           />
         </div>
       )}

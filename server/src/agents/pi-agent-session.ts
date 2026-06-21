@@ -183,7 +183,7 @@ export class PiAgentSession {
         const mergedConfig: any = currentApp?.config || {};
         // 手动合并（与 mergeConfig 逻辑一致）
         if (mergedConfig.enabled !== undefined) mergedMeta.enabled = mergedConfig.enabled;
-        for (const key of ['backgroundImage', 'supportedInputs', 'inputDescription', 'outputDescription',
+        for (const key of ['backgroundImage', 'icon', 'supportedInputs', 'inputDescription', 'outputDescription',
                            'visibleApps', 'visibleServices', 'tools', 'models']) {
           if (mergedConfig[key] !== undefined) {
             mergedMeta[key] = mergedConfig[key];

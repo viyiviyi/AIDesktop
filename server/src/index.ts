@@ -13,6 +13,7 @@ import { mcpClientRegistry } from './mcp/clientRegistry.js';
 import hermesRouter from './routes/hermes.js';
 import logsRouter from './routes/logs.js';
 import workspaceRouter from './routes/workspace.js';
+import mediaRouter from './routes/media.js';
 import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR } from './utils/file.js';
 import { setupWebSocket } from './services/wsServer.js';
 
@@ -53,6 +54,7 @@ app.use('/api/mcp', mcpRouter);
 app.use('/api/hermes', hermesRouter);
 app.use('/api/logs', logsRouter);
 app.use('/api/workspace', workspaceRouter);
+app.use('/api/apps', mediaRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

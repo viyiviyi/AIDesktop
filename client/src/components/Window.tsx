@@ -249,7 +249,14 @@ export function Window({ windowState, children }: WindowProps) {
           <div className="window-control close" onClick={() => closeWindow(windowState.id)} />
         </div>
       </div>
-      <div className="window-content">
+      <div className="window-content" style={
+        (state.installedApps.find(a => a.id === windowState.appId)?.backgroundImage || windowState.app?.backgroundImage)
+        ? {
+          backgroundImage: `url(${state.installedApps.find(a => a.id === windowState.appId)?.backgroundImage || windowState.app?.backgroundImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        } : undefined}>
         {children}
       </div>
       {!windowState.isMaximized && (
