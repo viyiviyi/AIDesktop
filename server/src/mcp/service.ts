@@ -194,8 +194,13 @@ class MCPServiceRegistry {
               if (a.meta.id === context.appId) return false;
               // 只返回 desktop 和 background 类型的应用
               if (a.meta.type !== 'desktop' && a.meta.type !== 'background') return false;
-              // 如果调用者配置了 visibleApps，则只返回在列表中的
-              if (visibleApps.length > 0 && !visibleApps.includes(a.meta.id)) return false;
+              // 如果调用者配置了 visibleApps，则只返回在列表中的；如果没有配置，只返回自己
+              if (visibleApps.length > 0) {
+                if (!visibleApps.includes(a.meta.id)) return false;
+              } else {
+                // 没有配置可见应用，不允许看到其他应用
+                return false;
+              }
               return true;
             })
             .map(a => ({
@@ -252,7 +257,12 @@ class MCPServiceRegistry {
             ...(callerApp?.config.visibleApps || []),
             ...(callerApp?.meta.visibleApps || [])
           ])];
-          if (callerVisibleApps.length > 0 && !callerVisibleApps.includes(agentId)) {
+          if (callerVisibleApps.length > 0) {
+            if (!callerVisibleApps.includes(agentId)) {
+              throw new Error(`Agent ${agentId} is not visible`);
+            }
+          } else {
+            // 没有配置可见应用，不允许调用其他应用
             throw new Error(`Agent ${agentId} is not visible`);
           }
         }
