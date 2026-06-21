@@ -311,6 +311,7 @@ export function Window({ windowState, children }: WindowProps) {
 // 应用内容组件 - 聊天应用
 interface ChatAppProps {
   appId: string;
+  windowId: string;
   conversationId?: string;
 }
 
@@ -318,9 +319,9 @@ interface ChatAppProps {
  * 聊天应用组件 - 完整的会话管理
  * 支持：多会话切换、新建、删除、重命名、消息发送与接收
  */
-export function ChatApp({ appId, conversationId }: ChatAppProps) {
+export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const { addToast, confirm } = useToast();
-  const { state } = useDesktop();
+  const { state, setConversationTitle, updateWindow } = useDesktop();
   const [conversations, setConversations] = useState<{ id: string; title: string; preview?: string; createdAt?: string; workspaceDir?: string | null }[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(
     conversationId && !conversationId.startsWith('conv-') ? conversationId : null
@@ -464,16 +465,23 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         workspaceDir: c.workspaceDir,
       }));
       setConversations(mapped);
+      // 同步会话标题到全局 context（供 Dock 菜单使用）
+      mapped.forEach(c => { if (c.id) setConversationTitle(c.id, c.title); });
 
       if (convs.length > 0) {
         // 有已有会话，用最新的有消息的会话
         const target = convs.find(c => c.messages.length > 0) || convs[0];
         setCurrentConvId(target.id);
+        // 同步真实会话 ID 到 WindowState（供 Dock 菜单查找会话标题使用）
+        updateWindow(windowId, { conversationId: target.id });
       } else {
         // 没有会话，创建一个
         return api.createConversation(appId, `窗口 ${Date.now()}`).then(conv => {
           setConversations([{ id: conv.id, title: conv.title, createdAt: conv.createdAt, workspaceDir: conv.workspaceDir }]);
+          setConversationTitle(conv.id, conv.title);
           setCurrentConvId(conv.id);
+          // 同步真实会话 ID 到 WindowState
+          updateWindow(windowId, { conversationId: conv.id });
         });
       }
     }).catch(() => {});
@@ -675,6 +683,8 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
         return { id: c.id, title: c.title, preview, createdAt: c.createdAt, workspaceDir: c.workspaceDir };
       });
       setConversations(mapped);
+      // 同步会话标题到全局
+      mapped.forEach(c => { if (c.id) setConversationTitle(c.id, c.title); });
       // 自动设置当前会话：优先用传入的 preserveConvId，否则用最新的有消息的，否则用最新的
       const curId = preserveConvId !== undefined ? preserveConvId : currentConvId;
       if (!curId || !mapped.find(c => c.id === curId)) {
@@ -743,6 +753,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     try {
       const conv = await api.createConversation(appId, `会话 ${conversations.length + 1}`);
       setConversations([...conversations, { id: conv.id, title: conv.title, workspaceDir: conv.workspaceDir }]);
+      setConversationTitle(conv.id, conv.title);
       setCurrentConvId(conv.id);
       setMessages([]);
       setShowConvList(false);
@@ -767,6 +778,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
           // 没有会话了，创建一个新的
           const conv = await api.createConversation(appId, `会话 1`);
           setConversations([{ id: conv.id, title: conv.title, workspaceDir: conv.workspaceDir }]);
+          setConversationTitle(conv.id, conv.title);
           setCurrentConvId(conv.id);
         }
       }
@@ -793,6 +805,7 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
       setConversations(conversations.map((c) =>
         c.id === renamingId ? { ...c, title: renameTitle.trim() } : c
       ));
+      setConversationTitle(renamingId, renameTitle.trim());
       setRenamingId(null);
       addToast('success', '会话已重命名');
     } catch (error) {
@@ -805,6 +818,13 @@ export function ChatApp({ appId, conversationId }: ChatAppProps) {
     // WebSocket 自动切换订阅（useAgentEventStream 依赖 currentConvId）
     setCurrentConvId(convId);
     setShowConvList(false);
+    // 同步 WindowState.conversationId，让 Dock 菜单显示正确的会话标题
+    updateWindow(windowId, { conversationId: convId });
+    // 如果有缓存的会话标题，确保全局已同步
+    const conv = conversations.find(c => c.id === convId);
+    if (conv) {
+      setConversationTitle(conv.id, conv.title);
+    }
   };
 
   // 发送消息 — WebSocket 事件驱动模式
@@ -2435,16 +2455,36 @@ export function SettingsApp(_props: SettingsAppProps) {
                 </select>
               </div>
               <div className="settings-item">
-                <label>放大效果</label>
-                <input
-                  type="checkbox"
-                  checked={localSettings.dock.magnification}
+                <label>对齐</label>
+                <select
+                  value={localSettings.dock.align || 'center'}
                   onChange={(e) => {
-                    const newDock = { ...localSettings.dock, magnification: e.target.checked };
+                    const newDock = { ...localSettings.dock, align: e.target.value as 'start' | 'center' };
                     setLocalSettings({ ...localSettings, dock: newDock });
                     updateSettings({ dock: newDock });
                   }}
-                />
+                  style={{
+                    padding: '6px 12px',
+                    background: 'var(--bg-primary)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {localSettings.dock.position === 'bottom' ? (
+                    <>
+                      <option value="start">左侧</option>
+                      <option value="center">居中</option>
+                      <option value="end">右侧</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="start">顶部</option>
+                      <option value="center">居中</option>
+                      <option value="end">底部</option>
+                    </>
+                  )}
+                </select>
               </div>
               <div className="settings-item">
                 <label>自动隐藏</label>

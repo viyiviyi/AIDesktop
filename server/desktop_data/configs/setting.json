@@ -3,13 +3,14 @@
   "wallpaper": "/api/files/desktop/media/bg_1782027870122.png",
   "dock": {
     "position": "bottom",
-    "magnification": true,
-    "autoHide": true
+    "magnification": false,
+    "autoHide": false,
+    "align": "start"
   },
   "window": {
     "defaultSize": {
-      "width": 1000,
-      "height": 700
+      "width": 800,
+      "height": 600
     },
     "minSize": {
       "width": 400,

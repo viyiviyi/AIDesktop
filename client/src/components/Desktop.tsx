@@ -104,7 +104,7 @@ export function Desktop() {
       case 'desktop-assistant':
       case 'app-builder':
       default:
-        return <ChatApp appId={windowState.appId} conversationId={windowState.conversationId} />;
+        return <ChatApp appId={windowState.appId} windowId={windowState.id} conversationId={windowState.conversationId} />;
     }
   };
 
@@ -122,9 +122,25 @@ export function Desktop() {
   };
   const themeClass = getThemeClass();
 
+  // 根据 dock 位置调整桌面区域 padding 和图标偏移，防止内容与 dock 重叠
+  const getDesktopAreaStyle = (): React.CSSProperties => {
+    const dockSize = 72;
+    if (!state.settings.dock.autoHide) {
+      switch (state.settings.dock.position) {
+        case 'left':
+          return { paddingLeft: dockSize, '--dock-offset-left': `${dockSize}px` } as React.CSSProperties;
+        case 'right':
+          return { paddingRight: dockSize };
+        case 'bottom':
+          return { paddingBottom: dockSize };
+      }
+    }
+    return { '--dock-offset-left': '0px' } as React.CSSProperties;
+  };
+
   return (
     <div className={`desktop ${themeClass}`} style={wallpaperStyle} onClick={handleDesktopClick}>
-      <div className="desktop-area">
+      <div className="desktop-area" style={getDesktopAreaStyle()}>
         <div className="desktop-icons">
           {desktopApps.map((app) => (
             <div

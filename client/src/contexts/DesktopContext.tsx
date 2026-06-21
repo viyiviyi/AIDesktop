@@ -8,7 +8,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   wallpaper: '/wallpapers/default.jpg',
   dock: {
     position: 'bottom',
-    magnification: true,
+    align: 'center',
     autoHide: false,
   },
   window: {
@@ -36,7 +36,8 @@ type Action =
   | { type: 'UPDATE_WINDOW'; payload: { id: string; updates: Partial<WindowState> } }
   | { type: 'FOCUS_WINDOW'; payload: string | null }
   | { type: 'TOGGLE_START_MENU'; payload?: 'click' | 'voice' }
-  | { type: 'CLOSE_START_MENU' };
+  | { type: 'CLOSE_START_MENU' }
+  | { type: 'SET_CONV_TITLE'; payload: { conversationId: string; title: string } };
 
 // 初始桌面状态
 const initialState: DesktopState = {
@@ -48,6 +49,7 @@ const initialState: DesktopState = {
   startMenuMode: 'click',
   taskbarApps: [],
   appLastPositions: {},
+  conversationTitles: {},
 };
 
 // 状态更新reducer - 根据action更新桌面状态
@@ -123,6 +125,15 @@ function reducer(state: DesktopState, action: Action): DesktopState {
     case 'CLOSE_START_MENU':
       return { ...state, startMenuOpen: false };
 
+    case 'SET_CONV_TITLE':
+      return {
+        ...state,
+        conversationTitles: {
+          ...state.conversationTitles,
+          [action.payload.conversationId]: action.payload.title,
+        },
+      };
+
     default:
       return state;
   }
@@ -150,6 +161,7 @@ interface DesktopContextValue {
   maximizeWindow: (windowId: string) => void;
   /** 刷新单个 app 的数据（如设置变更后） */
   refreshApp: (appId: string) => Promise<AppInfo | null>;
+  setConversationTitle: (conversationId: string, title: string) => void;
 }
 
 // 创建Context（初始值为null）
@@ -253,6 +265,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
         ? Math.max(...state.windows.map(w => w.zIndex)) + 1
         : 0,
       conversationId: newConversationId,
+      conversationTitle: newConversationId.startsWith('conv-') ? `新会话` : '',
     };
 
     dispatch({ type: 'ADD_WINDOW', payload: newWindow });
@@ -328,6 +341,11 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
   // 关闭开始菜单
   const closeStartMenu = useCallback(() => {
     dispatch({ type: 'CLOSE_START_MENU' });
+  }, []);
+
+  // 设置会话标题
+  const setConversationTitle = useCallback((conversationId: string, title: string) => {
+    dispatch({ type: 'SET_CONV_TITLE', payload: { conversationId, title } });
   }, []);
 
   // 更新设置
@@ -412,6 +430,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
         refreshApp,
         minimizeWindow,
         maximizeWindow,
+        setConversationTitle,
       }}
     >
       {children}

@@ -240,7 +240,7 @@ export interface WindowSettings {
 
 export interface DockSettings {
   position: 'bottom' | 'left' | 'right';
-  magnification: boolean;
+  align: 'start' | 'center' | 'end';
   autoHide: boolean;
 }
 
@@ -267,7 +267,9 @@ export interface DesktopSettings {
 
 export interface WindowState {
   id: string;
+  appId: string;
   title: string;
+  conversationId?: string;
   app?: AppInfo;
   icon: string;
   isMinimized: boolean;
@@ -277,4 +279,18 @@ export interface WindowState {
   size: { width: number; height: number };
   minSize: { width: number; height: number };
   type?: 'startMenu' | 'settings' | 'app';
+  conversationTitle?: string;
+}
+
+// Desktop state（包含运行时 UI 状态）
+export interface DesktopState {
+  settings: DesktopSettings;
+  installedApps: AppInfo[];
+  windows: WindowState[];
+  focusedWindowId: string | null;
+  startMenuOpen: boolean;
+  startMenuMode: 'click' | 'voice';
+  taskbarApps: string[];
+  appLastPositions: Record<string, { x: number; y: number }>;
+  conversationTitles: Record<string, string>;
 }

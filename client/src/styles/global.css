@@ -95,10 +95,18 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -110,7 +118,7 @@ body {
 /* Desktop Layout */
 .desktop {
   width: 100%;
-  height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
   background-size: cover;
@@ -171,12 +179,156 @@ body {
   backdrop-filter: blur(20px);
   border-radius: 16px;
   z-index: 9998;
+  pointer-events: auto;
+  transition: transform 0.25s ease, opacity 0.25s ease;
 }
 
+/* ===== 底部（横向从左到右排列） ===== */
 .dock.bottom {
+  flex-direction: row;
   bottom: 8px;
+}
+.dock.bottom.center {
   left: 50%;
   transform: translateX(-50%);
+}
+.dock.bottom.start {
+  left: 16px;
+  transform: none;
+}
+.dock.bottom.end {
+  right: 16px;
+  left: auto;
+  transform: none;
+  flex-direction: row-reverse;
+}
+
+/* ===== 左侧（纵向从上到下排列） ===== */
+.dock.left {
+  flex-direction: column;
+  left: 8px;
+}
+.dock.left.center {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.dock.left.start {
+  /* 顶部对齐：从菜单栏下方开始，留 8px 间距 */
+  top: calc(var(--menu-bar-height) + 8px);
+  transform: none;
+}
+.dock.left.end {
+  bottom: 8px;
+  top: auto;
+  transform: none;
+  flex-direction: column-reverse;
+}
+
+/* ===== 右侧（纵向从上到下排列） ===== */
+.dock.right {
+  flex-direction: column;
+  right: 8px;
+}
+.dock.right.center {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.dock.right.start {
+  top: calc(var(--menu-bar-height) + 8px);
+  transform: none;
+}
+.dock.right.end {
+  bottom: 8px;
+  top: auto;
+  transform: none;
+  flex-direction: column-reverse;
+}
+
+/* ===== 自动隐藏时的偏移方向 ===== */
+/* 底部：从下方滑入 */
+.dock.bottom.hidden {
+  transform: translateX(-50%) translateY(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+.dock.bottom.start.hidden {
+  transform: translateY(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+.dock.bottom.end.hidden {
+  transform: translateY(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 左侧：从左边滑入 */
+.dock.left.hidden {
+  transform: translateX(-120%);
+  opacity: 0;
+  pointer-events: none;
+}
+.dock.left.center.hidden {
+  transform: translateY(-50%) translateX(-120%);
+  opacity: 0;
+  pointer-events: none;
+}
+.dock.left.start.hidden {
+  transform: translateX(-120%);
+  opacity: 0;
+  pointer-events: none;
+}
+.dock.left.end.hidden {
+  transform: translateX(-120%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 右侧：从右边滑入 */
+.dock.right.hidden {
+  transform: translateX(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+.dock.right.center.hidden {
+  transform: translateY(-50%) translateX(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+.dock.right.start.hidden {
+  transform: translateX(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+.dock.right.end.hidden {
+  transform: translateX(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Dock 唤出条（不可见的触发区域，覆盖整个边缘） */
+.dock-trigger {
+  position: fixed;
+  z-index: 9997;
+  transition: background 0.15s;
+}
+.dock-trigger.bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+.dock-trigger.left {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+.dock-trigger.right {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
 }
 
 .dock-item {
@@ -217,6 +369,12 @@ body {
   height: 40px;
   background: rgba(255, 255, 255, 0.3);
   margin: 0 4px;
+}
+
+.dock-separator.horizontal {
+  width: 40px;
+  height: 1px;
+  margin: 4px 0;
 }
 
 /* Start Menu */
@@ -974,7 +1132,7 @@ body {
 .desktop-icons {
   position: absolute;
   top: 20px;
-  left: 20px;
+  left: calc(20px + var(--dock-offset-left, 0px));
   display: flex;
   flex-direction: column;
   gap: 8px;
