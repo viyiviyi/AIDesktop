@@ -24,7 +24,7 @@ router.get('/', async (req: Request, res: Response) => {
           description: a.meta.description,
           source: a.meta.source,
           type: a.meta.type,
-          icon: merged.icon,
+          icon: merged.icon || '/public_icons/assistant.svg',
           backgroundImage: merged.backgroundImage,
           enabled: merged.enabled,
           supportedInputs: merged.supportedInputs || ['text'],
@@ -122,31 +122,22 @@ router.put('/:appId', async (req: Request, res: Response) => {
     if (visibleApps !== undefined) configUpdates.visibleApps = visibleApps;
     if (visibleServices !== undefined) configUpdates.visibleServices = visibleServices;
     if (tools !== undefined) configUpdates.tools = tools;
-    if (skills !== undefined) configUpdates.skills = skills;
     if (models !== undefined) configUpdates.models = models;
+    if (skills !== undefined) configUpdates.skills = skills;
 
-    // appMd 单独写入数据目录 apps_data/{id}/app.md
+    // appMd 写入 app.md 文件（仅 user 源允许）
     if (appMd !== undefined) {
-      const { ensureDir } = await import('../utils/file.js');
-      const fs = await import('fs/promises');
+      const { writeFile } = await import('fs/promises');
       const path = await import('path');
-      const userAppMdPath = path.join(APPS_DATA_DIR, req.params.appId, 'app.md');
-      if (appMd === null || appMd === '__reset__') {
-        // 还原到默认值：删除用户自定义的 app.md
-        try { await fs.rm(userAppMdPath, { force: true }); } catch {}
-      } else {
-        await ensureDir(path.dirname(userAppMdPath));
-        await fs.writeFile(userAppMdPath, appMd, 'utf-8');
-      }
-      // 同时更新内存中的 appMd，让下次 `getApp` 返回正确的值
-      const memApp = appLoader.getApp(req.params.appId);
-      if (memApp) {
-        const updatedApp = { ...memApp, appMd: appMd === '__reset__' ? '' : appMd };
-        (appLoader as any).apps.set(req.params.appId, updatedApp);
+      const sourceDir = app.meta.source === 'user' ? await import('../utils/file.js').then(m => m.USER_APPS_DIR)
+        : app.meta.source === 'marketplace' ? await import('../utils/file.js').then(m => m.MARKETPLACE_APPS_DIR)
+        : null;
+      if (sourceDir) {
+        await writeFile(path.join(sourceDir, app.meta.id, 'app.md'), appMd, 'utf-8');
       }
     }
 
-    if (Object.keys(configUpdates).length === 0 && appMd === undefined) {
+    if (Object.keys(configUpdates).length === 0) {
       return res.status(400).json({ error: 'No configurable fields provided' });
     }
 
@@ -216,16 +207,19 @@ router.post('/reload', async (req: Request, res: Response) => {
     res.json({
       success: true,
       message: `Reloaded ${apps.length} apps`,
-      apps: apps.map(a => ({
-        id: a.meta.id,
-        name: a.meta.name,
-        description: a.meta.description,
-        source: a.meta.source,
-        type: a.meta.type,
-        icon: a.meta.icon,
-        enabled: a.config.enabled !== false,
-        supportedInputs: a.config.supportedInputs !== undefined ? a.config.supportedInputs : a.meta.supportedInputs,
-      }))
+      apps: apps.map(a => {
+        const merged = mergeConfig(a.meta, a.config);
+        return {
+          id: a.meta.id,
+          name: a.meta.name,
+          description: a.meta.description,
+          source: a.meta.source,
+          type: a.meta.type,
+          icon: merged.icon || '/public_icons/assistant.svg',
+          enabled: merged.enabled,
+          supportedInputs: merged.supportedInputs || ['text'],
+        };
+      })
     });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
