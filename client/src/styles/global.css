@@ -7,6 +7,7 @@
   --window-title-bg: rgba(60, 60, 80, 0.65);
   --text-primary: #ffffff;
   --text-secondary: #b0b0b0;
+  --text-tertiary: #7e7e8a;
   --accent-color: #0078d4;
   --border-radius: 10px;
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
@@ -53,6 +54,7 @@
   --window-title-bg: rgba(255, 255, 255, 1);
   --text-primary: #1f2937;
   --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
   --accent-color: #0078d4;
   --border-radius: 10px;
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.15);

@@ -68,9 +68,8 @@ function useCropCanvas(
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       imgRef.current = img;
-      // 初始缩放：让图片撑满裁切区域
-      const boxSize = Math.max(cropWidth, cropHeight);
-      const initialScale = Math.max(boxSize / img.naturalWidth, boxSize / img.naturalHeight);
+      // 初始缩放：让图片完整可见（较长边对齐裁切区）
+      const initialScale = Math.min(cropWidth / img.naturalWidth, cropHeight / img.naturalHeight);
       stateRef.current = {
         img,
         offsetX: -(img.naturalWidth * initialScale - cropWidth) / 2,
@@ -132,8 +131,21 @@ function useCropCanvas(
     if (!drag || !state) return;
     state.offsetX = drag.startOffX + (e.clientX - drag.startX);
     state.offsetY = drag.startOffY + (e.clientY - drag.startY);
+    // 约束偏移：防止图片被拖出裁切区域
+    const sw = state.img.naturalWidth * state.scale;
+    const sh = state.img.naturalHeight * state.scale;
+    if (sw > cropWidth) {
+      state.offsetX = Math.max(cropWidth - sw, Math.min(0, state.offsetX));
+    } else {
+      state.offsetX = (cropWidth - sw) / 2;
+    }
+    if (sh > cropHeight) {
+      state.offsetY = Math.max(cropHeight - sh, Math.min(0, state.offsetY));
+    } else {
+      state.offsetY = (cropHeight - sh) / 2;
+    }
     draw();
-  }, [draw]);
+  }, [draw, cropWidth, cropHeight]);
 
   const handleMouseUp = useCallback(() => {
     dragRef.current = null;
@@ -151,7 +163,11 @@ function useCropCanvas(
     const mouseY = e.clientY - rect.top;
 
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    const newScale = Math.max(0.1, Math.min(10, state.scale * factor));
+    // 最小缩放：图片刚好完整显示在裁切区内
+    const minScale = Math.min(cropWidth / state.img.naturalWidth, cropHeight / state.img.naturalHeight);
+    // 最大缩放：图片原始分辨率（1:1 像素对应）
+    const maxScale = Math.max(state.img.naturalWidth / cropWidth, state.img.naturalHeight / cropHeight) * 2;
+    const newScale = Math.max(minScale, Math.min(maxScale, state.scale * factor));
 
     // 保持鼠标位置对应的图片点不变
     const imgX = (mouseX - state.offsetX) / state.scale;
@@ -161,8 +177,22 @@ function useCropCanvas(
     state.offsetY = mouseY - imgY * newScale;
     state.scale = newScale;
 
+    // 缩放后约束偏移
+    const sw2 = state.img.naturalWidth * state.scale;
+    const sh2 = state.img.naturalHeight * state.scale;
+    if (sw2 > cropWidth) {
+      state.offsetX = Math.max(cropWidth - sw2, Math.min(0, state.offsetX));
+    } else {
+      state.offsetX = (cropWidth - sw2) / 2;
+    }
+    if (sh2 > cropHeight) {
+      state.offsetY = Math.max(cropHeight - sh2, Math.min(0, state.offsetY));
+    } else {
+      state.offsetY = (cropHeight - sh2) / 2;
+    }
+
     draw();
-  }, [draw, canvasRef]);
+  }, [draw, canvasRef, cropWidth, cropHeight]);
 
   // 获取最终裁切结果（返回 blob）
   const getResultBlob = useCallback((): Promise<Blob | null> => {
@@ -233,7 +263,8 @@ function CropModal({
 }) {
   const isIcon = type === 'icon';
   const cropSize = isIcon ? 300 : 400; // 裁切区域宽度
-  const cropAspect = isIcon ? 1 : 16 / 9; // 图标正方形，背景图 16:9
+  // 非图标：裁切框宽高比取浏览器窗口当前比例
+  const cropAspect = isIcon ? 1 : window.innerWidth / window.innerHeight;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const cropWidth = cropSize;
@@ -270,8 +301,8 @@ function CropModal({
         </div>
         <div className="media-crop-hint">
           {isIcon
-            ? '拖拽移动图片，滚轮缩放 — 将裁切为正方形'
-            : '拖拽移动图片，滚轮缩放 — 保持原始宽高比'}
+            ? '拖拽移动图片，滚轮缩放 — 裁切为正方形图标'
+            : '拖拽移动图片，滚轮缩放 — 裁切为与浏览器同比例的背景图'}
         </div>
         <div
           className="media-crop-stage"
