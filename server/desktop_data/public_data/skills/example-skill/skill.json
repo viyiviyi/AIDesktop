@@ -1,0 +1,7 @@
+{
+  "id": "example-skill",
+  "name": "示例技能",
+  "description": "展示技能系统的基本结构和用法。",
+  "version": "1.0.0",
+  "entry": "roadmap.md"
+}
