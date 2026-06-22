@@ -207,7 +207,7 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
 
     // 检查是否已经有 agent 在运行
     const session = piAgentManager.get(appId);
-    if (session && session.agent.activeRun) {
+    if (session && session.agent.signal !== undefined) {
       return res.status(409).json({ error: 'Agent is already processing' });
     }
 

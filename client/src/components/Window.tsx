@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import { useToast } from '../contexts/ToastContext';
-import type { WindowState, Message, ModelProvider, MCPConnection, Skill, AppInfo, App, ProviderModel, Content, Conversation, FormSchema, FormField } from '../types';
+import type { WindowState, Message, ModelProvider, MCPConnection, AppInfo, App, ProviderModel, Content, FormSchema } from '../types';
 import * as api from '../services/api';
 import { useAgentEventStream } from '../services/useAgentEventStream';
 import type { WsConvEvent } from '../services/useAgentEventStream';
@@ -960,7 +960,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   };
 
   // 判断最后一条 assistant 消息是否可以继续（没有在加载且会话有 assistant 消息）
-  const canContinue = !isLoading && messages.length > 0 && messages[messages.length - 1]?.role === 'assistant';
+  // canContinue 暂未使用
 
   // 键盘事件处理 - 按配置的快捷键发送消息
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1700,8 +1700,8 @@ export function SettingsApp(_props: SettingsAppProps) {
   const [connMsg, setConnMsg] = useState<{ id: string; text: string; isError: boolean } | null>(null);
   // 工具启用状态（按连接ID存储）
   const [connEnabledTools, setConnEnabledTools] = useState<Record<string, string[]>>({});
-  // 技能列表
-  const [skills, setSkills] = useState<{ skills: Skill[]; globalEnabled: boolean }>({ skills: [], globalEnabled: true });
+  // 技能列表（旧系统，仅用于 loadSkillSettings 副作用）
+  // skill state 暂未直接使用（使用 allSkills）
   // 新技能系统列表（从 public_data/skills/ 加载）
   const [allSkills, setAllSkills] = useState<any[]>([]);
   // 已安装的应用列表
@@ -2001,13 +2001,7 @@ export function SettingsApp(_props: SettingsAppProps) {
   };
 
   const loadSkillSettings = async () => {
-    try {
-      const data = await api.getSkillSettings();
-      setSkills(data);
-    } catch (error) {
-      console.error('Failed to load skill settings:', error);
-    }
-    // 同时加载新技能系统的技能列表
+    // 旧技能系统状态已移除，仅加载新技能系统
     try {
       const newSkills = await api.getAllSkills();
       setAllSkills(newSkills || []);
@@ -2028,9 +2022,13 @@ export function SettingsApp(_props: SettingsAppProps) {
           const fullApp = await api.getApp(app.id);
           configs[app.id] = fullApp;
         } catch {
-          // Create a minimal App object if getApp fails
+        // Create a minimal App object if getApp fails
           configs[app.id] = {
             ...app,
+            appMd: '',
+            mcpServices: [],
+            skills: [],
+            config: {},
             models: [],
             supportedInputs: ['text'],
             inputDescription: '',
@@ -2052,15 +2050,6 @@ export function SettingsApp(_props: SettingsAppProps) {
     await updateSettings({ theme });
   };
 
-  const handleMcpUpdate = async (newMcp: typeof mcpConnections) => {
-    try {
-      const updated = await api.updateMcpSettings(newMcp);
-      setMcpConnections(updated);
-    } catch (error) {
-      console.error('Failed to update MCP settings:', error);
-    }
-  };
-
   const handleAddConnection = async () => {
     if (!newConnForm.name) return;
     try {
@@ -2074,6 +2063,8 @@ export function SettingsApp(_props: SettingsAppProps) {
           args: [],
           url: newConnForm.url,
           headers: newConnForm.headers.filter(h => h.key),
+          enabled: true,
+          services: [],
         });
       } else {
         if (!newConnForm.command) return;
@@ -2085,6 +2076,8 @@ export function SettingsApp(_props: SettingsAppProps) {
           args,
           cwd: newConnForm.cwd || undefined,
           url: undefined,
+          enabled: true,
+          services: [],
         });
       }
       setMcpConnections(result);
@@ -2167,7 +2160,8 @@ export function SettingsApp(_props: SettingsAppProps) {
         args: conn.args, 
         url: conn.url, 
         headers: conn.headers, 
-        enabled: conn.enabled !== false 
+        enabled: conn.enabled !== false,
+        services: conn.services || [],
       });
       setConnMsg({ id: conn.id, text: result.success ? '连接成功' : (result.connection as any)?.error || '连接失败', isError: !result.success });
       loadConnectedMcps();
@@ -2382,15 +2376,6 @@ export function SettingsApp(_props: SettingsAppProps) {
         )}
       </div>
     );
-  };
-
-  const handleSkillUpdate = async (newSkills: typeof skills) => {
-    try {
-      const updated = await api.updateSkillSettings(newSkills);
-      setSkills(updated);
-    } catch (error) {
-      console.error('Failed to update skill settings:', error);
-    }
   };
 
   const tabs: { id: SettingsTab; label: string }[] = [

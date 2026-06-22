@@ -212,7 +212,7 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
   tools.push(...externalTools);
 
   // 如果 app 有授权的技能，自动注入三个技能工具
-  const appSkillIds = [...(app.config.skills || []), ...(app.meta.skills || [])];
+  const appSkillIds = [...(app.config.skills || [])];
   if (appSkillIds.length > 0) {
     // mcp.skill.list — 获取当前 app 已授权的技能列表
     tools.push({

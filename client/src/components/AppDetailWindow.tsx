@@ -34,6 +34,13 @@ export function AppDetailWindow({ appId }: AppDetailWindowProps) {
         type: fullApp.type,
         icon: fullApp.icon,
         enabled: fullApp.enabled,
+        models: fullApp.models,
+        supportedInputs: fullApp.supportedInputs,
+        inputDescription: fullApp.inputDescription,
+        outputDescription: fullApp.outputDescription,
+        visibleApps: fullApp.visibleApps,
+        visibleServices: fullApp.visibleServices,
+        tools: fullApp.tools,
       });
     } catch (error) {
       console.error('Failed to load app details:', error);

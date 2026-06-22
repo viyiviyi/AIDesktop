@@ -259,6 +259,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       app: app,
       position: newPosition,
       size: { ...defaultSize },
+      minSize: state.settings.window.minSize,
       isMaximized: false,
       isMinimized: false,
       zIndex: state.windows.length > 0
@@ -310,6 +311,7 @@ export function DesktopProvider({ children }: { children: React.ReactNode }) {
       icon: icon || '',
       position: clampedPosition,
       size: { ...defaultSize },
+      minSize: state.settings.window.minSize,
       isMaximized: false,
       isMinimized: false,
       zIndex: maxZ + 1,

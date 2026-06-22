@@ -239,7 +239,7 @@ export class PiAgentSession {
               let p = options?.onPayload ? options.onPayload(payload, m) : undefined;
               if (p === undefined) p = { ...payload };
               // 注入 body 参数
-              Object.assign(p, bodyParams);
+              Object.assign(p as Record<string, unknown>, bodyParams);
               return p;
             },
           };
@@ -467,12 +467,13 @@ export async function runAgentAsync(
   const fullHistory = [...filteredMessages, { role: 'user', content: userContent }];
   serverLogger.info('agent', `runAgentAsync getOrCreate for ${appId}/${convId}`);
   const session = await piAgentManager.getOrCreate(appId, app);
-  serverLogger.info('agent', `runAgentAsync got session for ${appId}/${convId}, activeRun: ${!!session.agent.activeRun}`);
+  const hasActiveRun = session.agent.signal !== undefined;
+  serverLogger.info('agent', `runAgentAsync got session for ${appId}/${convId}, activeRun: ${hasActiveRun}`);
 
   session.currentConvId = convId;
 
   // 如果 agent 正在处理，忽略本次请求
-  if (session.agent.activeRun) {
+  if (hasActiveRun) {
     serverLogger.warn('agent', `Agent already processing for ${appId}/${convId}, skipping`);
     return;
   }
@@ -573,7 +574,7 @@ export async function runAgentAsync(
     if (!userText.trim() && userImages.length === 0) throw new Error('No text in user message');
 
     serverLogger.info('agent', `Calling agent.prompt for ${appId}/${convId}, text: "${userText.slice(0, 50)}"`);
-    await session.agent.prompt(userText || '(image input)', userImages.length > 0 ? userImages : undefined);
+    await session.agent.prompt(userText || '(image input)', userImages.length > 0 ? userImages as any : undefined);
     serverLogger.info('agent', `agent.prompt completed for ${appId}/${convId}`);
 
     // === 检测是否存在 pending 表单 ===

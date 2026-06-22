@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import type { FormSchema, FormField } from '../types';
 import * as api from '../services/api';
 
@@ -88,7 +88,7 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
             className="form-input"
           >
             <option value="">-- 请选择 --</option>
-            {(field.options || []).map((o, i) => {
+            {(field.options || []).map((o, _i) => {
               const opt = normOption(o);
               return <option key={opt.value} value={opt.value}>{opt.label}</option>;
             })}
@@ -97,7 +97,7 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
       case 'radio':
         return (
           <div className="form-radio-group">
-            {(field.options || []).map((o, i) => {
+            {(field.options || []).map((o, _i) => {
               const opt = normOption(o);
               return (
                 <label key={opt.value} className="form-radio-label">
@@ -105,7 +105,6 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
                     type="radio"
                     name={fieldId}
                     value={opt.value}
-                    checked={val === opt.value}
                     onChange={() => setValue(field.name, opt.value)}
                   />
                   <span>{opt.label}</span>

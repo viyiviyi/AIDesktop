@@ -323,7 +323,7 @@ export function MediaSelector({ appId, type, currentUrl, onSelect }: MediaSelect
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mediaList, setMediaList] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [_uploading, setUploading] = useState(false);
 
   // 裁切状态
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);

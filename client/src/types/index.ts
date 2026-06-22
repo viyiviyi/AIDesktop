@@ -175,12 +175,15 @@ export interface AppConfig {
   models?: ModelConfig[];
 }
 
-export interface App {
-  meta: AppInfo;
+export interface App extends AppInfo {
   appMd: string;
   mcpServices: string[];
   skills: string[];
   config: AppConfig;
+  // AppInfo 字段（平面展开）:
+  // id, name, description, source, type, icon, backgroundImage,
+  // models, supportedInputs, inputDescription, outputDescription,
+  // visibleApps, visibleServices, tools, enabled
 }
 
 // Skills

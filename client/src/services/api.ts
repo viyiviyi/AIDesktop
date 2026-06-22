@@ -1,4 +1,4 @@
-import type { App, AppInfo, AppSource, AppType, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel, ModelConfig, ContentType } from '../types';
+import type { App, AppInfo, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel } from '../types';
 import { logger } from './logger';
 
 // ============ SSE 事件类型 ============
@@ -142,46 +142,18 @@ export async function getApps(source?: string): Promise<AppInfo[]> {
 // 获取单个应用的完整信息
 export async function getApp(appId: string): Promise<App> {
   const data = await fetchJson<{
-    meta: {
-      id: string;
-      name: string;
-      description: string;
-      source: AppSource;
-      type: AppType;
-      icon: string;
-      enabled?: boolean;
-      backgroundImage?: string;
-      models?: ModelConfig[];
-      supportedInputs?: ContentType[];
-      inputDescription?: string;
-      outputDescription?: string;
-      visibleApps?: string[];
-      visibleServices?: string[];
-      tools?: string[];
-    };
+    meta: AppInfo;
     appMd: string;
     mcpServices: string[];
     skills: string[];
   }>(`/apps/${appId}`);
-  // 将服务器返回的App格式（包含meta字段）转换为客户端App格式（扁平结构）
+  // 将服务器返回的嵌套格式展开为客户端平面结构
   return {
-    id: data.meta.id,
-    name: data.meta.name,
-    description: data.meta.description,
-    source: data.meta.source,
-    type: data.meta.type,
-    icon: data.meta.icon,
-    enabled: data.meta.enabled,
-    backgroundImage: data.meta.backgroundImage,
-    models: data.meta.models || [],
-    supportedInputs: data.meta.supportedInputs || ['text'],
-    inputDescription: data.meta.inputDescription || '',
-    outputDescription: data.meta.outputDescription || '',
-    visibleApps: data.meta.visibleApps || [],
-    visibleServices: data.meta.visibleServices || [],
-    tools: data.meta.tools || [],
-    skills: data.skills || [],
+    ...data.meta,
     appMd: data.appMd,
+    mcpServices: data.mcpServices || [],
+    skills: data.skills || [],
+    config: {},
   };
 }
 

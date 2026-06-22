@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
-import type { App, ModelProvider, ModelConfig, ContentType } from '../types';
+import type { App, AppInfo, ModelProvider, ModelConfig, ContentType } from '../types';
 import * as api from '../services/api';
 import { AppModelConfig } from './AppModelConfig';
 import { MediaSelector } from './MediaSelector';
@@ -23,7 +23,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   const { closeWindow, state, refreshApp } = useDesktop();
   const [app, setApp] = useState<App | null>(null);
   const [providers, setProviders] = useState<ModelProvider[]>([]);
-  const [installedApps, setInstalledApps] = useState<App[]>([]);
+  const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
   const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
   // 技能列表
   const [allSkills, setAllSkills] = useState<Array<{ id: string; name: string; description: string }>>([]);
@@ -43,7 +43,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   // 外部 MCP 展开状态
   const [expandedMcpConns, setExpandedMcpConns] = useState<Record<string, boolean>>({});
   // 描述文本展开状态：{ 服务名: true/false }
-  const [showToolDescs, setShowToolDescs] = useState<Record<string, boolean>>({});
+  // showToolDescs/setShowToolDescs 暂未使用
 
   // Form state
   const [formData, setFormData] = useState({

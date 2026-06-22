@@ -86,7 +86,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const app = await appLoader.createApp(
-      { meta, appMd, mcpServices, skills },
+      { meta, appMd, mcpServices, skills, config: {} },
       'user'
     );
 
