@@ -14,3 +14,4 @@ hermes_conversation_*.json
 server/desktop_data/configs/window-positions.json
 server/desktop_data/public_data/skills/
 server/desktop_data/configs/enabled_skills.json
+server/desktop_data/configs/
