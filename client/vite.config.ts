@@ -11,9 +11,10 @@ export default defineConfig({
     minify: 'esbuild',
   },
   server: {
+    port: 27220,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:27135',
         changeOrigin: true,
       },
     },

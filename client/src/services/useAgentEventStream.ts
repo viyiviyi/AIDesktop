@@ -9,7 +9,7 @@ export interface WsConvEvent {
 
 type EventListener = (event: WsConvEvent) => void;
 
-const WS_URL = `ws://${window.location.hostname}:3001/api/ws`;
+const WS_URL = `ws://${window.location.hostname}:27135/api/ws`;
 
 /**
  * 订阅指定会话的事件流（WebSocket）
