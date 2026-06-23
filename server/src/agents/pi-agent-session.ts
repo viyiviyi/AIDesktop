@@ -371,23 +371,7 @@ async function handleFormPendingInternal(
   const { conversationService } = await import('../services/conversation.js');
   const { eventBus: evBus } = await import('../services/eventBus.js');
 
-  // 保存 agent 本轮产生的所有消息（跳过 pending toolResult，只保留 assistant）
-  const piMsgs = session.agent.state.messages as any[];
-  const newAssistantMsgs = piMsgs.filter((m: any) => m.role === 'assistant');
-  for (const msg of newAssistantMsgs) {
-    const content: Content[] = [];
-    for (const block of (msg.content || [])) {
-      if (block.type === 'text') content.push({ type: 'text', text: block.text });
-      else if (block.type === 'thinking') content.push({ type: 'thinking', text: block.thinking || block.text || '' });
-      else if (block.type === 'toolCall') {
-        content.push({ type: 'toolCall', id: block.id, name: block.name, arguments: block.arguments } as any);
-      }
-    }
-    if (content.length > 0) {
-      await conversationService.addMessage(appId, convId, 'assistant', content);
-    }
-  }
-
+  // 消息已在 message_end 事件中实时保存，不需要再次保存
   serverLogger.info('agent', `Agent paused for ${appId}/${convId}, waiting for form response...`);
 
   // 等待表单响应
@@ -505,6 +489,13 @@ export async function runAgentAsync(
       case 'message_end':
         if (event.message.role === 'assistant') {
           emit('message_end', { id: String(event.message.id), content: event.message.content });
+          // 实时保存 assistant 消息
+          saveNewMessages(appId, convId, [event.message], conversationService).catch((err: any) =>
+            serverLogger.error('agent', `Failed to save assistant message: ${err.message}`));
+        } else if (event.message.role === 'toolResult') {
+          // 实时保存 toolResult，避免中断时丢失
+          saveNewMessages(appId, convId, [event.message], conversationService).catch((err: any) =>
+            serverLogger.error('agent', `Failed to save toolResult: ${err.message}`));
         }
         break;
       case 'tool_execution_start':
@@ -513,7 +504,7 @@ export async function runAgentAsync(
       case 'tool_execution_end':
         if ((event.toolName?.includes('requestInput') || event.toolName?.includes('mcp.form'))
             && !event.isError) {
-          // 表单工具执行成功（非错误），停止 agent 后续思考
+          // 表单工具执行成功（非错误），停止 agent 后续思考，等待用户响应
           (session as any)._formPending = true;
           try { session.agent.abort(); } catch {}
           break;
@@ -578,17 +569,15 @@ export async function runAgentAsync(
     serverLogger.info('agent', `agent.prompt completed for ${appId}/${convId}`);
 
     // === 检测是否存在 pending 表单 ===
-    const convAfterPrompt = await conversationService.getConversation(appId, convId);
-    if (convAfterPrompt?.pendingForms && convAfterPrompt.pendingForms.length > 0) {
+    if ((session as any)._formPending) {
       await handleFormPendingInternal(appId, convId, session, app);
       unsub();
       unsub2();
       return;
     }
   } catch (error: any) {
-    // 表单暂停：agent 被 abort 了，检查是否有 pendingForms
-    const convAfterCatch = await conversationService.getConversation(appId, convId);
-    if (convAfterCatch?.pendingForms && convAfterCatch.pendingForms.length > 0) {
+    // 表单暂停：agent 被 abort 了，检查是否有 _formPending 标记
+    if ((session as any)._formPending) {
       await handleFormPendingInternal(appId, convId, session, app);
       unsub();
       unsub2();
@@ -611,12 +600,7 @@ export async function runAgentAsync(
   unsub();
   unsub2();
 
-  // 将 pi 的新消息转换为持久化消息保存
-  const piMessages = session.agent.state.messages;
-  const existingCount = fullHistory.length - 1; // 减去我们加的 user
-  const newPiMessages = piMessages.slice(existingCount);
-
-  await saveNewMessages(appId, convId, newPiMessages, conversationService);
+  // 消息已在 message_end 事件中实时保存，不需要再批量保存
 
   // 自动将最终结果返回给调用方
   const conversation = await conversationService.getConversation(appId, convId);
@@ -625,7 +609,8 @@ export async function runAgentAsync(
     // 跳过 _injected_ 这种内部标记
     if (lastCaller.callerAppId && lastCaller.callerAppId !== '_injected_') {
       // 提取最后一次 assistant 消息的文本作为最终结果
-      const finalText = extractFinalText(piMessages, newPiMessages);
+      const piMessages = session.agent.state.messages;
+      const finalText = extractFinalText(piMessages, []);
       if (finalText) {
         const callId = lastCaller.callId || '';
 

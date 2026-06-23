@@ -751,12 +751,29 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   // 创建新会话
   const createNewConversation = async () => {
     try {
-      const conv = await api.createConversation(appId, `会话 ${conversations.length + 1}`);
+      const title = input.trim() || `会话 ${conversations.length + 1}`;
+      const conv = await api.createConversation(appId, title);
       setConversations([...conversations, { id: conv.id, title: conv.title, workspaceDir: conv.workspaceDir }]);
       setConversationTitle(conv.id, conv.title);
       setCurrentConvId(conv.id);
       setMessages([]);
       setShowConvList(false);
+      // 如果有输入内容，自动发送并更新标题
+      if (input.trim()) {
+        const messageContent = input;
+        const content: Content[] = [{ type: 'text', text: messageContent }];
+        setInput('');
+        setIsLoading(true);
+        try {
+          await api.sendMessage(appId, conv.id, content);
+          // 用第一条消息更新会话标题
+          await api.updateConversationTitle(appId, conv.id, messageContent.slice(0, 50));
+          setConversations(prev => prev.map(c =>
+            c.id === conv.id ? { ...c, title: messageContent.slice(0, 50) } : c
+          ));
+          setConversationTitle(conv.id, messageContent.slice(0, 50));
+        } catch {}
+      }
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
