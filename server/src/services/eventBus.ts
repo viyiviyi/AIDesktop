@@ -5,6 +5,8 @@
  * 未来 agent 调用应用、工具执行等事件都通过这个总线分发。
  */
 
+import { EventEmitter } from 'events';
+
 export type ConvEventType =
   | 'thinking'
   | 'message_start'
@@ -37,6 +39,8 @@ export interface ConvEvent {
 type Listener = (event: ConvEvent) => void;
 
 class EventBusClass {
+  public ee = new EventEmitter();
+
   private listeners = new Map<string, Set<Listener>>();
 
   /** 订阅指定会话的事件 */
@@ -64,6 +68,9 @@ class EventBusClass {
 
   /** 推送事件到总线 */
   emit(event: ConvEvent): void {
+    // 也通过 EventEmitter 触发（供 await 模式使用）
+    this.ee.emit(event.type, event);
+
     // 通知该 conv 的订阅者
     const convListeners = this.listeners.get(event.convId);
     if (convListeners) {
@@ -78,6 +85,23 @@ class EventBusClass {
         try { listener(event); } catch { /* ignore */ }
       }
     }
+  }
+
+  /** 一次性等待某个事件类型（用于 await 模式） */
+  waitFor(eventType: ConvEventType, filter?: (event: ConvEvent) => boolean): Promise<ConvEvent> {
+    return new Promise((resolve) => {
+      const handler = (event: ConvEvent) => {
+        if (!filter || filter(event)) {
+          this.ee.off(eventType, handler);
+          resolve(event);
+        }
+      };
+      this.ee.on(eventType, handler);
+      // 超时安全
+      setTimeout(() => {
+        this.ee.off(eventType, handler);
+      }, 300_000);
+    });
   }
 }
 

@@ -357,6 +357,8 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const [pendingForms, setPendingForms] = useState<Map<string, { formId: string; schema: FormSchema; toolCallId: string }>>(new Map());
   // 待处理的工作目录授权请求
   const [workspaceRequest, setWorkspaceRequest] = useState<{ toolCallId: string; requestedPath?: string } | null>(null);
+  // 工作目录修改弹窗
+  const [workspaceEditOpen, setWorkspaceEditOpen] = useState(false);
 
   // 判断当前应用是否支持图片输入
   const currentAppInfo = state.installedApps.find(a => a.id === appId);
@@ -628,6 +630,11 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         }
         break;
       }
+      case 'workspace_response':
+      case 'workspace_cancelled': {
+        setWorkspaceRequest(null);
+        break;
+      }
       case 'workspace_request': {
         const wsData = event.data as any;
         setWorkspaceRequest({
@@ -637,7 +644,6 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         // 关闭 loading，显示授权选择器
         setIsLoading(false);
         setThinkingText('');
-        // 保留 toolCalls，授权选择器会叠加在已有的 tool call 卡片下面
         break;
       }
       case 'error':
@@ -963,7 +969,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
 
   // 继续 AI 输出（不带新用户输入）
   const handleContinue = async () => {
-    if (!currentConvId) return;
+    if (!currentConvId || !!workspaceRequest) return;
     setIsLoading(true);
     setThinkingText('继续中...');
     setStreamingText('');
@@ -1236,7 +1242,12 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         {(() => {
           const currentConv = conversations.find((c) => c.id === currentConvId);
           return currentConv?.workspaceDir ? (
-            <span className="chat-header-workspace" title={`工作目录: ${currentConv.workspaceDir}`}>
+            <span
+              className="chat-header-workspace"
+              title={`工作目录: ${currentConv.workspaceDir}，点击更改`}
+              onClick={() => setWorkspaceEditOpen(true)}
+              style={{ cursor: 'pointer' }}
+            >
               📁 {currentConv.workspaceDir}
             </span>
           ) : null;
@@ -1592,6 +1603,36 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
           <span className="reply-bar-text">请先填写并提交上方的表单</span>
         </div>
       )}
+      {/* 工作目录修改弹窗 */}
+      {workspaceEditOpen && (() => {
+        const currentConv = conversations.find(c => c.id === currentConvId);
+        return (
+          <div className="modal-overlay" onClick={() => setWorkspaceEditOpen(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <WorkspaceDirSelector
+                appId={appId!}
+                convId={currentConvId!}
+                toolCallId=""
+                currentDir={currentConv?.workspaceDir || undefined}
+                isEditMode={true}
+                onSubmitted={(path) => {
+                  setWorkspaceEditOpen(false);
+                  fetch(`/api/apps/${appId}/conversations/${currentConvId}/workspace-response`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ toolCallId: '', path, cancelled: false }),
+                  }).then(() => {
+                    setConversations(prev => prev.map(c =>
+                      c.id === currentConvId ? { ...c, workspaceDir: path } : c
+                    ));
+                  }).catch(() => {});
+                }}
+                onCancelled={() => setWorkspaceEditOpen(false)}
+              />
+            </div>
+          </div>
+        );
+      })()}
       <div className="chat-input-area">
         {editingMsgId ? (
           <>
@@ -1649,8 +1690,8 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
                 onChange={(e) => { setInput(e.target.value); autoResize(e); }}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder={replyToId ? '输入回复...' : '输入消息...'}
-                disabled={!currentConvId || pendingForms.size > 0}
+                placeholder={workspaceRequest ? '请先完成授权...' : (pendingForms.size > 0 ? '请先填写表单...' : (replyToId ? '输入回复...' : '输入消息...'))}
+                disabled={!currentConvId || isLoading || pendingForms.size > 0 || !!workspaceRequest}
                 rows={1}
               />
               <button
@@ -1662,7 +1703,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
                     handleContinue();
                   }
                 }}
-                disabled={!currentConvId || isLoading || pendingForms.size > 0 || (input.trim() || attachments.length > 0 ? false : messages.length === 0)}
+                disabled={!currentConvId || isLoading || pendingForms.size > 0 || !!workspaceRequest || (input.trim() || attachments.length > 0 ? false : messages.length === 0)}
               >
                 {(input.trim() || attachments.length > 0) ? '发送' : (messages.length > 0 ? '继续' : '发送')}
               </button>

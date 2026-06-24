@@ -2064,6 +2064,31 @@ button {
   gap: 8px;
 }
 
+/* 通用 modal 样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-content {
+  width: 500px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: var(--window-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  overflow-y: auto;
+}
+
 /* App Model Config */
 .app-model-config-list {
   display: flex;

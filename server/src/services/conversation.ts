@@ -44,7 +44,7 @@ class ConversationService {
   }
 
   // 获取单会话文件夹路径
-  private async getConvFolder(appId: string, convId: string): Promise<string | null> {
+  async getConvFolder(appId: string, convId: string): Promise<string | null> {
     const convDir = this.getConversationsDir(appId);
     // 先从缓存中找
     const cacheEntry = this.cache.get(appId);

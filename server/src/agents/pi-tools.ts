@@ -188,13 +188,9 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
               enrichedParams,
               { appId: app.meta.id, convId: _currentConvId },
             );
-            // 如果表单工具返回 pending，设置 terminate 让 agent 停止后续调用
-            const rawResult = result as any;
-            const terminateLoop = serviceName === 'mcp.form' && rawResult?.status === 'pending';
             return {
               content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
               details: result,
-              terminate: terminateLoop || undefined,
             };
           } catch (error) {
             return {
@@ -431,7 +427,6 @@ export function buildWorkspaceTools(app: App, convId: string): AgentTool[] {
             return {
               content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
               details: result,
-              terminate: (result as any)?.status === 'pending' || undefined,
             };
           } catch (error) {
             return {

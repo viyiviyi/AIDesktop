@@ -18,6 +18,7 @@ import { findModel } from "../models/pi-adapter.js";
 import { buildPiToolsForApp, buildWorkspaceTools, setCurrentConvId } from "./pi-tools.js";
 import { serverLogger } from "../utils/logger.js";
 import { DATA_DIR, APPS_DATA_DIR } from "../utils/file.js";
+import { conversationService } from "../services/conversation.js";
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
@@ -378,10 +379,19 @@ async function handleFormPendingInternal(
   const formResponse = await new Promise<{ type: 'form_response' | 'form_cancelled'; data: Record<string, unknown> }>((resolve) => {
     const unsub = evBus.subscribe(convId, (event) => {
       if (event.type === 'form_response' || event.type === 'form_cancelled') {
+        // 防止被当前工具执行的 tool_result 事件误触发：检查事件来源
+        // 只有来自 route handler 的人工事件（带有 formId）才算数
+        if (!event.data.formId || event.data.formId === '') return;
         unsub();
         resolve({ type: event.type, data: event.data });
       }
     });
+
+    // 超时保护：60 秒后如果还没响应，放弃等待（防止 agent 永久阻塞）
+    setTimeout(() => {
+      unsub();
+      resolve({ type: 'form_cancelled', data: { toolCallId: '', formData: {}, cancelled: true } });
+    }, 60000);
   });
 
   serverLogger.info('agent', `Agent resuming for ${appId}/${convId}, form response received`);
@@ -496,19 +506,13 @@ export async function runAgentAsync(
           // 实时保存 toolResult，避免中断时丢失
           saveNewMessages(appId, convId, [event.message], conversationService).catch((err: any) =>
             serverLogger.error('agent', `Failed to save toolResult: ${err.message}`));
+          emit('tool_result', { toolCallId: event.message.toolCallId, toolName: event.message.toolName, result: event.message.content, isError: event.message.isError });
         }
         break;
       case 'tool_execution_start':
         emit('tool_call', { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
         break;
       case 'tool_execution_end':
-        if ((event.toolName?.includes('requestInput') || event.toolName?.includes('mcp.form'))
-            && !event.isError) {
-          // 表单工具执行成功（非错误），停止 agent 后续思考，等待用户响应
-          (session as any)._formPending = true;
-          try { session.agent.abort(); } catch {}
-          break;
-        }
         emit('tool_result', { toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError });
         break;
     }
@@ -568,30 +572,10 @@ export async function runAgentAsync(
     await session.agent.prompt(userText || '(image input)', userImages.length > 0 ? userImages as any : undefined);
     serverLogger.info('agent', `agent.prompt completed for ${appId}/${convId}`);
 
-    // === 检测是否存在 pending 表单 ===
-    if ((session as any)._formPending) {
-      await handleFormPendingInternal(appId, convId, session, app);
-      unsub();
-      unsub2();
-      return;
-    }
   } catch (error: any) {
-    // 表单暂停：agent 被 abort 了，检查是否有 _formPending 标记
-    if ((session as any)._formPending) {
-      await handleFormPendingInternal(appId, convId, session, app);
-      unsub();
-      unsub2();
-      return;
-    }
-    // 其他错误正常处理
-    if (workspaceAuthAbort || (session as any)._workspaceAuthAbort) {
-      // 因 workspace 授权而中止，不发送 error
-      serverLogger.info('agent', `Agent aborted for workspace auth ${appId}/${convId}`);
-    } else {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      serverLogger.error('agent', `Agent error for ${appId}/${convId}: ${msg}`);
-      eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
-    }
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    serverLogger.error('agent', `Agent error for ${appId}/${convId}: ${msg}`);
+    eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
     unsub();
     unsub2();
     eventBus.emit({ type: 'done', appId, convId, data: {} });
@@ -761,9 +745,11 @@ export async function replaceLargeContentWithFileRef(
   async function processValue(v: unknown, key: string): Promise<unknown> {
     if (typeof v === 'string' && (v.length > threshold || v.includes('\n'))) {
       const uuid = crypto.randomUUID();
-      const relPath = `${appId}/${convId}/${uuid}.txt`;
-      const absDir = path.join(DATA_DIR, 'apps_data', appId, 'conversations', convId, 'attachments');
+      const convFolder = await conversationService.getConvFolder(appId, convId);
+      if (!convFolder) return v;
+      const absDir = path.join(convFolder, 'attachments');
       const absPath = path.join(absDir, `${uuid}.txt`);
+      const relPath = `${appId}/${path.basename(convFolder)}/${uuid}.txt`;
       try {
         await fs.mkdir(absDir, { recursive: true });
         await fs.writeFile(absPath, v, 'utf-8');

@@ -6,6 +6,10 @@ interface WorkspaceDirSelectorProps {
   toolCallId: string;
   /** 发起请求时试图访问的路径 */
   requestedPath?: string;
+  /** 当前工作目录（修改模式下传入，授权模式下不传） */
+  currentDir?: string;
+  /** 是否为修改模式（由用户主动点击修改，非 agent 触发） */
+  isEditMode?: boolean;
   onSubmitted: (path: string) => void;
   onCancelled: () => void;
 }
@@ -46,13 +50,13 @@ function getHierarchyLevels(requestedPath: string): string[] {
 }
 
 export function WorkspaceDirSelector({
-  appId, convId, toolCallId, requestedPath,
+  appId, convId, toolCallId, requestedPath, currentDir, isEditMode,
   onSubmitted, onCancelled,
 }: WorkspaceDirSelectorProps) {
-  // 从请求路径的层级生成下拉选项
-  const levels = requestedPath ? getHierarchyLevels(requestedPath) : ['/'];
+  // 从请求路径或当前目录生成层级下拉选项
+  const levels = requestedPath ? getHierarchyLevels(requestedPath) : (currentDir ? getHierarchyLevels(currentDir) : ['/']);
   const [selectedLevel, setSelectedLevel] = useState<string>(levels[0] || '/');
-  const [inputPath, setInputPath] = useState<string>(selectedLevel);
+  const [inputPath, setInputPath] = useState<string>(isEditMode && currentDir ? currentDir : (levels[0] || '/'));
   const [error, setError] = useState<string>('');
   const [validating, setValidating] = useState(false);
   const [valid, setValid] = useState<boolean | null>(null);
@@ -146,10 +150,12 @@ export function WorkspaceDirSelector({
 
   return (
     <div className="form-inline workspace-dir-selector">
-      <div className="form-title">授权工作目录</div>
+      <div className="form-title">{isEditMode ? '更改工作目录' : '授权工作目录'}</div>
       <div className="form-description">
-        Agent 需要访问目录 <strong>{requestedPath || '未知路径'}</strong>。
-        请选择一个工作目录，设置后该会话下的文件操作将限制在此目录内。
+        {isEditMode
+          ? '修改会话的工作目录，设置后该会话下的文件操作将限制在此目录内。'
+          : <>Agent 需要访问目录 <strong>{requestedPath || '未知路径'}</strong>。请选择一个工作目录，设置后该会话下的文件操作将限制在此目录内。</>
+        }
       </div>
 
       {/* 层级下拉选择 */}
@@ -183,10 +189,10 @@ export function WorkspaceDirSelector({
 
       <div className="form-actions">
         <button className="form-submit-btn" onClick={handleConfirm} disabled={validating}>
-          {validating ? '校验中...' : '确认授权'}
+          {validating ? '校验中...' : (isEditMode ? '确认修改' : '确认授权')}
         </button>
         <button className="form-cancel-btn" onClick={handleCancel} disabled={validating}>
-          拒绝
+          {isEditMode ? '取消' : '拒绝'}
         </button>
       </div>
     </div>

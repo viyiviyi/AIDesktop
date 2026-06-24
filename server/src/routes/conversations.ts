@@ -259,9 +259,20 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
           { appId, convId }
         );
         const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-        await conversationService.addMessage(appId, convId, 'toolResult', [
+        const savedMsg = await conversationService.addMessage(appId, convId, 'toolResult', [
           { type: 'text', text: resultStr },
         ]);
+        // 设置 toolResultMeta 以便前端能匹配到对应的 toolCall
+        if (savedMsg) {
+          const conv = await conversationService.getConversation(appId, convId);
+          if (conv) {
+            const found = conv.messages.find(m => m.id === savedMsg.id);
+            if (found) {
+              (found as any).toolResultMeta = { toolCallId, toolName, isError: false };
+              await conversationService.updateConversation(appId, convId, { messages: conv.messages } as any);
+            }
+          }
+        }
         // 发送 tool_result 事件到前端
         eventBus.emit({
           type: 'tool_result' as any,
@@ -274,11 +285,27 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
         runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [{ type: 'text', text: '(continue)' }])
           .catch((err: any) => serverLogger.error('agent', `Continue after retry error: ${err.message}`));
       } catch (err: any) {
+        const msg = err?.message || '';
+        // 用户取消工作目录/授权，直接中断，不存消息不启动 agent
+        if (msg.includes('取消了工作目录') || msg.includes('取消了目录访问')) {
+          serverLogger.info('agent', `Continue cancelled by user: ${msg}`);
+          return;
+        }
         serverLogger.error('agent', `Continue tool retry failed: ${err.message}`);
         // 失败时也插入错误结果，然后启动 agent
-        await conversationService.addMessage(appId, convId, 'toolResult', [
+        const errMsg = await conversationService.addMessage(appId, convId, 'toolResult', [
           { type: 'text', text: JSON.stringify({ error: err.message }) },
         ]);
+        if (errMsg) {
+          const conv = await conversationService.getConversation(appId, convId);
+          if (conv) {
+            const found = conv.messages.find(m => m.id === errMsg.id);
+            if (found) {
+              (found as any).toolResultMeta = { toolCallId, toolName, isError: true };
+              await conversationService.updateConversation(appId, convId, { messages: conv.messages } as any);
+            }
+          }
+        }
         eventBus.emit({
           type: 'tool_result' as any,
           appId,
@@ -352,114 +379,23 @@ router.delete('/:convId/messages/:msgId', async (req: Request, res: Response) =>
 router.post('/:convId/form-response', async (req: Request, res: Response) => {
   try {
     const { appId, convId } = req.params;
-    const { formId, toolCallId, data, cancelled } = req.body;
+    const { formId, data, cancelled } = req.body;
 
     if (!formId) return res.status(400).json({ error: 'formId is required' });
 
-    const conversation = await conversationService.getConversation(appId, convId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    serverLogger.info('system', `Form ${formId} ${cancelled ? 'cancelled' : 'submitted'} for ${appId}/${convId}`);
 
-    const tcid = toolCallId || '';
-
-    // 保存 toolResult 到消息列表
-    if (cancelled) {
-      const toolResultMeta = { toolCallId: tcid, toolName: 'mcp_form_requestInput', isError: false };
-      const saveMsg = await conversationService.addMessage(appId, convId, 'toolResult' as any, [
-        { type: 'text', text: JSON.stringify({ status: 'cancelled', message: '用户取消了表单填写' }) },
-      ]);
-      if (saveMsg) {
-        const conv = await conversationService.getConversation(appId, convId);
-        if (conv) {
-          const saved = conv.messages.find((m: any) => m.id === saveMsg.id);
-          if (saved) {
-            saved.toolResultMeta = toolResultMeta;
-            await conversationService.updateConversation(appId, convId, { messages: conv.messages } as any);
-          }
-        }
-      }
-      serverLogger.info('system', `Form ${formId} cancelled for ${appId}/${convId}`);
-    } else {
-      const toolResultMeta = { toolCallId: tcid, toolName: 'mcp_form_requestInput', isError: false };
-      const formDataStr = JSON.stringify(data || {});
-      const saveMsg = await conversationService.addMessage(appId, convId, 'toolResult' as any, [
-        { type: 'text', text: formDataStr },
-      ]);
-      if (saveMsg) {
-        const conv = await conversationService.getConversation(appId, convId);
-        if (conv) {
-          const saved = conv.messages.find((m: any) => m.id === saveMsg.id);
-          if (saved) {
-            saved.toolResultMeta = toolResultMeta;
-            await conversationService.updateConversation(appId, convId, { messages: conv.messages } as any);
-          }
-        }
-      }
-      serverLogger.info('system', `Form ${formId} submitted for ${appId}/${convId}: ${JSON.stringify(data)}`);
-    }
-
-    // 通过 eventBus 通知等待中的 agent
+    // 通过 eventBus 通知 handleFormMethod 中等待的 Promise
     eventBus.emit({
       type: cancelled ? 'form_cancelled' : 'form_response',
       appId,
       convId,
       data: {
         formId,
-        toolCallId: tcid,
         formData: data || {},
         cancelled: !!cancelled,
       },
     });
-
-    // 检查是否还有其他未提交的表单
-    const updatedConv = await conversationService.getConversation(appId, convId);
-    let hasMorePendingForms = false;
-    if (updatedConv && updatedConv.messages) {
-      for (let i = 0; i < updatedConv.messages.length; i++) {
-        const msg = updatedConv.messages[i];
-        if (msg.role !== 'assistant') continue;
-        for (const c of msg.content) {
-          const tc = c as any;
-          if (tc.type === 'toolCall' && (tc.name === 'mcp_form_requestInput' || tc.name === 'mcp.form.requestInput')) {
-            let hasResult = false;
-            for (let j = i + 1; j < updatedConv.messages.length; j++) {
-              const next = updatedConv.messages[j];
-              if (next.role === 'toolResult' && next.toolResultMeta?.toolCallId === tc.id) {
-                const text = (next.content as any[])
-                  .filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');
-                if (text.includes('"status":"pending"') || text.includes('"status": "pending"')) continue;
-                hasResult = true;
-                break;
-              }
-            }
-            if (!hasResult) {
-              hasMorePendingForms = true;
-              break;
-            }
-          }
-        }
-        if (hasMorePendingForms) break;
-      }
-    }
-
-    // 如果没有更多待填表单，恢复 agent 继续处理
-    if (!hasMorePendingForms && !cancelled) {
-      try {
-        const appLoader = (await import('../services/appLoader.js')).appLoader;
-        const app = appLoader.getApp(appId);
-        if (!app) {
-          serverLogger.error('system', `Cannot resume: app ${appId} not found`);
-        } else {
-          const { runAgentAsync } = await import('../agents/pi-agent-session.js');
-          serverLogger.info('system', `Form submitted, resuming agent for ${appId}/${convId}`);
-          setImmediate(() => {
-            runAgentAsync(appId, convId, app, updatedConv?.messages || [], [{ type: 'text', text: '(continue)' }])
-              .catch((err: any) => serverLogger.error('agent', `Form submit resume error: ${err.message}`));
-          });
-        }
-      } catch (err: any) {
-        serverLogger.error('system', `Failed to resume agent after form submit: ${err.message}`);
-      }
-    }
 
     res.json({ success: true });
   } catch (error) {
@@ -475,10 +411,10 @@ router.post('/:convId/workspace-response', async (req: Request, res: Response) =
 
     serverLogger.info('system', `Workspace response for ${appId}/${convId}: ${cancelled ? 'CANCELLED' : `path=${path}`}`);
 
-    // 保存用户选择（如果确认）
+    const fs = await import('fs');
+    const p = await import('path');
+
     if (!cancelled && path) {
-      const fs = await import('fs');
-      const p = await import('path');
       const absDir = p.resolve(path);
       if (!fs.existsSync(absDir)) {
         return res.status(400).json({ error: `目录不存在: ${absDir}` });
@@ -486,27 +422,74 @@ router.post('/:convId/workspace-response', async (req: Request, res: Response) =
       if (!fs.statSync(absDir).isDirectory()) {
         return res.status(400).json({ error: `不是目录: ${absDir}` });
       }
-      await conversationService.updateConversation(appId, convId, { workspaceDir: absDir } as any);
+
+      const conv = await conversationService.getConversation(appId, convId);
+      if (conv) {
+        if (!conv.workspaceDir) {
+          // 首次设置工作目录
+          await conversationService.updateConversation(appId, convId, { workspaceDir: absDir } as any);
+        } else {
+          // 已有工作目录：授权访问额外目录
+          const existingDirs: string[] = conv.authorizedDirs || [];
+          if (!existingDirs.includes(absDir)) {
+            existingDirs.push(absDir);
+          }
+          await conversationService.updateConversation(appId, convId, { authorizedDirs: existingDirs } as any);
+        }
+      }
+      // 通知 requestWorkspaceAuthorization 中等待的 Promise
+      eventBus.emit({
+        type: 'workspace_response',
+        appId,
+        convId,
+        data: { formData: { path: absDir }, cancelled: false, toolCallId },
+      });
+    } else {
+      // 用户取消/拒绝
+      const conv = await conversationService.getConversation(appId, convId);
+      if (conv && !conv.workspaceDir) {
+        // 首次设置工作目录被取消 → 中断（无返回内容）
+        serverLogger.info('system', `Workspace setup cancelled for ${appId}/${convId}`);
+      } else {
+        // 授权访问目录被拒绝 → 拒绝式，agent 可继续（不需要留消息）
+        serverLogger.info('system', `Directory access denied for ${appId}/${convId}`);
+      }
+      eventBus.emit({
+        type: 'workspace_cancelled',
+        appId,
+        convId,
+        data: { cancelled: true, toolCallId },
+      });
     }
-
-    // 通知等待中的 handleWorkspaceCodeMethod
-    eventBus.emit({
-      type: cancelled ? 'workspace_cancelled' : 'workspace_response',
-      appId,
-      convId,
-      data: {
-        toolCallId,
-        path: cancelled ? undefined : path,
-        cancelled: !!cancelled,
-      },
-    });
-
-    serverLogger.info('system', `Workspace response sent to eventBus for ${appId}/${convId}`);
 
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
 });
+
+/** 保存 toolResult 消息并 emit 到 eventBus */
+async function saveToolResultAndEmit(
+  appId: string,
+  convId: string,
+  toolCallId: string,
+  data: Record<string, unknown>,
+  evBus: typeof eventBus,
+): Promise<void> {
+  const text = JSON.stringify(data);
+  const toolResultMeta = { toolCallId, toolName: 'workspace_dir_requestAccess', isError: false };
+  const saveMsg = await conversationService.addMessage(appId, convId, 'toolResult' as any, [{ type: 'text', text }]);
+  if (saveMsg) {
+    const conv = await conversationService.getConversation(appId, convId);
+    if (conv) {
+      const saved = conv.messages.find((m: any) => m.id === saveMsg.id);
+      if (saved) {
+        saved.toolResultMeta = toolResultMeta;
+        await conversationService.updateConversation(appId, convId, { messages: conv.messages } as any);
+      }
+    }
+  }
+  evBus.emit({ type: 'tool_result' as any, appId, convId, data: { toolCallId, toolName: 'workspace_dir_requestAccess', result: data, isError: false } });
+}
 
 export default router;

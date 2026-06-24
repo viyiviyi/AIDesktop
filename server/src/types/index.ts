@@ -115,6 +115,8 @@ export interface Conversation {
   }>;
   /** 会话工作目录绝对路径 */
   workspaceDir?: string | null;
+  /** 已授权访问的目录列表（绝对路径），不含工作目录自身 */
+  authorizedDirs?: string[];
 }
 
 export interface FormField {
@@ -225,6 +227,8 @@ export interface MCPService {
   description: string;
   methods: string[];
   category?: 'admin' | 'builtin' | 'workspace';
+  /** 需要工作目录的工具，标记哪些字段名是路径参数（相对路径拼接工作目录） */
+  workspaceFields?: Record<string, string[]>;
 }
 
 export interface MCPConnection {

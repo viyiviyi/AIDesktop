@@ -2,9 +2,10 @@ import type { MCPService, Content } from '../types/index.js';
 import type { FormSchema } from '../types/index.js';
 import { mcpClientRegistry } from './clientRegistry.js';
 import { logger } from '../utils/logger.js';
-import { eventBus } from '../services/eventBus.js';
+import { eventBus, type ConvEvent } from '../services/eventBus.js';
 import { runAgentAsync } from '../agents/pi-agent-session.js';
 import { v4 as uuidv4 } from 'uuid';
+import * as path from 'node:path';
 import * as os from 'os';
 
 // 内置MCP服务定义
@@ -73,6 +74,13 @@ const builtInServices: Record<string, MCPService> = {
     description: '工作区文件编辑 - 读取、写入、替换、搜索、列出文件（路径相对于会话工作目录，支持绝对路径）',
     methods: ['read', 'write', 'patch', 'search', 'list'],
     category: 'workspace',
+    workspaceFields: {
+      read: ['path'],
+      write: ['path'],
+      patch: ['path'],
+      search: ['pattern'],
+      list: ['path'],
+    },
   },
   'mcp.skill': {
     name: 'mcp.skill',
@@ -162,6 +170,8 @@ class MCPServiceRegistry {
         return this.handleFormMethod(method, args, context);
       case 'workspace.code':
         return this.handleWorkspaceCodeMethod(method, args, context);
+      case 'workspace.dir':
+        return this.handleWorkspaceDirMethod(method, args, context);
       case 'mcp.skill':
         return this.handleSkillMethod(method, args, context);
       default:
@@ -980,21 +990,42 @@ class MCPServiceRegistry {
           createdAt: new Date().toISOString(),
         };
 
-        // 如果提供了 appId/convId，推送 form_request 事件给前端
+        const toolCallId = args._toolCallId as string || '';
+
+        // 直接 emit form_request 到前端
         if (context.appId && context.convId) {
           eventBus.emit({
             type: 'form_request',
             appId: context.appId,
             convId: context.convId,
-            data: { formId, schema, conversationId: context.convId, appId: context.appId, createdAt: formInfo.createdAt },
+            data: formInfo,
           });
         }
 
-        return {
-          status: 'pending',
-          formId,
-          message: `表单"${title}"已发送给用户，等待用户填写...`,
-        };
+        // 等待用户提交/取消表单——会在 form_response 或 form_cancelled 任一触发时结束
+        const formResult = await new Promise<ConvEvent>((resolve) => {
+          const done = (event: ConvEvent) => {
+            // 用 toolCallId 匹配（兼容 workspace 授权场景没有 formId 的情况），或 fallback 到 formId
+            const match = event.data?.formId === formId
+              || (event.data?.toolCallId && event.data?.toolCallId === toolCallId);
+            if (match) {
+              cleanup();
+              resolve(event);
+            }
+          };
+          const cleanup = () => {
+            eventBus.ee.off('form_response', done);
+            eventBus.ee.off('form_cancelled', done);
+          };
+          eventBus.ee.on('form_response', done);
+          eventBus.ee.on('form_cancelled', done);
+        });
+
+        if (formResult.type === 'form_cancelled' || formResult.data?.cancelled) {
+          return { status: 'cancelled', message: '用户取消了表单填写' };
+        }
+
+        return formResult.data?.formData || {};
       }
       default:
         throw new Error(`Unknown method: ${method}`);
@@ -1124,47 +1155,62 @@ class MCPServiceRegistry {
     args: Record<string, unknown>,
     context: { appId?: string; convId?: string }
   ): Promise<unknown> {
-    // 获取会话工作目录
     const { conversationService } = await import('../services/conversation.js');
     const conv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
-    let workspaceDirVal = conv?.workspaceDir;
+    const authorizedDirs: string[] = [...(conv?.authorizedDirs || [])];
+    const workspaceDirVal = conv?.workspaceDir;
+
+    // 没有工作目录时，弹出授权框要求用户设置
     if (!workspaceDirVal) {
-      // 没有工作目录时，使用 public_data 作为默认起始目录
-      const { PUBLIC_DATA_DIR } = await import('../utils/file.js');
-      const p = await import('path');
-      workspaceDirVal = p.default.resolve(PUBLIC_DATA_DIR);
-      // 确保目录存在
-      const fs = await import('fs');
-      if (!fs.existsSync(workspaceDirVal)) {
-        await fs.promises.mkdir(workspaceDirVal, { recursive: true });
+      const requestedPath = (args.path as string) || '';
+      const authResult = await this.requestWorkspaceAuthorization(context, '首次使用需要设置工作目录', requestedPath);
+      // 授权成功后，重新获取会话（包含了新设置的工作目录）
+      const updatedConv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
+      if (!updatedConv?.workspaceDir) {
+        throw new Error('工作目录设置失败');
+      }
+      // 重新执行实际的方法
+      return this.handleWorkspaceCodeMethod(method, args, context);
+    }
+
+    // 获取该方法的路径参数列表
+    const service = this.services.get('workspace.code');
+    const pathFields = service?.workspaceFields?.[method] || ['path'];
+    const accessedPaths: string[] = [];
+
+    // 提取所有路径参数并解析为绝对路径
+    for (const field of pathFields) {
+      const val = args[field];
+      if (typeof val === 'string' && val.trim()) {
+        const absPath = this.resolvePath(val, workspaceDirVal);
+        if (absPath) accessedPaths.push(absPath);
       }
     }
 
-    // 将所有路径参数解析为相对于工作目录的绝对路径
+    // 如果访问了任何外部路径，检查授权
     const path = await import('path');
+    const unauthorizedPaths: string[] = [];
+    for (const ap of accessedPaths) {
+      const isInWorkspace = path.relative(workspaceDirVal, ap).startsWith('..') === false;
+      const isAuthorized = authorizedDirs.some(a => !path.relative(a, ap).startsWith('..'));
+      if (!isInWorkspace && !isAuthorized) {
+        unauthorizedPaths.push(ap);
+      }
+    }
+
+    if (unauthorizedPaths.length > 0) {
+      // 有未授权的目录，弹出授权请求（拒绝式：用户拒绝后 agent 继续）
+      return this.requestDirectoryAccess(context, unauthorizedPaths[0]);
+    }
+
+    // 权限通过，继续执行
     const fs = await import('fs/promises');
     const filePath = args.path as string || '';
-    // 如果 filePath 是绝对路径，直接用
-    let targetPath = filePath;
-    if (path.isAbsolute(targetPath)) {
-      // 绝对路径，直接用
-    } else {
-      // 相对路径，拼接工作目录
-      const testPath = path.join(workspaceDirVal, targetPath);
-      // 检查拼接后的路径是否真实存在
-      try {
-        await fs.access(testPath);
-      } catch {
-        // 路径不存在，可能是授权前后路径含义变化了
-        // 此时用工作目录自身代替
-        targetPath = '.';
-      }
-    }
-    const fullPath = path.isAbsolute(targetPath) ? targetPath : path.join(workspaceDirVal, targetPath);
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(workspaceDirVal, filePath);
 
     // 安全检查
-    if (path.relative(workspaceDirVal, fullPath).startsWith('..')) {
-      throw new Error('Path traversal denied: path must be within workspace directory');
+    if (path.relative(workspaceDirVal, fullPath).startsWith('..') && !authorizedDirs.some(a => !path.relative(a, fullPath).startsWith('..'))) {
+      throw new Error('Path traversal denied: path must be within workspace or authorized directory');
     }
 
     switch (method) {
@@ -1295,11 +1341,92 @@ class MCPServiceRegistry {
             required: ['path'],
           },
         } as any, { ...context as any, _toolCallId: toolCallId });
-        return { status: 'pending', form: formResult, message: 'Please select a workspace directory.' };
+        return { status: 'pending', form: formResult };
       }
       default:
         throw new Error(`Unknown method: ${method}`);
     }
+  }
+
+  private resolvePath(targetPath: string, baseDir: string): string | null {
+    if (!targetPath || !targetPath.trim()) return null;
+    return path.isAbsolute(targetPath) ? targetPath : path.join(baseDir, targetPath);
+  }
+
+  /**
+   * 请求设置工作目录（中断式：用户取消后不执行）
+   * 首次使用 workspace 工具时调用
+   */
+  private async requestWorkspaceAuthorization(
+    context: { appId?: string; convId?: string },
+    message: string,
+    requestedPath: string = '',
+  ): Promise<unknown> {
+    const toolCallId = (context as any)._toolCallId || 'direct';
+
+    // emit workspace_request 让前端用专用选择器
+    if (context.appId && context.convId) {
+      eventBus.emit({
+        type: 'workspace_request',
+        appId: context.appId,
+        convId: context.convId,
+        data: { toolCallId, message, requestedPath },
+      });
+    }
+
+    // 等待 workspace-response 路由的响应
+    const result = await new Promise<ConvEvent>((resolve) => {
+      const done = (event: ConvEvent) => {
+        if (event.data?.toolCallId === toolCallId) {
+          cleanup();
+          resolve(event);
+        }
+      };
+      const cleanup = () => {
+        eventBus.ee.off('workspace_response', done);
+        eventBus.ee.off('workspace_cancelled', done);
+      };
+      eventBus.ee.on('workspace_response', done);
+      eventBus.ee.on('workspace_cancelled', done);
+    });
+
+    if (result.type === 'workspace_cancelled' || result.data?.cancelled) {
+      throw new Error('用户取消了工作目录设置');
+    }
+
+    // 授权成功，workspace-response 路由已经保存了 workspaceDir，不需要返回任何内容
+    return;
+  }
+
+  /**
+   * 请求授权访问外部目录（拒绝式：用户拒绝后 agent 可继续）
+   * workspace 工具访问工作目录之外的目录时调用
+   */
+  private async requestDirectoryAccess(
+    context: { appId?: string; convId?: string },
+    requestedPath: string,
+  ): Promise<unknown> {
+    const toolCallId = (context as any)._toolCallId || 'direct';
+    const args: Record<string, unknown> = {
+      title: '授权访问目录',
+      description: `Agent 需要访问目录：${requestedPath}，是否授权？`,
+      fields: [
+        {
+          id: 'confirm',
+          label: `授权访问 ${requestedPath}`,
+          type: 'confirm',
+          required: true,
+        },
+      ],
+      schema: {
+        type: 'object',
+        properties: {
+          confirm: { type: 'boolean', description: '是否授权' },
+        },
+        required: ['confirm'],
+      },
+    };
+    return this.handleFormMethod('requestInput', args as any, { ...context, _toolCallId: toolCallId } as any);
   }
 
   private async handleSkillMethod(
