@@ -307,7 +307,9 @@ export class PiAgentSession {
   }
 
   syncHistory(msgs: AdMsg[]): void {
-    const history = msgs.length > 0 && msgs[msgs.length - 1]?.role === "user" ? msgs.slice(0, -1) : msgs;
+    // 过滤掉 edited 标记的消息（只保留最新的分支消息）
+    const activeMsgs = msgs.filter(m => !(m as any).edited);
+    const history = activeMsgs.length > 0 && activeMsgs[activeMsgs.length - 1]?.role === "user" ? activeMsgs.slice(0, -1) : activeMsgs;
     const piMsgs: PiMsg[] = [];
     for (const m of history) {
       const c = adMsgToPiMsg(m, this.appId, this.model.provider, this.model.id);
