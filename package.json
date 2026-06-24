@@ -1,0 +1,49 @@
+{
+  "name": "aidesktop",
+  "version": "1.0.0",
+  "description": "AI Desktop - 一个基于 AI Agent 的桌面环境，运行在浏览器中",
+  "type": "module",
+  "bin": {
+    "aidesktop": "./bin/aidesktop.cjs"
+  },
+  "main": "bin/aidesktop.js",
+  "scripts": {
+    "start": "node bin/aidesktop.js",
+    "dev": "cd server && npx tsx src/index.ts",
+    "build-frontend": "cd client && npx vite build",
+    "bundle-server": "cd server && npx esbuild src/index.ts --bundle --platform=node --format=cjs --target=node20 --outfile=../server.cjs --external:playwright --external:@playwright/mcp --alias:@earendil-works/pi-ai=../vendor/pi/packages/ai/src --alias:@earendil-works/pi-agent-core=../vendor/pi/packages/agent/src",
+    "prepublishOnly": "node scripts/build.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "ai",
+    "desktop",
+    "agent",
+    "mcp",
+    "llm"
+  ],
+  "license": "CC BY-NC-SA 4.0",
+  "author": "yiyiooo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/viyiviyi/AIDesktop.git"
+  },
+  "files": [
+    "bin/",
+    "server/src/",
+    "server/package.json",
+    "server/tsconfig.json",
+    "client/",
+    "scripts/",
+    "vendor/",
+    "desktop_data/",
+    "README.md",
+    "README_EN.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

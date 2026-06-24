@@ -4,14 +4,18 @@ build/
 .env
 *.log
 .DS_Store
-server/desktop_data/apps/*/data/conversations/
-server/desktop_data/apps_data/
-server/desktop_data/apps/user/
 .claude/
-docs/
 .hermes/
 hermes_conversation_*.json
+
+# 桌面数据：保留初始系统数据，但排除用户数据和运行时数据
+server/desktop_data/apps/user/
+server/desktop_data/apps/marketplace/
+server/desktop_data/apps_data/**
+!server/desktop_data/apps_data/.gitkeep
 server/desktop_data/configs/window-positions.json
-server/desktop_data/public_data/skills/
 server/desktop_data/configs/enabled_skills.json
-server/desktop_data/configs/
+server/desktop_data/logs/
+
+# 根目录的 desktop_data（npm 包构建产物）不追踪
+desktop_data/
