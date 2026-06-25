@@ -154,9 +154,8 @@ function useCropCanvas(
   // 滚轮缩放（以鼠标位置为中心）
   // 注意：不能直接在 onWheel 里 e.preventDefault() 因为 React 默认为 passive
   // 改用 useRef + useEffect 手动添加非 passive 事件监听
-  const wheelHandlerRef = useRef<((e: WheelEvent) => void) | null>(null);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  const handleWheel = useCallback((_e: React.WheelEvent) => {
     // React 的合成事件，不调用 preventDefault；通过原生事件处理
   }, []);
 

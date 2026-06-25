@@ -35,10 +35,26 @@ npx tsc -b --noEmit 2>/dev/null || true
 npx vite build
 echo "Frontend built: client/dist/"
 
-# ---- Step 3: Build Backend (esbuild bundle with all deps inlined) ----
+# ---- Step 3: Build Backend (esbuild bundle) ----
 echo ""
 echo "--- Step 3: Build Backend (esbuild bundle) ---"
 cd "$PROJECT_DIR/server"
+
+# 检查 esbuild 平台兼容性（WSL/Windows 混用可能导致跨平台问题）
+node -e "
+const fs=require('fs');
+const path=require('path');
+const esbuildDir=path.dirname(require.resolve('esbuild/package.json'));
+const pkg=JSON.parse(fs.readFileSync(path.join(esbuildDir,'package.json'),'utf-8'));
+const platformBin=process.platform+'-'+process.arch;
+const expectedPkg='@esbuild/'+platformBin;
+const installedDeps=Object.keys(pkg.optionalDependencies||{});
+if(!installedDeps.includes(expectedPkg)) {
+  console.log('esbuild platform mismatch, installing '+expectedPkg+'...');
+  require('child_process').execSync('npm install --no-save '+expectedPkg, {cwd:esbuildDir, stdio:'inherit'});
+}
+" 2>&1 || echo "esbuild check skipped"
+
 rm -rf "$DIST_DIR/server.mjs"
 npx esbuild src/index.ts \
   --bundle \

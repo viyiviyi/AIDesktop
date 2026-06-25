@@ -110,7 +110,12 @@ export function Desktop() {
 
   // 壁纸样式
   const wallpaperStyle = state.settings.wallpaper
-    ? { backgroundImage: `url(${state.settings.wallpaper})` }
+    ? {
+        backgroundImage: `url(${state.settings.wallpaper})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }
     : { background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' };
 
   // 获取主题CSS类
