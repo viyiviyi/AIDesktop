@@ -63,8 +63,7 @@ npx esbuild src/index.ts \
   --target=node20 \
   --outfile="$DIST_DIR/server.cjs" \
   --external:playwright \
-  --external:@playwright/mcp \
-  --define:import.meta.url="\"file:///$PROJECT_DIR/server/src/index.ts\""
+  --external:@playwright/mcp
 
 echo "Backend bundled: $DIST_DIR/server.mjs"
 

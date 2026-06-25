@@ -17,9 +17,18 @@ import mediaRouter from './routes/media.js';
 import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR, DATA_DIR } from './utils/file.js';
 import { setupWebSocket } from './services/wsServer.js';
 
-// import.meta — ESM 下正常，CJS bundle 下用 --define 注入
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// __filename / __dirname — 兼容 ESM (tsx) 和 CJS (esbuild bundle)
+// ESM 下通过 import.meta.url 计算，CJS 下 __dirname/__filename 是原生全局变量
+let __filename: string;
+let __dirname: string;
+try {
+  __filename = fileURLToPath(import.meta.url);
+  __dirname = dirname(__filename);
+} catch {
+  // CJS bundle: esbuild 的 CJS 模板中 __dirname/__filename 可直接使用
+  __filename = typeof __filename !== 'undefined' ? __filename : '';
+  __dirname = typeof __dirname !== 'undefined' ? __dirname : '';
+}
 
 const app = express();
 const PORT = process.env.PORT || 27135;
