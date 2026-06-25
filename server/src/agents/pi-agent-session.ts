@@ -199,30 +199,36 @@ export class PiAgentSession {
     // bodyParams 和 headerParams 在每次 streamFn 调用时动态读取，不在 init 时固定
     // 这样设置修改后立即生效，无需重启
 
-    // 保存当前 app 引用和默认配置，供后续动态读取
-    const appId = app.meta.id;
-
     this.agent = new Agent({
       initialState: { model: this.model as any, systemPrompt },
       streamFn: (model, context, options) => {
-        // 每次流式调用时动态解析当前 app 的模型配置
-        // 这样用户修改模型设置后立即生效，无需重启
-        const resolved = resolveCurrentModel(appId);
-        const currentModelAtCall = resolved.model;
-        const currentProviderAtCall = resolved.provider;
-
-        if (!currentModelAtCall || !currentProviderAtCall) {
-          // 如果解析失败，使用 init 时保存的默认值
-          return streamSimple(this.model, context, { ...options, apiKey: this.apiKey });
-        }
-
         const textPreview = context.messages.filter((m: any) => m.role === "user").slice(-1).map((m: any) => typeof m.content === "string" ? m.content.slice(0, 100) : "").join("");
-        serverLogger.ai(`${currentProviderAtCall.id}/${currentModelAtCall.id}`, `>>> ${textPreview}`, { messages: context.messages.length });
+        serverLogger.ai(`${model.provider}/${model.id}`, `>>> ${textPreview}`, { messages: context.messages.length });
         const start = Date.now();
 
-        // 读取当前 bodyParams/headerParams（运行时动态，支持热更新）
-        const { bodyParams, headerParams } = resolveCurrentParams(appId);
-        serverLogger.debug('PiAgentSession', `Dynamic bodyParams: ${JSON.stringify(bodyParams)} from ${appId}`);
+        // 每次流式调用时从当前 app 配置读取 bodyParams（支持运行时修改）
+        const currentApp = appLoader.getApp(app.meta.id);
+        // 使用 mergeConfig 统一合并 meta+config，与前端显示保持一致
+        const mergedMeta: any = { ...(currentApp?.meta || {}) };
+        const mergedConfig: any = currentApp?.config || {};
+        // 手动合并（与 mergeConfig 逻辑一致）
+        if (mergedConfig.enabled !== undefined) mergedMeta.enabled = mergedConfig.enabled;
+        for (const key of ['backgroundImage', 'icon', 'supportedInputs', 'inputDescription', 'outputDescription',
+                           'visibleApps', 'visibleServices', 'tools', 'models']) {
+          if (mergedConfig[key] !== undefined) {
+            mergedMeta[key] = mergedConfig[key];
+          }
+        }
+        const currentModelConfig: any = mergedMeta.models?.[0] || {};
+        const bodyParams: Record<string, unknown> = {};
+        if (currentModelConfig.bodyParams) {
+          for (const p of currentModelConfig.bodyParams) {
+            if (p.enabled) {
+              try { bodyParams[p.key] = JSON.parse(p.value); } catch { bodyParams[p.key] = p.value; }
+            }
+          }
+        }
+        serverLogger.debug('PiAgentSession', `Dynamic bodyParams: ${JSON.stringify(bodyParams)} from ${app.meta.id}`);
 
         // 注入 body 参数（如 thinking: { type: "disabled" }）
         let streamOptions = { ...options, apiKey: this.apiKey };
@@ -454,9 +460,7 @@ export async function runAgentAsync(
     return true;
   });
 
-  const fullHistory = userContent.length > 0
-    ? [...filteredMessages, { role: 'user', content: userContent }]
-    : filteredMessages;
+  const fullHistory = [...filteredMessages, { role: 'user', content: userContent }];
   serverLogger.info('agent', `runAgentAsync getOrCreate for ${appId}/${convId}`);
   const session = await piAgentManager.getOrCreate(appId, app);
   const hasActiveRun = session.agent.signal !== undefined;
@@ -803,85 +807,4 @@ async function saveAppendedToolResult(
       }
     }
   }
-}
-
-/**
- * 动态解析 app 当前使用的模型配置
- * 每次流式调用时调用，确保修改后立即生效
- */
-function resolveCurrentModel(appId: string): { model: any; provider: any } {
-  const currentApp = appLoader.getApp(appId);
-  if (!currentApp) return { model: null, provider: null };
-
-  const modes = settingsService.getModesSync();
-
-  // config > meta > 默认
-  let providerId: string | null = null;
-  let modelId: string | null = null;
-
-  const appModelConfig =
-    (currentApp.config.models && currentApp.config.models.length > 0) ? currentApp.config.models[0]
-    : (currentApp.meta.models && currentApp.meta.models.length > 0) ? currentApp.meta.models[0]
-    : null;
-
-  if (appModelConfig) {
-    providerId = appModelConfig.provider;
-    modelId = appModelConfig.model;
-  }
-
-  if (!providerId || !modelId) {
-    // 没有 app 级配置，使用系统默认
-    const defaultModel = settingsService.getDefaultModelSync();
-    providerId = defaultModel.providerId;
-    modelId = defaultModel.modelId;
-  }
-
-  if (!providerId || !modelId) return { model: null, provider: null };
-
-  const providerConfig = modes.providers.find((p: any) => p.id === providerId);
-  if (!providerConfig) return { model: null, provider: null };
-
-  const modelObj = findModel(modes.providers, providerId!, modelId!);
-  if (!modelObj) return { model: null, provider: null };
-
-  return {
-    model: providerConfig.baseUrl ? { ...modelObj, baseUrl: providerConfig.baseUrl } : modelObj,
-    provider: providerConfig,
-  };
-}
-
-/**
- * 动态解析 app 当前的 bodyParams 和 headerParams
- */
-function resolveCurrentParams(appId: string): { bodyParams: Record<string, unknown>; headerParams: Record<string, unknown> } {
-  const currentApp = appLoader.getApp(appId);
-  if (!currentApp) return { bodyParams: {}, headerParams: {} };
-
-  const mergedMeta: any = { ...(currentApp.meta || {}) };
-  const mergedConfig: any = currentApp.config || {};
-  if (mergedConfig.enabled !== undefined) mergedMeta.enabled = mergedConfig.enabled;
-  for (const key of ['backgroundImage', 'icon', 'supportedInputs', 'inputDescription', 'outputDescription',
-                     'visibleApps', 'visibleServices', 'tools', 'models']) {
-    if (mergedConfig[key] !== undefined) mergedMeta[key] = mergedConfig[key];
-  }
-
-  const currentModelConfig: any = mergedMeta.models?.[0] || {};
-
-  const bodyParams: Record<string, unknown> = {};
-  if (currentModelConfig.bodyParams) {
-    for (const p of currentModelConfig.bodyParams) {
-      if (p.enabled) {
-        try { bodyParams[p.key] = JSON.parse(p.value); } catch { bodyParams[p.key] = p.value; }
-      }
-    }
-  }
-
-  const headerParams: Record<string, unknown> = {};
-  if (currentModelConfig.headerParams) {
-    for (const hp of currentModelConfig.headerParams) {
-      if (hp.enabled) headerParams[hp.key] = hp.value;
-    }
-  }
-
-  return { bodyParams, headerParams };
 }
