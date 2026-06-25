@@ -989,7 +989,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
   const canContinue = lastMsg
     ? (lastMsg.role === 'user') ||
-      (lastMsg.role === 'assistant' && lastMsg.toolCalls && lastMsg.toolCalls.length > 0)
+      (lastMsg.role === 'assistant' && lastMsg.content.some((c: any) => c.type === 'toolCall'))
     : false;
 
   // 键盘事件处理 - 按配置的快捷键发送消息
