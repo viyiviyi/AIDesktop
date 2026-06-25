@@ -14,11 +14,11 @@ export function AppModelConfig({ app, providers, onUpdate }: AppModelConfigProps
     : null;
   const enabledProviders = providers.filter((p) => p.models.length > 0);
 
-  function handleUseDefault() {
-    onUpdate([]);
-  }
-
   function handleProviderChange(providerId: string) {
+    if (providerId === '__default__') {
+      onUpdate([]);
+      return;
+    }
     const newModels: ModelConfig[] = [
       {
         provider: providerId,
@@ -70,64 +70,48 @@ export function AppModelConfig({ app, providers, onUpdate }: AppModelConfigProps
           </div>
         </div>
 
-        <div className="app-model-config-field">
-          <label className="app-settings-checkbox">
-            <input
-              type="checkbox"
-              checked={useDefault}
-              onChange={handleUseDefault}
-            />
-            使用默认模型
-          </label>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 8 }}>
-            {useDefault ? '当前将使用系统的默认模型设置' : '取消勾选恢复为默认'}
-          </span>
-        </div>
-
-        {!useDefault && (
-          <div className="app-model-config-selects">
-            <div className="app-model-config-field">
-              <label>提供商</label>
-              <select
-                value={currentModel?.provider || ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleProviderChange(e.target.value);
-                  }
-                }}
-              >
-                <option value="">选择提供商...</option>
-                {enabledProviders.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="app-model-config-field">
-              <label>模型</label>
-              <select
-                value={currentModel?.model || ''}
-                onChange={(e) => {
-                  if (e.target.value && currentProvider) {
-                    handleModelChange(currentProvider.id, e.target.value);
-                  }
-                }}
-                disabled={!currentProvider || !currentProvider.models?.length}
-              >
-                <option value="">
-                  {currentProvider ? '选择模型...' : '先选择提供商'}
+        <div className="app-model-config-selects">
+          <div className="app-model-config-field">
+            <label>提供商</label>
+            <select
+              value={useDefault ? '__default__' : currentModel?.provider || ''}
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleProviderChange(e.target.value);
+                }
+              }}
+            >
+              <option value="__default__">默认供应商</option>
+              {enabledProviders.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
-                {currentProvider?.models?.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+              ))}
+            </select>
           </div>
-        )}
+
+          <div className="app-model-config-field">
+            <label>模型</label>
+            <select
+              value={currentModel?.model || ''}
+              onChange={(e) => {
+                if (e.target.value && currentProvider) {
+                  handleModelChange(currentProvider.id, e.target.value);
+                }
+              }}
+              disabled={useDefault || !currentProvider || !currentProvider.models?.length}
+            >
+              <option value="">
+                {useDefault ? '使用默认模型' : currentProvider ? '选择模型...' : '先选择提供商'}
+              </option>
+              {currentProvider?.models?.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {!currentModel && enabledProviders.length === 0 && (
           <div className="app-model-config-warning">
@@ -141,6 +125,12 @@ export function AppModelConfig({ app, providers, onUpdate }: AppModelConfigProps
             {currentProvider?.name} /{' '}
             {currentProvider?.models?.find((m) => m.id === currentModel.model)?.name ||
               currentModel.model}
+          </div>
+        )}
+
+        {useDefault && (
+          <div className="app-model-config-current">
+            当前: 使用默认模型
           </div>
         )}
       </div>
@@ -161,6 +151,7 @@ export function AppModelConfigList({ apps, providers, onUpdate }: AppModelConfig
     <div className="app-model-config-list">
       {apps.map((app) => {
         const currentModel = app.models?.[0];
+        const useDefault = !app.models || app.models.length === 0;
         const currentProvider = currentModel
           ? providers.find((p) => p.id === currentModel.provider)
           : null;
@@ -192,23 +183,27 @@ export function AppModelConfigList({ apps, providers, onUpdate }: AppModelConfig
               <div className="app-model-config-field">
                 <label>提供商</label>
                 <select
-                  value={currentModel?.provider || ''}
+                  value={useDefault ? '__default__' : currentModel?.provider || ''}
                   onChange={(e) => {
                     if (e.target.value) {
-                      onUpdate(app.id, [
-                        {
-                          provider: e.target.value,
-                          model: '',
-                          priority: 1,
-                          maxTokens: 4096,
-                          supports: ['text'],
-                          params: {},
-                        },
-                      ]);
+                      if (e.target.value === '__default__') {
+                        onUpdate(app.id, []);
+                      } else {
+                        onUpdate(app.id, [
+                          {
+                            provider: e.target.value,
+                            model: '',
+                            priority: 1,
+                            maxTokens: 4096,
+                            supports: ['text'],
+                            params: {},
+                          },
+                        ]);
+                      }
                     }
                   }}
                 >
-                  <option value="">选择提供商...</option>
+                  <option value="__default__">默认供应商</option>
                   {enabledProviders.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -235,10 +230,10 @@ export function AppModelConfigList({ apps, providers, onUpdate }: AppModelConfig
                       ]);
                     }
                   }}
-                  disabled={!currentProvider || !currentProvider.models?.length}
+                  disabled={useDefault || !currentProvider || !currentProvider.models?.length}
                 >
                   <option value="">
-                    {currentProvider ? '选择模型...' : '先选择提供商'}
+                    {useDefault ? '使用默认模型' : currentProvider ? '选择模型...' : '先选择提供商'}
                   </option>
                   {currentProvider?.models?.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -255,12 +250,18 @@ export function AppModelConfigList({ apps, providers, onUpdate }: AppModelConfig
               </div>
             )}
 
-            {currentModel && (
+            {currentModel && !useDefault && (
               <div className="app-model-config-current">
                 当前:{' '}
                 {currentProvider?.name} /{' '}
                 {currentProvider?.models?.find((m) => m.id === currentModel.model)?.name ||
                   currentModel.model}
+              </div>
+            )}
+
+            {useDefault && (
+              <div className="app-model-config-current">
+                当前: 使用默认模型
               </div>
             )}
           </div>
