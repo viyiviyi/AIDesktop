@@ -982,8 +982,15 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
     }
   };
 
-  // 判断最后一条 assistant 消息是否可以继续（没有在加载且会话有 assistant 消息）
-  // canContinue 暂未使用
+  // 判断是否可以继续（输入框为空时显示"继续"按钮的条件）
+  // 1. 最后一条是 user → 该 user 消息需要 AI 回复（可继续）
+  // 2. 最后一条是 assistant 且有 toolCall → 需要执行工具后再继续
+  // 3. 最后一条是 assistant 且无 toolCall → 不可继续，必须用户输入
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  const canContinue = lastMsg
+    ? (lastMsg.role === 'user') ||
+      (lastMsg.role === 'assistant' && lastMsg.toolCalls && lastMsg.toolCalls.length > 0)
+    : false;
 
   // 键盘事件处理 - 按配置的快捷键发送消息
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1698,14 +1705,14 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
                 onClick={() => {
                   if (input.trim() || attachments.length > 0) {
                     sendMessage(replyToId || undefined);
-                  } else if (currentConvId && !isLoading && pendingForms.size === 0) {
-                    // 输入为空时当作"继续"按钮，用当前上下文继续
+                  } else if (currentConvId && !isLoading && pendingForms.size === 0 && canContinue) {
+                    // 输入为空且可以继续时触发继续
                     handleContinue();
                   }
                 }}
-                disabled={!currentConvId || isLoading || pendingForms.size > 0 || !!workspaceRequest || (input.trim() || attachments.length > 0 ? false : messages.length === 0)}
+                disabled={!currentConvId || isLoading || pendingForms.size > 0 || !!workspaceRequest || (input.trim() || attachments.length > 0 ? false : messages.length === 0 || !canContinue)}
               >
-                {(input.trim() || attachments.length > 0) ? '发送' : (messages.length > 0 ? '继续' : '发送')}
+                {(input.trim() || attachments.length > 0) ? '发送' : (canContinue ? '继续' : '发送')}
               </button>
             </div>
           </>

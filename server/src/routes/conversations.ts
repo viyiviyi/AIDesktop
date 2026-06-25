@@ -282,7 +282,7 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
         });
         // 工具执行完成后，重新启动 agent 继续处理
         const updatedConv = await conversationService.getConversation(appId, convId);
-        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [{ type: 'text', text: '(continue)' }])
+        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [])
           .catch((err: any) => serverLogger.error('agent', `Continue after retry error: ${err.message}`));
       } catch (err: any) {
         const msg = err?.message || '';
@@ -317,8 +317,15 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
           .catch((err2: any) => serverLogger.error('agent', `Continue after retry error: ${err2.message}`));
       }
     } else {
-      // 正常继续——只重新驱动 agent，不添加额外消息
-      runAgentAsync(appId, convId, app, messages, [])
+      // 正常继续——用已有消息历史
+      // 从历史中找到最后一条 user 消息的内容作为 prompt（避免发空消息导致 AI 不回复）
+      const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user');
+      const continueText = lastUserMsg
+        ? (lastUserMsg.content as any[]).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+        : '';
+      runAgentAsync(appId, convId, app, messages, continueText.trim()
+        ? [{ type: 'text', text: continueText }]
+        : [{ type: 'text', text: '(continue)' }])
         .catch((err: any) => serverLogger.error('agent', `Continue error: ${err.message}`));
     }
 

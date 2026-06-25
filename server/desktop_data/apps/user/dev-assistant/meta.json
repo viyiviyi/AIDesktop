@@ -1,0 +1,15 @@
+{
+  "id": "dev-assistant",
+  "name": "开发助手",
+  "description": "AIDesktop 项目自身的开发助手，了解项目架构、代码规范和开发流程，协助开发者维护和改进这个项目。",
+  "source": "user",
+  "type": "desktop",
+  "icon": "/public_icons/assistant.svg",
+  "models": [],
+  "supportedInputs": ["text"],
+  "inputDescription": "开发相关的描述、问题和需求",
+  "outputDescription": "代码修改方案、架构分析和开发建议",
+  "visibleApps": [],
+  "visibleServices": [],
+  "tools": ["mcp.filesystem", "mcp.agent", "mcp.exec", "mcp.settings"]
+}

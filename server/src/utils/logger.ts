@@ -41,7 +41,7 @@ class ServerLogger {
   private makeEntry(level: LogLevel, category: string, message: string, data?: unknown): LogEntry {
     return {
       id: this.createId(),
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toLocaleString('zh-CN', { hour12: false }),
       level,
       category,
       message,

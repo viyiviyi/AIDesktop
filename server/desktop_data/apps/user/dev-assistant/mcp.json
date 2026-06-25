@@ -1,0 +1,6 @@
+[
+  "mcp.filesystem",
+  "mcp.agent",
+  "mcp.exec",
+  "mcp.settings"
+]
