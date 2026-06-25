@@ -454,6 +454,13 @@ export async function runAgentAsync(
     return true;
   });
 
+  // 如果最后一条消息是 user 且没有新的 userContent，说明用户在输入框为空时点了继续，这种情况不应启动 agent
+  const lastMsg = filteredMessages.length > 0 ? filteredMessages[filteredMessages.length - 1] : null;
+  if (lastMsg?.role === 'user' && userContent.length === 0) {
+    serverLogger.info('agent', `Skipping continue: last message is user and no new content for ${appId}/${convId}`);
+    return;
+  }
+
   const fullHistory = userContent.length > 0
     ? [...filteredMessages, { role: 'user', content: userContent }]
     : filteredMessages;

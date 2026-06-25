@@ -313,7 +313,7 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
           data: { toolCallId, toolName, result: { error: err.message }, isError: true },
         });
         const updatedConv = await conversationService.getConversation(appId, convId);
-        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [{ type: 'text', text: '(continue)' }])
+        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [])
           .catch((err2: any) => serverLogger.error('agent', `Continue after retry error: ${err2.message}`));
       }
     } else {
