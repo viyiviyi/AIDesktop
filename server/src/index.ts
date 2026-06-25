@@ -14,13 +14,12 @@ import hermesRouter from './routes/hermes.js';
 import logsRouter from './routes/logs.js';
 import workspaceRouter from './routes/workspace.js';
 import mediaRouter from './routes/media.js';
-import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR } from './utils/file.js';
+import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR, DATA_DIR } from './utils/file.js';
 import { setupWebSocket } from './services/wsServer.js';
 
-// __dirname / __filename — 兼容 tsx (ESM) 和 esbuild (CJS)
-// tsx 下由 fileURLToPath 获得，esbuild CJS bundle 下通过 --inject 注入 polyfill
-declare const __filename: string;
-declare const __dirname: string;
+// import.meta — ESM 下正常，CJS bundle 下用 --define 注入
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 27135;
@@ -64,24 +63,11 @@ app.get('/api/health', (req, res) => {
 });
 
 // Serve static files from client build in production
-// 优先检测运行目录下是否有 client/dist（bundle直接运行）
-// 否则从项目根推算（dev模式或cli.mjs启动）
-function resolveProjectRoot(): string {
-  // cli.mjs 会设置 AIDESKTOP_ROOT
-  if (process.env.AIDESKTOP_ROOT) return process.env.AIDESKTOP_ROOT;
-  // 检测运行目录下的 client/dist（node server.cjs 直接运行）
-  if (require('fs').existsSync(join(process.cwd(), 'client', 'dist'))) {
-    return process.cwd();
-  }
-  // dev 模式：从 __dirname 推算（server/src/ -> 项目根）
-  return join(__dirname, '..', '..');
-}
-const projectRoot = resolveProjectRoot();
-const clientDistPath = join(projectRoot, 'client', 'dist');
-const dataDir = join(projectRoot, 'desktop_data');
-app.use('/public_icons', express.static(join(dataDir, 'public_icons')));
-app.use('/wallpapers', express.static(join(dataDir, 'wallpapers')));
-app.use('/api/files', express.static(join(dataDir, 'apps_data')));
+// 使用 utils/file.ts 中统一的 DATA_DIR（基于 process.cwd()）
+const clientDistPath = join(__dirname, '..', '..', 'client', 'dist');
+app.use('/public_icons', express.static(join(DATA_DIR, 'public_icons')));
+app.use('/wallpapers', express.static(join(DATA_DIR, 'wallpapers')));
+app.use('/api/files', express.static(join(DATA_DIR, 'apps_data')));
 app.use(express.static(clientDistPath));
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {

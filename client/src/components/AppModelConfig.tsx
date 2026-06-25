@@ -8,10 +8,15 @@ interface AppModelConfigProps {
 
 export function AppModelConfig({ app, providers, onUpdate }: AppModelConfigProps) {
   const currentModel = app.models?.[0];
+  const useDefault = !app.models || app.models.length === 0;
   const currentProvider = currentModel
     ? providers.find((p) => p.id === currentModel.provider)
     : null;
   const enabledProviders = providers.filter((p) => p.models.length > 0);
+
+  function handleUseDefault() {
+    onUpdate([]);
+  }
 
   function handleProviderChange(providerId: string) {
     const newModels: ModelConfig[] = [
@@ -65,48 +70,64 @@ export function AppModelConfig({ app, providers, onUpdate }: AppModelConfigProps
           </div>
         </div>
 
-        <div className="app-model-config-selects">
-          <div className="app-model-config-field">
-            <label>提供商</label>
-            <select
-              value={currentModel?.provider || ''}
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleProviderChange(e.target.value);
-                }
-              }}
-            >
-              <option value="">选择提供商...</option>
-              {enabledProviders.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="app-model-config-field">
-            <label>模型</label>
-            <select
-              value={currentModel?.model || ''}
-              onChange={(e) => {
-                if (e.target.value && currentProvider) {
-                  handleModelChange(currentProvider.id, e.target.value);
-                }
-              }}
-              disabled={!currentProvider || !currentProvider.models?.length}
-            >
-              <option value="">
-                {currentProvider ? '选择模型...' : '先选择提供商'}
-              </option>
-              {currentProvider?.models?.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="app-model-config-field">
+          <label className="app-settings-checkbox">
+            <input
+              type="checkbox"
+              checked={useDefault}
+              onChange={handleUseDefault}
+            />
+            使用默认模型
+          </label>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 8 }}>
+            {useDefault ? '当前将使用系统的默认模型设置' : '取消勾选恢复为默认'}
+          </span>
         </div>
+
+        {!useDefault && (
+          <div className="app-model-config-selects">
+            <div className="app-model-config-field">
+              <label>提供商</label>
+              <select
+                value={currentModel?.provider || ''}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleProviderChange(e.target.value);
+                  }
+                }}
+              >
+                <option value="">选择提供商...</option>
+                {enabledProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="app-model-config-field">
+              <label>模型</label>
+              <select
+                value={currentModel?.model || ''}
+                onChange={(e) => {
+                  if (e.target.value && currentProvider) {
+                    handleModelChange(currentProvider.id, e.target.value);
+                  }
+                }}
+                disabled={!currentProvider || !currentProvider.models?.length}
+              >
+                <option value="">
+                  {currentProvider ? '选择模型...' : '先选择提供商'}
+                </option>
+                {currentProvider?.models?.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         {!currentModel && enabledProviders.length === 0 && (
           <div className="app-model-config-warning">
@@ -114,7 +135,7 @@ export function AppModelConfig({ app, providers, onUpdate }: AppModelConfigProps
           </div>
         )}
 
-        {currentModel && (
+        {currentModel && !useDefault && (
           <div className="app-model-config-current">
             当前:{' '}
             {currentProvider?.name} /{' '}

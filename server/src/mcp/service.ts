@@ -19,7 +19,7 @@ const builtInServices: Record<string, MCPService> = {
   },
   'mcp.filesystem': {
     name: 'mcp.filesystem',
-    description: '文件系统服务 - 读取、写入、搜索、替换、列出、创建、删除文件（相对路径相对于 public_data 目录）',
+    description: '文件系统服务 - 读取、写入、搜索、替换、列出、创建、删除文件（相对路径相对于 desktop_data 目录）',
     methods: ['read', 'write', 'patch', 'search', 'list', 'mkdir', 'delete'],
     category: 'admin',
   },
@@ -482,22 +482,22 @@ class MCPServiceRegistry {
   ): Promise<unknown> {
     const fs = await import('fs/promises');
     const path = await import('path');
-    const { PUBLIC_DATA_DIR } = await import('../utils/file.js');
+    const { DATA_DIR } = await import('../utils/file.js');
 
-    // 相对路径以 public_data 为基准，绝对路径直接使用
+    // 相对路径以 desktop_data 为基准，绝对路径直接使用
     const filePath = args.path as string || '';
     let baseDir: string;
     if (path.isAbsolute(filePath)) {
       baseDir = '';
     } else {
-      baseDir = PUBLIC_DATA_DIR;
+      baseDir = DATA_DIR;
     }
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(PUBLIC_DATA_DIR, filePath);
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(DATA_DIR, filePath);
 
-    // 安全检查：防止相对路径穿越到 public_data 之外
+    // 安全检查：防止相对路径穿越到 desktop_data 之外
     if (!path.isAbsolute(filePath)) {
-      if (path.relative(PUBLIC_DATA_DIR, fullPath).startsWith('..')) {
-        throw new Error('Path traversal denied: path must be within public_data directory');
+      if (path.relative(DATA_DIR, fullPath).startsWith('..')) {
+        throw new Error('Path traversal denied: path must be within desktop_data directory');
       }
     }
 

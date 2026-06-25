@@ -34,7 +34,19 @@
 
 最终生成完整的应用配置，包括 meta.json、app.md、mcp.json 文件。
 
-创建应用时，使用 mcp.filesystem.write 写入以下文件：
+创建应用时，使用 mcp.filesystem.write 将文件写入以下目录（相对路径，相对于 desktop_data）：
+
+```
+apps/user/{appId}/
+```
+
+注意 `{appId}` 替换为应用的实际 ID。写入顺序：
+1. 先创建目录（不需要，写入文件时会自动创建）
+2. 写入 `apps/user/{appId}/meta.json`
+3. 写入 `apps/user/{appId}/app.md`
+4. 写入 `apps/user/{appId}/mcp.json`
+
+写入完成后，调用 mcp.settings.reloadApps() 刷新应用列表。
 
 **meta.json**（app 定义，创建后不再修改）：
 {

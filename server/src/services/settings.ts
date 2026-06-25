@@ -305,6 +305,16 @@ class SettingsService {
     return { ...this.modelConfig! };
   }
 
+  // 同步获取默认模型配置（用于 streamFn 中，必须有缓存）
+  getDefaultModelSync(): DefaultModelConfig {
+    return { ...(this.modelConfig || DEFAULT_MODEL_CONFIG) };
+  }
+
+  // 同步获取模型提供商列表（用于 streamFn 中，必须有缓存）
+  getModesSync(): { providers: ModelProvider[] } {
+    return { ...(this.modes || DEFAULT_MODES) };
+  }
+
   // 加载默认模型配置
   private async loadModelConfig(): Promise<void> {
     await ensureDir(CONFIGS_DIR);

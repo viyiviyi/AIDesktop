@@ -152,46 +152,63 @@ function useCropCanvas(
   }, []);
 
   // 滚轮缩放（以鼠标位置为中心）
+  // 注意：不能直接在 onWheel 里 e.preventDefault() 因为 React 默认为 passive
+  // 改用 useRef + useEffect 手动添加非 passive 事件监听
+  const wheelHandlerRef = useRef<((e: WheelEvent) => void) | null>(null);
+
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const state = stateRef.current;
-    if (!state) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    // React 的合成事件，不调用 preventDefault；通过原生事件处理
+  }, []);
 
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+  // 通过原生事件监听器来处理 wheel 和 preventDefault
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    // 最小缩放：图片刚好完整显示在裁切区内
-    const minScale = Math.min(cropWidth / state.img.naturalWidth, cropHeight / state.img.naturalHeight);
-    // 最大缩放：图片原始分辨率（1:1 像素对应）
-    const maxScale = Math.max(state.img.naturalWidth / cropWidth, state.img.naturalHeight / cropHeight) * 2;
-    const newScale = Math.max(minScale, Math.min(maxScale, state.scale * factor));
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const state = stateRef.current;
+      if (!state) return;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect) return;
 
-    // 保持鼠标位置对应的图片点不变
-    const imgX = (mouseX - state.offsetX) / state.scale;
-    const imgY = (mouseY - state.offsetY) / state.scale;
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
 
-    state.offsetX = mouseX - imgX * newScale;
-    state.offsetY = mouseY - imgY * newScale;
-    state.scale = newScale;
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      // 最小缩放：图片刚好完整显示在裁切区内
+      const minScale = Math.min(cropWidth / state.img.naturalWidth, cropHeight / state.img.naturalHeight);
+      // 最大缩放：图片原始分辨率（1:1 像素对应）
+      const maxScale = Math.max(state.img.naturalWidth / cropWidth, state.img.naturalHeight / cropHeight) * 2;
+      const newScale = Math.max(minScale, Math.min(maxScale, state.scale * factor));
 
-    // 缩放后约束偏移
-    const sw2 = state.img.naturalWidth * state.scale;
-    const sh2 = state.img.naturalHeight * state.scale;
-    if (sw2 > cropWidth) {
-      state.offsetX = Math.max(cropWidth - sw2, Math.min(0, state.offsetX));
-    } else {
-      state.offsetX = (cropWidth - sw2) / 2;
-    }
-    if (sh2 > cropHeight) {
-      state.offsetY = Math.max(cropHeight - sh2, Math.min(0, state.offsetY));
-    } else {
-      state.offsetY = (cropHeight - sh2) / 2;
-    }
+      // 保持鼠标位置对应的图片点不变
+      const imgX = (mouseX - state.offsetX) / state.scale;
+      const imgY = (mouseY - state.offsetY) / state.scale;
 
-    draw();
+      state.offsetX = mouseX - imgX * newScale;
+      state.offsetY = mouseY - imgY * newScale;
+      state.scale = newScale;
+
+      // 缩放后约束偏移
+      const sw2 = state.img.naturalWidth * state.scale;
+      const sh2 = state.img.naturalHeight * state.scale;
+      if (sw2 > cropWidth) {
+        state.offsetX = Math.max(cropWidth - sw2, Math.min(0, state.offsetX));
+      } else {
+        state.offsetX = (cropWidth - sw2) / 2;
+      }
+      if (sh2 > cropHeight) {
+        state.offsetY = Math.max(cropHeight - sh2, Math.min(0, state.offsetY));
+      } else {
+        state.offsetY = (cropHeight - sh2) / 2;
+      }
+
+      draw();
+    };
+
+    canvas.addEventListener('wheel', handler, { passive: false });
+    return () => canvas.removeEventListener('wheel', handler);
   }, [draw, canvasRef, cropWidth, cropHeight]);
 
   // 获取最终裁切结果（返回 blob）
@@ -214,25 +231,30 @@ function useCropCanvas(
         outCtx.drawImage(canvas, 0, 0, cropWidth, cropHeight, 0, 0, 512, 512);
         outCanvas.toBlob((blob) => resolve(blob), 'image/png');
       } else {
-        // 背景图：保持原始分辨率，不缩放
+        // 背景图：按原图裁切区域的分辨率输出，不缩放
         const state = stateRef.current;
         if (!state) { resolve(null); return; }
         const natW = state.img.naturalWidth;
         const natH = state.img.naturalHeight;
         // 计算裁切区域在原图中的对应位置
         const scale = state.scale;
-        const srcX = -state.offsetX / scale;
-        const srcY = -state.offsetY / scale;
-        const srcW = cropWidth / scale;
-        const srcH = cropHeight / scale;
+        const srcX = Math.round(-state.offsetX / scale);
+        const srcY = Math.round(-state.offsetY / scale);
+        const srcW = Math.round(cropWidth / scale);
+        const srcH = Math.round(cropHeight / scale);
+
+        // 裁切区域不能超出原图边界
+        const clampX = Math.max(0, Math.min(srcX, natW - 1));
+        const clampY = Math.max(0, Math.min(srcY, natH - 1));
+        const clampW = Math.min(srcW, natW - clampX);
+        const clampH = Math.min(srcH, natH - clampY);
 
         const outCanvas = document.createElement('canvas');
-        outCanvas.width = natW;
-        outCanvas.height = natH;
+        outCanvas.width = clampW;
+        outCanvas.height = clampH;
         const outCtx = outCanvas.getContext('2d');
         if (!outCtx) { resolve(null); return; }
-        // 只绘制可见区域，其余透明
-        outCtx.drawImage(state.img, srcX, srcY, srcW, srcH, 0, 0, natW, natH);
+        outCtx.drawImage(state.img, clampX, clampY, clampW, clampH, 0, 0, clampW, clampH);
         outCanvas.toBlob((blob) => resolve(blob), 'image/png');
       }
     });

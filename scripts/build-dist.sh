@@ -48,7 +48,7 @@ npx esbuild src/index.ts \
   --outfile="$DIST_DIR/server.cjs" \
   --external:playwright \
   --external:@playwright/mcp \
-  --inject:"$PROJECT_DIR/scripts/cjs-shims.js"
+  --define:import.meta.url="\"file:///$PROJECT_DIR/server/src/index.ts\""
 
 echo "Backend bundled: $DIST_DIR/server.mjs"
 
