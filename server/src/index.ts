@@ -73,7 +73,19 @@ app.get('/api/health', (req, res) => {
 
 // Serve static files from client build in production
 // 使用 utils/file.ts 中统一的 DATA_DIR（基于 process.cwd()）
-const clientDistPath = join(__dirname, '..', '..', 'client', 'dist');
+// dev 模式: __dirname = server/src/ -> ../../client/dist
+// bundle 模式: __dirname = build/aidesktop/ -> ./client/dist
+const clientDistPath = (() => {
+  // 优先检测 bundle 同目录下的 client/dist
+  const localDist = join(__dirname, 'client', 'dist');
+  try {
+    require('fs').accessSync(localDist);
+    return localDist;
+  } catch {
+    // dev 模式
+    return join(__dirname, '..', '..', 'client', 'dist');
+  }
+})();
 app.use('/public_icons', express.static(join(DATA_DIR, 'public_icons')));
 app.use('/wallpapers', express.static(join(DATA_DIR, 'wallpapers')));
 app.use('/api/files', express.static(join(DATA_DIR, 'apps_data')));
