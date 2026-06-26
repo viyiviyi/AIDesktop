@@ -367,3 +367,63 @@ export type ChatStreamEvent =
   | { type: 'tool_call'; toolCall: ToolCall }
   | { type: 'done' }
   | { type: 'error'; error: string };
+
+// ============================================================
+// Memory 2.0 — 记忆与目标管理系统
+// ============================================================
+
+export type MemoryType = 'fact' | 'preference' | 'context' | 'goal';
+
+export type MemoryScope = 'app' | 'conversation';
+
+export type MemorySource = 'user' | 'agent' | 'system';
+
+export interface MemoryEntry {
+  id: string;
+  type: MemoryType;
+  key: string;
+  value: string;
+  content: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  source: MemorySource;
+  scope: MemoryScope;
+  conversationId?: string;
+  ttl?: number;
+  version: number;
+}
+
+export interface MemoryQuery {
+  key?: string;
+  keyPrefix?: string;
+  type?: MemoryType;
+  tags?: string[];       // AND 过滤
+  tagsAny?: string[];    // OR 过滤
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface MemoryStore {
+  entries: MemoryEntry[];
+}
+
+export interface GoalTree {
+  level1: MemoryEntry | null;
+  level2: MemoryEntry | null;
+  level3: MemoryEntry | null;
+}
+
+export interface MemoryStats {
+  total: number;
+  byType: Record<string, number>;
+  byTag: Record<string, number>;
+}
+
+export interface InjectionBlock {
+  source: 'app' | 'agents' | 'skills' | 'memory' | 'goal' | 'prompt';
+  label: string;
+  title: string;
+  detail: string;
+}
