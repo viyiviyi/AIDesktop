@@ -19,6 +19,7 @@ import { buildPiToolsForApp, buildWorkspaceTools, setCurrentConvId } from "./pi-
 import { serverLogger } from "../utils/logger.js";
 import { DATA_DIR, APPS_DATA_DIR } from "../utils/file.js";
 import { conversationService } from "../services/conversation.js";
+import { eventBus } from "../services/eventBus.js";
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
@@ -371,15 +372,12 @@ async function handleFormPendingInternal(
   session: PiAgentSession,
   app: any,
 ): Promise<void> {
-  const { conversationService } = await import('../services/conversation.js');
-  const { eventBus: evBus } = await import('../services/eventBus.js');
-
   // 消息已在 message_end 事件中实时保存，不需要再次保存
   serverLogger.info('agent', `Agent paused for ${appId}/${convId}, waiting for form response...`);
 
   // 等待表单响应
   const formResponse = await new Promise<{ type: 'form_response' | 'form_cancelled'; data: Record<string, unknown> }>((resolve) => {
-    const unsub = evBus.subscribe(convId, (event) => {
+    const unsub = eventBus.subscribe(convId, (event) => {
       if (event.type === 'form_response' || event.type === 'form_cancelled') {
         // 防止被当前工具执行的 tool_result 事件误触发：检查事件来源
         // 只有来自 route handler 的人工事件（带有 formId）才算数
@@ -448,10 +446,7 @@ export async function runAgentAsync(
   existingMessages: any[],
   userContent: any[],
 ): Promise<void> {
-  const { eventBus } = await import('../services/eventBus.js');
-  const { conversationService } = await import('../services/conversation.js');
-
-  // 过滤掉 pending 状态的 toolResult（避免发给模型时产生冲突）
+  // 过滤掉 pending 状态的 toolResult
   const filteredMessages = existingMessages.filter((m: any) => {
     if (m.role === 'toolResult' && m.content) {
       const text = (m.content as any[]).filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');

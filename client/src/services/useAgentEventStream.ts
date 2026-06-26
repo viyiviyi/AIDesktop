@@ -9,7 +9,11 @@ export interface WsConvEvent {
 
 type EventListener = (event: WsConvEvent) => void;
 
-const WS_URL = `ws://${window.location.hostname}:27135/api/ws`;
+// 开发模式下 Vite 代理 API 到 27135，但 WebSocket 需要直连 27135
+// 打包后页面和 WebSocket 同端口（使用当前页面的端口）
+const WS_URL = import.meta.env.DEV
+  ? `ws://${window.location.hostname}:27135/api/ws`
+  : `ws://${window.location.hostname}:${window.location.port}/api/ws`;
 
 /**
  * 订阅指定会话的事件流（WebSocket）
