@@ -630,3 +630,17 @@ export async function saveWindowPosition(appId: string, position: { x: number; y
     body: JSON.stringify(position),
   });
 }
+
+// ============ 注入相关API ============
+
+export interface InjectionBlock {
+  source: string;
+  label: string;
+  title: string;
+  detail: string;
+}
+
+export async function getInjections(appId: string, convId?: string): Promise<{ blocks: InjectionBlock[] }> {
+  const params = convId ? `?convId=${convId}` : '';
+  return fetchJson(`/apps/${appId}/injections${params}`);
+}

@@ -14,6 +14,7 @@ import hermesRouter from './routes/hermes.js';
 import logsRouter from './routes/logs.js';
 import workspaceRouter from './routes/workspace.js';
 import mediaRouter from './routes/media.js';
+import injectionsRouter from './routes/injections.js';
 import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR, DATA_DIR } from './utils/file.js';
 import { setupWebSocket } from './services/wsServer.js';
 
@@ -65,6 +66,9 @@ app.use('/api/hermes', hermesRouter);
 app.use('/api/logs', logsRouter);
 app.use('/api/workspace', workspaceRouter);
 app.use('/api/apps', mediaRouter);
+
+// Injections (memory 2.0 injection blocks)
+app.use('/api/apps/:appId/injections', injectionsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

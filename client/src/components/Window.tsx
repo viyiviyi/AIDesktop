@@ -10,6 +10,7 @@ import { FormComponent } from './FormComponent';
 import { WorkspaceDirSelector } from './WorkspaceDirSelector';
 import { MediaSelector } from './MediaSelector';
 import { PictureFilled } from '@ant-design/icons';
+import { InjectionBar } from './InjectionBar';
 
 // 流式 tool call 的展开状态管理（独立于 Window 内部展开状态，因为 toolCalls 不是 msg.content）
 const toolExpandStore = new Map<string, boolean>();
@@ -1640,6 +1641,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
           </div>
         );
       })()}
+      <InjectionBar appId={appId} convId={currentConvId} />
       <div className="chat-input-area">
         {editingMsgId ? (
           <>

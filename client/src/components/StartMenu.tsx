@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import type { AppInfo, Message } from '../types';
 import * as api from '../services/api';
+import { InjectionBar } from './InjectionBar';
 import { useAgentEventStream, type WsConvEvent } from '../services/useAgentEventStream';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -398,6 +399,7 @@ export function StartMenu() {
             )}
             <div ref={messagesEndRef} />
           </div>
+          <InjectionBar appId={APP_ID} convId={conversationId} />
           <div className="start-menu-input-area">
             <input
               type="text"

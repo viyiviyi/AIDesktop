@@ -23,5 +23,5 @@
   "outputDescription": "生成应用代码和配置",
   "visibleApps": ["settings"],
   "visibleServices": [],
-  "tools": ["mcp.filesystem", "mcp.agent"]
+  "tools": ["mcp.filesystem", "mcp.agent", "mcp.memory"]
 }
