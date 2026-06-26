@@ -297,3 +297,31 @@ export interface DesktopState {
   appLastPositions: Record<string, { x: number; y: number }>;
   conversationTitles: Record<string, string>;
 }
+
+// Memory 2.0
+export type MemoryType = 'fact' | 'preference' | 'context' | 'goal';
+export type MemoryScope = 'app' | 'conversation';
+export type MemorySource = 'user' | 'agent' | 'system';
+
+export interface MemoryEntry {
+  id: string;
+  type: MemoryType;
+  key: string;
+  value: string;
+  content: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  source: MemorySource;
+  scope: MemoryScope;
+  conversationId?: string;
+  ttl?: number;
+  version: number;
+}
+
+export interface InjectionBlock {
+  source: string;
+  label: string;
+  title: string;
+  detail: string;
+}
