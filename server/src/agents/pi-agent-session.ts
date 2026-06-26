@@ -140,6 +140,21 @@ async function buildSystemPrompt(app: App): Promise<string> {
     }
   }
 
+  // 注入记忆块（应用级 + 会话级 + 目标树）
+  try {
+    const { memoryService } = await import('../services/memory.js');
+    const convId = (app as any)._currentConvId;
+    const memoryBlock = await memoryService.buildMemoryBlock(app.meta.id, {
+      convId,
+      maxEntries: 30,
+    });
+    if (memoryBlock.trim()) {
+      prompt += '\n\n' + memoryBlock;
+    }
+  } catch {
+    // 记忆加载失败不影响主流程
+  }
+
   return prompt;
 }
 
@@ -535,7 +550,7 @@ export async function runAgentAsync(
       } catch {
         latestAppMd = app.appMd || '';
       }
-      const updatedPrompt = await buildSystemPrompt({ ...app, appMd: latestAppMd } as any);
+      const updatedPrompt = await buildSystemPrompt({ ...app, appMd: latestAppMd, _currentConvId: convId } as any);
       if (session.agent.state.systemPrompt !== updatedPrompt) {
         session.agent.state.systemPrompt = updatedPrompt;
       }

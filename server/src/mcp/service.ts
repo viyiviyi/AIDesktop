@@ -67,6 +67,16 @@ const builtInServices: Record<string, MCPService> = {
     methods: ['requestInput'],
     category: 'builtin',
   },
+  'mcp.memory': {
+    name: 'mcp.memory',
+    description: '记忆服务 - 管理 AI 的长期记忆和目标树。支持保存、查询、删除记忆条目，以及设置和完成会话目标',
+    methods: [
+      'remember', 'recall', 'recallByPrefix', 'forget',
+      'setGoal', 'completeGoal', 'getActiveGoals', 'getArchivedGoals',
+      'list', 'listTags', 'stats',
+    ],
+    category: 'builtin',
+  },
 
   // ===== 工作工具（workspace）=====
   'workspace.code': {
@@ -168,6 +178,8 @@ class MCPServiceRegistry {
         return this.handleBrowserMethod(method, args, context);
       case 'mcp.form':
         return this.handleFormMethod(method, args, context);
+      case 'mcp.memory':
+        return this.handleMemoryMethod(method, args, context);
       case 'workspace.code':
         return this.handleWorkspaceCodeMethod(method, args, context);
       case 'workspace.dir':
@@ -1427,6 +1439,97 @@ class MCPServiceRegistry {
       },
     };
     return this.handleFormMethod('requestInput', args as any, { ...context, _toolCallId: toolCallId } as any);
+  }
+
+  private async handleMemoryMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; userId?: string; convId?: string },
+  ): Promise<unknown> {
+    const { memoryService } = await import('../services/memory.js');
+    const appId = context.appId;
+    if (!appId) throw new Error('appId is required');
+
+    switch (method) {
+      case 'remember': {
+        const scope = (args.scope as string) || 'app';
+        const convId = scope === 'conversation' ? (args.convId as string || context.convId) : undefined;
+        return memoryService.remember(scope as any, appId, {
+          type: args.type as any,
+          key: args.key as string,
+          value: args.value as string,
+          content: args.content as string,
+          tags: args.tags as string[],
+          source: (args.source as any) || 'agent',
+          ttl: args.ttl as number,
+        }, convId);
+      }
+      case 'recall': {
+        const scope = (args.scope as string) || 'app';
+        const convId = scope === 'conversation' ? (args.convId as string || context.convId) : undefined;
+        return memoryService.recall(scope as any, appId, {
+          key: args.key as string,
+          keyPrefix: args.keyPrefix as string,
+          type: args.type as any,
+          tags: args.tags as string[],
+          tagsAny: args.tagsAny as string[],
+          search: args.search as string,
+          limit: args.limit as number,
+          offset: args.offset as number,
+        }, convId);
+      }
+      case 'recallByPrefix': {
+        const scope = (args.scope as string) || 'app';
+        const convId = scope === 'conversation' ? (args.convId as string || context.convId) : undefined;
+        return memoryService.recallByPrefix(scope as any, appId, args.keyPrefix as string, convId);
+      }
+      case 'forget': {
+        const scope = (args.scope as string) || 'app';
+        const convId = scope === 'conversation' ? (args.convId as string || context.convId) : undefined;
+        if (args.tag) return memoryService.forgetByTag(scope as any, appId, args.tag as string, convId);
+        return memoryService.forget(scope as any, appId, args.id as string, convId);
+      }
+      case 'setGoal': {
+        const level = args.level as number;
+        const value = args.value as string;
+        const source = (args.source as any) || 'agent';
+        if (!context.convId) throw new Error('convId is required for goal operations');
+        if (level === 1) return memoryService.setLevel1Goal(appId, context.convId, value, source);
+        if (level === 2) return memoryService.setLevel2Goal(appId, context.convId, value, source);
+        if (level === 3) return memoryService.setLevel3Goal(appId, context.convId, value, source);
+        throw new Error('level must be 1, 2, or 3');
+      }
+      case 'completeGoal': {
+        if (!context.convId) throw new Error('convId is required for goal operations');
+        await memoryService.completeGoal(appId, context.convId, args.level as 1|2|3);
+        return { success: true };
+      }
+      case 'getActiveGoals': {
+        if (!context.convId) throw new Error('convId is required for goal operations');
+        return memoryService.getActiveGoals(appId, context.convId);
+      }
+      case 'getArchivedGoals': {
+        if (!context.convId) throw new Error('convId is required for goal operations');
+        return memoryService.getArchivedGoals(appId, context.convId);
+      }
+      case 'list': {
+        const scope = (args.scope as string) || 'app';
+        const convId = scope === 'conversation' ? (args.convId as string || context.convId) : undefined;
+        return memoryService.getAll(scope as any, appId, convId);
+      }
+      case 'listTags': {
+        const scope = (args.scope as string) || 'app';
+        const convId = scope === 'conversation' ? (args.convId as string || context.convId) : undefined;
+        return memoryService.listTags(scope as any, appId, convId);
+      }
+      case 'stats': {
+        const scope = (args.scope as string) || 'app';
+        const convId = scope === 'conversation' ? (args.convId as string || context.convId) : undefined;
+        return memoryService.stats(scope as any, appId, convId);
+      }
+      default:
+        throw new Error(`Method ${method} not supported on mcp.memory`);
+    }
   }
 
   private async handleSkillMethod(
