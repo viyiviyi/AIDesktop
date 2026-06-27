@@ -1,7 +1,7 @@
 import { MCPConnection } from '../types/index.js';
 import { MCPExternalClient, MCPTool, MCPResource } from './externalClient.js';
 import { logger } from '../utils/logger.js';
-import { settingsService } from '../services/settings.js';
+import { appState } from '../services/appState.js';
 
 /**
  * MCP客户端注册表
@@ -24,7 +24,7 @@ class MCPClientRegistry {
     logger.info('MCPClientRegistry', 'Initializing MCP clients from config...');
 
     try {
-      const mcp = await settingsService.getMcp();
+      const mcp = await appState.getMcp();
       const connections = mcp.connections.filter((c) => c.enabled);
 
       for (const connection of connections) {

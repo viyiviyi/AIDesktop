@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { conversationService } from '../services/conversation.js';
-import { appLoader } from '../services/appLoader.js';
+import { appState } from '../services/appState.js';
 import { agentEngine } from '../agents/engine.js';
 import { piAgentManager, runAgentAsync } from '../agents/pi-agent-session.js';
 import { mcpServiceRegistry } from '../mcp/service.js';
@@ -59,7 +59,7 @@ async function saveContentAttachments(
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { appId } = req.params;
-    const app = appLoader.getApp(appId);
+    const app = appState.getApp(appId);
     if (!app) return res.status(404).json({ error: 'App not found' });
 
     const conversations = await conversationService.getConversations(appId);
@@ -86,7 +86,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { appId } = req.params;
     const { title } = req.body;
-    const app = appLoader.getApp(appId);
+    const app = appState.getApp(appId);
     if (!app) return res.status(404).json({ error: 'App not found' });
     const conversation = await conversationService.createConversation(appId, title);
     res.status(201).json(conversation);
@@ -125,7 +125,7 @@ router.post('/:convId/messages', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Content is required and must be an array' });
     }
 
-    const app = appLoader.getApp(appId);
+    const app = appState.getApp(appId);
     if (!app) return res.status(404).json({ error: 'App not found' });
 
     const conversation = await conversationService.getConversation(appId, convId);
@@ -199,7 +199,7 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
   try {
     const { appId, convId } = req.params;
 
-    const app = appLoader.getApp(appId);
+    const app = appState.getApp(appId);
     if (!app) return res.status(404).json({ error: 'App not found' });
 
     const conversation = await conversationService.getConversation(appId, convId);

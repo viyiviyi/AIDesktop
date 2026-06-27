@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { settingsService } from '../services/settings.js';
+import { appState } from '../services/appState.js';
 import { logger } from '../utils/logger.js';
 import { getProviders, getModels } from '@earendil-works/pi-ai';
 
@@ -12,7 +12,7 @@ const router = Router();
  */
 router.get('/health', async (_req: Request, res: Response) => {
   try {
-    const modes = await settingsService.getModes();
+    const modes = await appState.getModes();
     const enabledProviders = modes.providers.filter(p => p.enabled !== false);
 
     const configured = enabledProviders.length > 0;
@@ -47,8 +47,8 @@ router.get('/health', async (_req: Request, res: Response) => {
  */
 router.get('/status', async (_req: Request, res: Response) => {
   try {
-    const modes = await settingsService.getModes();
-    const defaultModel = await settingsService.getDefaultModel();
+    const modes = await appState.getModes();
+    const defaultModel = await appState.getDefaultModel();
     const enabledProviders = modes.providers.filter(p => p.enabled !== false);
 
     res.json({

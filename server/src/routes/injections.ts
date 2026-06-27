@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { appLoader } from '../services/appLoader.js';
+import { appState } from '../services/appState.js';
 import { memoryService } from '../services/memory.js';
 import { skillService } from '../services/skillService.js';
-import { settingsService } from '../services/settings.js';
 import type { InjectionBlock } from '../types/index.js';
 
 const router = Router();
@@ -13,7 +12,7 @@ router.get('/', async (req: Request, res: Response) => {
     const { appId } = req.params;
     const convId = req.query.convId as string | undefined;
 
-    const app = appLoader.getApp(appId);
+    const app = appState.getApp(appId);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
@@ -36,7 +35,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (visibleApps.length > 0) {
       const agentNames = visibleApps
         .map(id => {
-          const agent = appLoader.getApp(id);
+          const agent = appState.getApp(id);
           return agent ? `${agent.meta.name} (${id})` : id;
         })
         .join('\n');
@@ -134,7 +133,7 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     // ── source: 'prompt' ───────────────────────────
-    const modelConfig = await settingsService.getDefaultModel();
+    const modelConfig = await appState.getDefaultModel();
     const promptDetail = modelConfig.providerId && modelConfig.modelId
       ? `当前模型: ${modelConfig.providerId}/${modelConfig.modelId}`
       : '未配置默认模型';

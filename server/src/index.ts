@@ -3,8 +3,7 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
-import { appLoader } from './services/appLoader.js';
-import { settingsService } from './services/settings.js';
+import { appState } from './services/appState.js';
 import appsRouter from './routes/apps.js';
 import conversationsRouter from './routes/conversations.js';
 import settingsRouter from './routes/settings.js';
@@ -48,8 +47,8 @@ async function init() {
   await ensureDir(CONFIGS_DIR);
   await ensureDir(join(CONFIGS_DIR, '..', 'public_data', 'skills'));
 
-  await appLoader.loadAll();
-  await settingsService.getSettings();
+  // 统一状态管理初始化（加载所有配置和 App）
+  await appState.init();
 
   // Initialize MCP clients from config
   await mcpClientRegistry.initializeFromConfig();

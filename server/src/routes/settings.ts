@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { settingsService } from '../services/settings.js';
+import { appState } from '../services/appState.js';
 import { OpenAIAdapter } from '../models/openai.js';
 import type { ApiCompatType } from '../types/index.js';
 import { randomUUID } from 'crypto';
@@ -12,7 +12,7 @@ const router = Router();
 // Get desktop settings
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const settings = await settingsService.getSettings();
+    const settings = await appState.getSettings();
     res.json(settings);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -22,7 +22,7 @@ router.get('/', async (req: Request, res: Response) => {
 // Update desktop settings
 router.put('/', async (req: Request, res: Response) => {
   try {
-    const settings = await settingsService.updateSettings(req.body);
+    const settings = await appState.updateSettings(req.body);
     res.json(settings);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -32,7 +32,7 @@ router.put('/', async (req: Request, res: Response) => {
 // Get model providers
 router.get('/modes', async (req: Request, res: Response) => {
   try {
-    const modes = await settingsService.getModes();
+    const modes = await appState.getModes();
     res.json(modes);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -42,7 +42,7 @@ router.get('/modes', async (req: Request, res: Response) => {
 // Update model providers
 router.put('/modes', async (req: Request, res: Response) => {
   try {
-    const modes = await settingsService.updateModes(req.body);
+    const modes = await appState.updateModes(req.body);
     res.json(modes);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -52,7 +52,7 @@ router.put('/modes', async (req: Request, res: Response) => {
 // Update single provider
 router.put('/modes/providers/:providerId', async (req: Request, res: Response) => {
   try {
-    const modes = await settingsService.updateProvider(req.params.providerId, req.body);
+    const modes = await appState.updateProvider(req.params.providerId, req.body);
     res.json(modes);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -62,7 +62,7 @@ router.put('/modes/providers/:providerId', async (req: Request, res: Response) =
 // Add new provider
 router.post('/modes/providers', async (req: Request, res: Response) => {
   try {
-    const modes = await settingsService.addProvider(req.body);
+    const modes = await appState.addProvider(req.body);
     res.json(modes);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -72,7 +72,7 @@ router.post('/modes/providers', async (req: Request, res: Response) => {
 // Delete provider
 router.delete('/modes/providers/:providerId', async (req: Request, res: Response) => {
   try {
-    const modes = await settingsService.deleteProvider(req.params.providerId);
+    const modes = await appState.deleteProvider(req.params.providerId);
     res.json(modes);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -111,7 +111,7 @@ router.post('/modes/fetch-models', async (req: Request, res: Response) => {
 // Get MCP settings
 router.get('/mcp', async (req: Request, res: Response) => {
   try {
-    const mcp = await settingsService.getMcp();
+    const mcp = await appState.getMcp();
     res.json(mcp);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -121,7 +121,7 @@ router.get('/mcp', async (req: Request, res: Response) => {
 // Update MCP settings
 router.put('/mcp', async (req: Request, res: Response) => {
   try {
-    const mcp = await settingsService.updateMcp(req.body);
+    const mcp = await appState.updateMcp(req.body);
     res.json(mcp);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -131,7 +131,7 @@ router.put('/mcp', async (req: Request, res: Response) => {
 // Connect new MCP service
 router.post('/mcp/connect', async (req: Request, res: Response) => {
   try {
-    const mcp = await settingsService.connectMcp(req.body);
+    const mcp = await appState.connectMcp(req.body);
     res.json(mcp);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -141,7 +141,7 @@ router.post('/mcp/connect', async (req: Request, res: Response) => {
 // Disconnect MCP service
 router.delete('/mcp/:connectionId', async (req: Request, res: Response) => {
   try {
-    const mcp = await settingsService.disconnectMcp(req.params.connectionId);
+    const mcp = await appState.disconnectMcp(req.params.connectionId);
     res.json(mcp);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -151,7 +151,7 @@ router.delete('/mcp/:connectionId', async (req: Request, res: Response) => {
 // Get skill settings
 router.get('/skills', async (req: Request, res: Response) => {
   try {
-    const skills = await settingsService.getSkills();
+    const skills = await appState.getSkills();
     res.json(skills);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -161,7 +161,7 @@ router.get('/skills', async (req: Request, res: Response) => {
 // Update skill settings
 router.put('/skills', async (req: Request, res: Response) => {
   try {
-    const skills = await settingsService.updateSkills(req.body);
+    const skills = await appState.updateSkills(req.body);
     res.json(skills);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -171,7 +171,7 @@ router.put('/skills', async (req: Request, res: Response) => {
 // Add new skill
 router.post('/skills', async (req: Request, res: Response) => {
   try {
-    const skills = await settingsService.addSkill(req.body);
+    const skills = await appState.addSkill(req.body);
     res.json(skills);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -181,7 +181,7 @@ router.post('/skills', async (req: Request, res: Response) => {
 // Delete skill
 router.delete('/skills/:skillId', async (req: Request, res: Response) => {
   try {
-    const skills = await settingsService.deleteSkill(req.params.skillId);
+    const skills = await appState.deleteSkill(req.params.skillId);
     res.json(skills);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -221,7 +221,7 @@ router.put('/skills/:dir/toggle', async (req: Request, res: Response) => {
 // Get default model config
 router.get('/default-model', async (req: Request, res: Response) => {
   try {
-    const config = await settingsService.getDefaultModel();
+    const config = await appState.getDefaultModel();
     res.json(config);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -231,7 +231,7 @@ router.get('/default-model', async (req: Request, res: Response) => {
 // Update default model config
 router.put('/default-model', async (req: Request, res: Response) => {
   try {
-    const config = await settingsService.updateDefaultModel(req.body);
+    const config = await appState.updateDefaultModel(req.body);
     res.json(config);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -241,7 +241,7 @@ router.put('/default-model', async (req: Request, res: Response) => {
 // Get window positions
 router.get('/window-positions', async (req: Request, res: Response) => {
   try {
-    const positions = await settingsService.getWindowPositions();
+    const positions = await appState.getWindowPositions();
     res.json(positions);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -253,7 +253,7 @@ router.put('/window-positions/:appId', async (req: Request, res: Response) => {
   try {
     const { appId } = req.params;
     const position = req.body;
-    await settingsService.saveWindowPosition(appId, position);
+    await appState.saveWindowPosition(appId, position);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -270,8 +270,8 @@ router.post('/skills/generate', async (req: Request, res: Response) => {
     }
 
     // 1. 获取默认模型
-    const modes = await settingsService.getModes();
-    const defaultModelConfig = await settingsService.getDefaultModel();
+    const modes = await appState.getModes();
+    const defaultModelConfig = await appState.getDefaultModel();
     let providerId = defaultModelConfig.providerId;
     let modelId = defaultModelConfig.modelId;
     if (!providerId || !modelId) {
@@ -366,9 +366,9 @@ router.post('/skills/generate', async (req: Request, res: Response) => {
       config: {},
     };
 
-    const currentSkills = await settingsService.getSkills();
+    const currentSkills = await appState.getSkills();
     currentSkills.skills.push(newSkill);
-    await settingsService.updateSkills({ skills: currentSkills.skills });
+    await appState.updateSkills({ skills: currentSkills.skills });
 
     serverLogger.info('skill-maker', `Generated skill: ${skillName}`);
 

@@ -3,7 +3,7 @@
  */
 
 import type { Content, Message } from "../types/index.js";
-import { appLoader } from "../services/appLoader.js";
+import { appState } from "../services/appState.js";
 import { conversationService } from "../services/conversation.js";
 import { piAgentManager } from "./pi-agent-session.js";
 
@@ -13,7 +13,7 @@ class AgentEngine {
     convId: string,
     userContent: Content[],
   ): Promise<{ assistantMessage: Message }> {
-    const app = appLoader.getApp(appId);
+    const app = appState.getApp(appId);
     if (!app) throw new Error(`App ${appId} not found`);
 
     const conversation = await conversationService.getConversation(appId, convId);
@@ -65,7 +65,7 @@ class AgentEngine {
     convId: string,
     userText: string,
   ): AsyncGenerator<string, void, unknown> {
-    const app = appLoader.getApp(appId);
+    const app = appState.getApp(appId);
     if (!app) throw new Error(`App ${appId} not found`);
 
     const conversation = await conversationService.getConversation(appId, convId);

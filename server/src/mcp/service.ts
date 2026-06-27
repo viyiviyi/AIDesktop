@@ -196,14 +196,14 @@ class MCPServiceRegistry {
     args: Record<string, unknown>,
     context: { appId?: string; convId?: string }
   ): Promise<unknown> {
-    const { appLoader } = await import('../services/appLoader.js');
+    const { appState } = await import('../services/appState.js');
     const { conversationService } = await import('../services/conversation.js');
     const { agentEngine } = await import('../agents/engine.js');
 
     switch (method) {
       case 'list': {
         // 获取调用者的信息，用于过滤可见的agent列表
-        const callerApp = context.appId ? appLoader.getApp(context.appId) : null;
+        const callerApp = context.appId ? appState.getApp(context.appId) : null;
         const visibleApps = [...new Set([
           ...(callerApp?.config.visibleApps || []),
           ...(callerApp?.meta.visibleApps || [])
@@ -214,7 +214,7 @@ class MCPServiceRegistry {
         ])];
 
         return {
-          agents: appLoader.getAllApps()
+          agents: appState.getAllApps()
             .filter(a => {
               // 只返回 desktop 和 background 类型的应用
               if (a.meta.type !== 'desktop' && a.meta.type !== 'background') return false;
@@ -248,13 +248,13 @@ class MCPServiceRegistry {
         };
       }
       case 'getInfo': {
-        const app = appLoader.getApp(args.id as string);
+        const app = appState.getApp(args.id as string);
         if (!app) {
           return { error: 'Agent not found' };
         }
         // 可见性检查
         if (context.appId && args.id !== context.appId) {
-          const callerApp = appLoader.getApp(context.appId);
+          const callerApp = appState.getApp(context.appId);
           if (app.meta.type === 'desktop') {
             const callerVisibleApps = [...new Set([
               ...(callerApp?.config.visibleApps || []),
@@ -303,15 +303,15 @@ class MCPServiceRegistry {
         }
         if (!Array.isArray(message) || message.length === 0) throw new Error('message is required');
 
-        const targetApp = appLoader.getApp(agentId);
+        const targetApp = appState.getApp(agentId);
         if (!targetApp) throw new Error(`Agent ${agentId} not found`);
         if (targetApp.meta.type !== 'desktop' && targetApp.meta.type !== 'background') {
           throw new Error(`Agent ${agentId} is not callable`);
         }
         // 可见性检查
         if (context.appId) {
-          const callerApp = appLoader.getApp(context.appId);
-          const targetApp_check = appLoader.getApp(agentId);
+          const callerApp = appState.getApp(context.appId);
+          const targetApp_check = appState.getApp(agentId);
           if (!targetApp_check) throw new Error(`Agent ${agentId} not found`);
 
           if (targetApp_check.meta.type === 'desktop') {
@@ -616,18 +616,17 @@ class MCPServiceRegistry {
     args: Record<string, unknown>,
     context: { appId?: string; convId?: string }
   ): Promise<unknown> {
-    const { settingsService } = await import('../services/settings.js');
-    const { appLoader } = await import('../services/appLoader.js');
+    const { appState } = await import('../services/appState.js');
 
     switch (method) {
       case 'get':
-        return settingsService.getSettings();
+        return appState.getSettings();
       case 'update':
-        return settingsService.updateSettings(args as Record<string, unknown>);
+        return appState.updateSettings(args as Record<string, unknown>);
       case 'getSkills':
-        return settingsService.getSkills();
+        return appState.getSkills();
       case 'getApps': {
-        const apps = appLoader.getAllApps();
+        const apps = appState.getAllApps();
         return { apps: apps.map(a => ({ id: a.meta.id, name: a.meta.name, skills: a.skills || [] })) };
       }
       case 'getConversations': {
@@ -663,8 +662,8 @@ class MCPServiceRegistry {
           throw new Error('conversations array is required');
         }
         // 调用 POST /settings/skills/generate 的相同逻辑
-        const modes = await settingsService.getModes();
-        const defaultModelConfig = await settingsService.getDefaultModel();
+        const modes = await appState.getModes();
+        const defaultModelConfig = await appState.getDefaultModel();
         let providerId = defaultModelConfig.providerId;
         let modelId = defaultModelConfig.modelId;
         if (!providerId || !modelId) throw new Error('No default model configured');
@@ -716,9 +715,9 @@ class MCPServiceRegistry {
         const skillPrompt = promptMatch ? promptMatch[1].trim() : fullText;
 
         const newSkill = { id: randomUUID(), name: skillName, description: skillDesc, prompt: skillPrompt, enabled: true, config: {} };
-        const currentSkills = await settingsService.getSkills();
+        const currentSkills = await appState.getSkills();
         currentSkills.skills.push(newSkill);
-        await settingsService.updateSkills({ skills: currentSkills.skills });
+        await appState.updateSkills({ skills: currentSkills.skills });
 
         return { skill: newSkill, allSkills: currentSkills.skills };
       }
@@ -727,7 +726,7 @@ class MCPServiceRegistry {
         const targetAppId = args.appId as string;
         const skillId = args.skillId as string;
         if (!targetAppId || !skillId) throw new Error('appId and skillId are required');
-        const app = appLoader.getApp(targetAppId);
+        const app = appState.getApp(targetAppId);
         if (!app) throw new Error(`App "${targetAppId}" not found`);
         const currentSkills = app.skills || [];
         if (!currentSkills.includes(skillId)) {
@@ -739,7 +738,7 @@ class MCPServiceRegistry {
         const includePath = path.default.join(APPS_DIR, app.meta.source, targetAppId, 'skills', 'include.json');
         await writeJsonFile(includePath, { skills: currentSkills });
         // 刷新内存中该应用的 skills
-        const apps = appLoader.getAllApps();
+        const apps = appState.getAllApps();
         const target = apps.find((a: any) => a.meta.id === targetAppId);
         if (target) {
           try {
@@ -1542,8 +1541,8 @@ class MCPServiceRegistry {
     switch (method) {
       case 'list': {
         // 只返回当前应用被授权的技能（含文件列表）
-        const { appLoader } = await import('../services/appLoader.js');
-        const app = context.appId ? appLoader.getApp(context.appId) : null;
+        const { appState } = await import('../services/appState.js');
+        const app = context.appId ? appState.getApp(context.appId) : null;
         const appSkillIds = app?.skills || [];
         const skills = await skillService.getEnabledSkillsForApp(appSkillIds);
         // 获取完整信息（含文件列表）

@@ -12,8 +12,7 @@ import {
   streamSimple,
 } from "@earendil-works/pi-ai";
 import type { App, Message as AdMsg, Content, ToolResultMeta } from "../types/index.js";
-import { appLoader } from "../services/appLoader.js";
-import { settingsService } from "../services/settings.js";
+import { appState } from "../services/appState.js";
 import { findModel } from "../models/pi-adapter.js";
 import { buildPiToolsForApp, buildWorkspaceTools, setCurrentConvId } from "./pi-tools.js";
 import { serverLogger } from "../utils/logger.js";
@@ -106,7 +105,7 @@ async function buildSystemPrompt(app: App): Promise<string> {
   const visibleApps = app.config.visibleApps || app.meta.visibleApps || [];
   if (visibleApps.length > 0) {
     const names = visibleApps.map((id: string) => {
-      const a = appLoader.getApp(id);
+      const a = appState.getApp(id);
       return a ? `${a.meta.name} (${id})` : id;
     });
     prompt += `\n\n## 可调用的 Agent\n你可以通过 mcp.agent.call 调用以下 Agent：${names.join("、")}`;
@@ -182,8 +181,8 @@ export class PiAgentSession {
   }
 
   async init(app: App): Promise<void> {
-    const modes = await settingsService.getModes();
-    const defaultModelConfig = await settingsService.getDefaultModel();
+    const modes = await appState.getModes();
+    const defaultModelConfig = await appState.getDefaultModel();
 
     let providerId = defaultModelConfig.providerId;
     let modelId = defaultModelConfig.modelId;
@@ -224,7 +223,7 @@ export class PiAgentSession {
         const start = Date.now();
 
         // 每次流式调用时从当前 app 配置读取 bodyParams（支持运行时修改）
-        const currentApp = appLoader.getApp(app.meta.id);
+        const currentApp = appState.getApp(app.meta.id);
         // 使用 mergeConfig 统一合并 meta+config，与前端显示保持一致
         const mergedMeta: any = { ...(currentApp?.meta || {}) };
         const mergedConfig: any = currentApp?.config || {};
@@ -376,10 +375,10 @@ export class PiAgentManager {
 
   /** 刷新会话：重新读取最新配置更新 model、tools、systemPrompt */
   async refreshSession(appId: string, session: PiAgentSession): Promise<void> {
-    const app = appLoader.getApp(appId);
+    const app = appState.getApp(appId);
     if (!app) return;
-    const modes = await settingsService.getModes();
-    const defaultModelConfig = await settingsService.getDefaultModel();
+    const modes = await appState.getModes();
+    const defaultModelConfig = await appState.getDefaultModel();
 
     let providerId = defaultModelConfig.providerId;
     let modelId = defaultModelConfig.modelId;

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { mcpServiceRegistry } from '../mcp/service.js';
 import { mcpClientRegistry } from '../mcp/clientRegistry.js';
-import { settingsService } from '../services/settings.js';
+import { appState } from '../services/appState.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -76,7 +76,7 @@ router.post('/connect', async (req: Request, res: Response) => {
     logger.info('MCPRoutes', `Connecting to external MCP server: ${connection.name}`);
 
     // Create or update connection in settings
-    const mcp = await settingsService.getMcp();
+    const mcp = await appState.getMcp();
     const existingIndex = mcp.connections.findIndex((c) => c.id === connection.id);
 
     let updatedConnection;
@@ -94,7 +94,7 @@ router.post('/connect', async (req: Request, res: Response) => {
       mcp.connections.push(updatedConnection);
     }
 
-    await settingsService.updateMcp({ connections: mcp.connections });
+    await appState.updateMcp({ connections: mcp.connections });
 
     // Connect to the MCP server
     try {
@@ -138,11 +138,11 @@ router.delete('/connect/:connectionId', async (req: Request, res: Response) => {
     await mcpClientRegistry.removeClient(connectionId);
 
     // Update settings to mark as disconnected
-    const mcp = await settingsService.getMcp();
+    const mcp = await appState.getMcp();
     const connection = mcp.connections.find((c) => c.id === connectionId);
     if (connection) {
       connection.enabled = false;
-      await settingsService.updateMcp({ connections: mcp.connections });
+      await appState.updateMcp({ connections: mcp.connections });
     }
 
     res.json({ success: true, connectionId });
@@ -173,7 +173,7 @@ router.get('/connections/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
 
     // Get connection config from settings
-    const mcp = await settingsService.getMcp();
+    const mcp = await appState.getMcp();
     const connectionConfig = mcp.connections.find(c => c.id === id);
     if (!connectionConfig) {
       return res.status(404).json({ error: 'Connection not found' });
@@ -218,7 +218,7 @@ router.put('/connections/:id/tools', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'enabledTools must be an array of tool name strings' });
     }
 
-    const result = await settingsService.updateMcpConnection(id, { enabledTools });
+    const result = await appState.updateMcpConnection(id, { enabledTools });
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });

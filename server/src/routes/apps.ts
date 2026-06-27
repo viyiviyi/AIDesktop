@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { appLoader } from '../services/appLoader.js';
+import { appState } from '../services/appState.js';
 import type { AppSource } from '../types/index.js';
 import { APPS_DATA_DIR } from '../utils/file.js';
 
@@ -9,7 +9,7 @@ const router = Router();
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { source } = req.query;
-    let apps = appLoader.getAllApps();
+    let apps = appState.getAllApps();
 
     if (source && typeof source === 'string') {
       apps = apps.filter(a => a.meta.source === source);
@@ -39,7 +39,7 @@ router.get('/', async (req: Request, res: Response) => {
 // Get app details (合并 meta + config)
 router.get('/:appId', async (req: Request, res: Response) => {
   try {
-    const app = appLoader.getApp(req.params.appId);
+    const app = appState.getApp(req.params.appId);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
@@ -85,7 +85,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App name is required' });
     }
 
-    const app = await appLoader.createApp(
+    const app = await appState.createApp(
       { meta, appMd, mcpServices, skills, config: {} },
       'user'
     );
@@ -99,7 +99,7 @@ router.post('/', async (req: Request, res: Response) => {
 // Update app runtime config (写入 config.json，不修改 meta.json)
 router.put('/:appId', async (req: Request, res: Response) => {
   try {
-    const app = appLoader.getApp(req.params.appId);
+    const app = appState.getApp(req.params.appId);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
@@ -130,7 +130,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No configurable fields provided' });
     }
 
-    const updated = await appLoader.updateApp(req.params.appId, configUpdates);
+    const updated = await appState.updateApp(req.params.appId, configUpdates);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -140,7 +140,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
 // Delete app (user apps only)
 router.delete('/:appId', async (req: Request, res: Response) => {
   try {
-    const app = appLoader.getApp(req.params.appId);
+    const app = appState.getApp(req.params.appId);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
@@ -149,7 +149,7 @@ router.delete('/:appId', async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Cannot delete system apps' });
     }
 
-    const deleted = await appLoader.deleteApp(req.params.appId);
+    const deleted = await appState.deleteApp(req.params.appId);
     if (deleted) {
       res.json({ success: true });
     } else {
@@ -163,11 +163,11 @@ router.delete('/:appId', async (req: Request, res: Response) => {
 // Enable app
 router.put('/:appId/enable', async (req: Request, res: Response) => {
   try {
-    const app = appLoader.getApp(req.params.appId);
+    const app = appState.getApp(req.params.appId);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
-    const updated = await appLoader.setAppEnabled(req.params.appId, true);
+    const updated = await appState.setAppEnabled(req.params.appId, true);
     res.json({ success: true, app: updated });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -177,11 +177,11 @@ router.put('/:appId/enable', async (req: Request, res: Response) => {
 // Disable app
 router.put('/:appId/disable', async (req: Request, res: Response) => {
   try {
-    const app = appLoader.getApp(req.params.appId);
+    const app = appState.getApp(req.params.appId);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
-    const updated = await appLoader.setAppEnabled(req.params.appId, false);
+    const updated = await appState.setAppEnabled(req.params.appId, false);
     res.json({ success: true, app: updated });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -191,8 +191,8 @@ router.put('/:appId/disable', async (req: Request, res: Response) => {
 // Reload all apps (useful when new apps are added)
 router.post('/reload', async (req: Request, res: Response) => {
   try {
-    await appLoader.reloadAll();
-    const apps = appLoader.getAllApps();
+    await appState.reloadAllApps();
+    const apps = appState.getAllApps();
     res.json({
       success: true,
       message: `Reloaded ${apps.length} apps`,
