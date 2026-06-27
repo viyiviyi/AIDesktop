@@ -65,7 +65,7 @@ npx esbuild src/index.ts \
   --external:playwright \
   --external:@playwright/mcp
 
-echo "Backend bundled: $DIST_DIR/server.mjs"
+echo "Backend bundled: $DIST_DIR/server.cjs"
 
 # ---- Step 3b: Install external dependencies (playwright) ----
 echo ""
