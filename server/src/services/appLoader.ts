@@ -204,17 +204,27 @@ class AppLoader {
   }
 
   // 更新应用运行时配置（不修改 meta.json）
-  async updateApp(id: string, updates: Partial<AppConfig>): Promise<App | null> {
+  async updateApp(id: string, updates: Partial<AppConfig> & { appMd?: string }): Promise<App | null> {
     const app = this.apps.get(id);
     if (!app) return null;
 
     const currentConfig = await this.readConfig(id);
-    const newConfig = { ...currentConfig, ...updates };
+    const { appMd, ...configUpdates } = updates;
+    const newConfig = { ...currentConfig, ...configUpdates };
 
     // 写入 config.json
     await this.writeConfig(id, newConfig);
 
-    const updatedApp = { ...app, config: newConfig };
+    // 如果有 appMd 更新，也写入文件系统并更新内存
+    if (appMd !== undefined) {
+      const sourceDir = app.meta.source === 'system' ? SYSTEM_APPS_DIR
+        : app.meta.source === 'user' ? USER_APPS_DIR
+        : MARKETPLACE_APPS_DIR;
+      const { writeFile } = await import('fs/promises');
+      await writeFile(path.join(sourceDir, id, 'app.md'), appMd, 'utf-8');
+    }
+
+    const updatedApp = { ...app, config: newConfig, appMd: appMd ?? app.appMd };
     this.apps.set(id, updatedApp);
     return updatedApp;
   }

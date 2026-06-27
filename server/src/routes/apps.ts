@@ -124,18 +124,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
     if (tools !== undefined) configUpdates.tools = tools;
     if (models !== undefined) configUpdates.models = models;
     if (skills !== undefined) configUpdates.skills = skills;
-
-    // appMd 写入 app.md 文件（仅 user 源允许）
-    if (appMd !== undefined) {
-      const { writeFile } = await import('fs/promises');
-      const path = await import('path');
-      const sourceDir = app.meta.source === 'user' ? await import('../utils/file.js').then(m => m.USER_APPS_DIR)
-        : app.meta.source === 'marketplace' ? await import('../utils/file.js').then(m => m.MARKETPLACE_APPS_DIR)
-        : null;
-      if (sourceDir) {
-        await writeFile(path.join(sourceDir, app.meta.id, 'app.md'), appMd, 'utf-8');
-      }
-    }
+    if (appMd !== undefined) configUpdates.appMd = appMd;
 
     if (Object.keys(configUpdates).length === 0) {
       return res.status(400).json({ error: 'No configurable fields provided' });
