@@ -406,6 +406,9 @@ export class PiAgentManager {
     serverLogger.debug('refreshSession', `apiKey updated: ${session.apiKey ? '***' : 'EMPTY'}, model: ${modelObj.id}`);
     if (providerConfig.baseUrl) session.model = { ...session.model, baseUrl: providerConfig.baseUrl };
 
+    // 同步更新 agent state 中的 model 和 streamFn 使用的数据
+    session.agent.state.model = session.model as any;
+
     // 刷新 tools 和 systemPrompt
     const tools = buildPiToolsForApp(app);
     const systemPrompt = await buildSystemPrompt(app);
