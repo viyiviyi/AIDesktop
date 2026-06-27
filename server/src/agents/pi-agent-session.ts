@@ -202,6 +202,7 @@ export class PiAgentSession {
 
     const providerConfig = modes.providers.find((p) => p.id === providerId);
     if (!providerConfig) throw new Error(`Provider "${providerId}" not found.`);
+    if (providerConfig.enabled === false) throw new Error(`Provider "${providerId}" is disabled.`);
     const modelObj = findModel(modes.providers, providerId, modelId);
     if (!modelObj) throw new Error(`Model "${modelId}" not found.`);
 
@@ -248,6 +249,7 @@ export class PiAgentSession {
 
         // 注入 body 参数（如 thinking: { type: "disabled" }）
         let streamOptions = { ...options, apiKey: this.apiKey };
+        serverLogger.debug('PiAgentSession', `streamFn apiKey: ${this.apiKey ? '***' : 'EMPTY'}`);
         if (Object.keys(bodyParams).length > 0) {
           streamOptions = {
             ...streamOptions,
@@ -391,6 +393,7 @@ export class PiAgentManager {
         modelId = appModelConfig.model;
       }
     }
+    // 找不到 provider 或 model 就是错误，不上报也不兜底
     if (!providerId || !modelId) return;
 
     const providerConfig = modes.providers.find((p) => p.id === providerId);
@@ -400,20 +403,12 @@ export class PiAgentManager {
 
     session.model = modelObj;
     session.apiKey = providerConfig.apiKey;
+    serverLogger.debug('refreshSession', `apiKey updated: ${session.apiKey ? '***' : 'EMPTY'}, model: ${modelObj.id}`);
     if (providerConfig.baseUrl) session.model = { ...session.model, baseUrl: providerConfig.baseUrl };
 
     // 刷新 tools 和 systemPrompt
     const tools = buildPiToolsForApp(app);
-    // 从数据目录读取最新的 app.md（用户可能在设置中修改过）
-    let latestAppMd = app.appMd || '';
-    try {
-      const { readFile: rf } = await import('fs/promises');
-      const { join: pJoin } = await import('path');
-      const userAppMdPath = pJoin(APPS_DATA_DIR, app.meta.id, 'app.md');
-      const userAppMd = await rf(userAppMdPath, 'utf-8');
-      if (userAppMd) latestAppMd = userAppMd;
-    } catch { /* use default */ }
-    const systemPrompt = await buildSystemPrompt({ ...app, appMd: latestAppMd, _currentConvId: session.currentConvId } as any);
+    const systemPrompt = await buildSystemPrompt(app);
     session.agent.state.tools = tools;
     session.agent.state.systemPrompt = systemPrompt;
   }
