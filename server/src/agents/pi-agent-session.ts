@@ -164,7 +164,7 @@ export class PiAgentSession {
   readonly appId: string;
   agent!: Agent;
   model!: Model<Api>;
-  private apiKey: string | undefined;
+  apiKey: string | undefined;
   private textStreamCbs: TextStreamCallback[] = [];
   /** 当前运行的会话 ID，由 runAgentAsync 设置 */
   currentConvId: string = '';
@@ -371,6 +371,52 @@ export class PiAgentManager {
     if (!s) { s = new PiAgentSession(appId); await s.init(app); this.sessions.set(appId, s); }
     return s;
   }
+
+  /** 刷新会话：重新读取最新配置更新 model、tools、systemPrompt */
+  async refreshSession(appId: string, session: PiAgentSession): Promise<void> {
+    const app = appLoader.getApp(appId);
+    if (!app) return;
+    const modes = await settingsService.getModes();
+    const defaultModelConfig = await settingsService.getDefaultModel();
+
+    let providerId = defaultModelConfig.providerId;
+    let modelId = defaultModelConfig.modelId;
+    const appModelConfig = (app.config.models && app.config.models.length > 0) ? app.config.models[0]
+      : (app.meta.models && app.meta.models.length > 0) ? app.meta.models[0]
+      : null;
+    if (appModelConfig) {
+      const appProvider = modes.providers.find(p => p.id === appModelConfig.provider);
+      if (appProvider && appProvider.enabled !== false) {
+        providerId = appModelConfig.provider;
+        modelId = appModelConfig.model;
+      }
+    }
+    if (!providerId || !modelId) return;
+
+    const providerConfig = modes.providers.find((p) => p.id === providerId);
+    if (!providerConfig) return;
+    const modelObj = findModel(modes.providers, providerId, modelId);
+    if (!modelObj) return;
+
+    session.model = modelObj;
+    session.apiKey = providerConfig.apiKey;
+    if (providerConfig.baseUrl) session.model = { ...session.model, baseUrl: providerConfig.baseUrl };
+
+    // 刷新 tools 和 systemPrompt
+    const tools = buildPiToolsForApp(app);
+    // 从数据目录读取最新的 app.md（用户可能在设置中修改过）
+    let latestAppMd = app.appMd || '';
+    try {
+      const { readFile: rf } = await import('fs/promises');
+      const { join: pJoin } = await import('path');
+      const userAppMdPath = pJoin(APPS_DATA_DIR, app.meta.id, 'app.md');
+      const userAppMd = await rf(userAppMdPath, 'utf-8');
+      if (userAppMd) latestAppMd = userAppMd;
+    } catch { /* use default */ }
+    const systemPrompt = await buildSystemPrompt({ ...app, appMd: latestAppMd, _currentConvId: session.currentConvId } as any);
+    session.agent.state.tools = tools;
+    session.agent.state.systemPrompt = systemPrompt;
+  }
   get(appId: string): PiAgentSession | undefined { return this.sessions.get(appId); }
   destroy(appId: string): void { this.sessions.delete(appId); }
   destroyAll(): void { this.sessions.clear(); }
@@ -473,6 +519,8 @@ export async function runAgentAsync(
   const fullHistory = [...filteredMessages, { role: 'user', content: userContent }];
   serverLogger.info('agent', `runAgentAsync getOrCreate for ${appId}/${convId}`);
   const session = await piAgentManager.getOrCreate(appId, app);
+  // 每次运行时刷新最新配置（model、tools、systemPrompt）
+  await piAgentManager.refreshSession(appId, session);
   const hasActiveRun = session.agent.signal !== undefined;
   serverLogger.info('agent', `runAgentAsync got session for ${appId}/${convId}, activeRun: ${hasActiveRun}`);
 
