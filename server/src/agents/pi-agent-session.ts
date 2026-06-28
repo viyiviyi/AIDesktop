@@ -515,8 +515,10 @@ export async function runAgentAsync(
 
   const fullHistory = (() => {
     // 如果最后一条已经是 user 消息，不追加新消息直接用历史（用于"继续"场景）
-    const lastIsUser = filteredMessages.length > 0 && filteredMessages[filteredMessages.length - 1].role === 'user';
-    if (lastIsUser) return filteredMessages;
+    const lastMsg = filteredMessages.length > 0 ? filteredMessages[filteredMessages.length - 1] : null;
+    if (lastMsg?.role === 'user') return filteredMessages;
+    // 如果最后一条是 toolResult，也不追加（Agent 内部会自动处理）
+    if (lastMsg?.role === 'toolResult') return filteredMessages;
     return [...filteredMessages, { role: 'user', content: userContent }];
   })();
   serverLogger.info('agent', `runAgentAsync getOrCreate for ${appId}/${convId}`);
