@@ -12,6 +12,7 @@ import { MediaSelector } from './MediaSelector';
 import { PictureFilled } from '@ant-design/icons';
 import { InjectionBar } from './InjectionBar';
 import { MemoryPanel } from './MemoryPanel';
+import { MessageList } from './MessageList';
 
 // 流式 tool call 的展开状态管理（独立于 Window 内部展开状态，因为 toolCalls 不是 msg.content）
 const toolExpandStore = new Map<string, boolean>();
@@ -706,6 +707,32 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
     try {
       const conv = await api.getConversation(appId, convId);
       setMessages(conv.messages);
+      // 用 getConvTitle 逻辑更新会话标题（与开始菜单一致）
+      const newTitle = (() => {
+        const msgs = conv.messages;
+        const firstUser = msgs.find(m => m.role === 'user');
+        if (firstUser) {
+          const text = firstUser.content
+            .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+            .map(c => c.text).join('').trim();
+          if (text.length >= 4) return text.slice(0, 150);
+        }
+        const firstAssistant = msgs.find(m => m.role === 'assistant');
+        if (firstAssistant) {
+          const text = firstAssistant.content
+            .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+            .map(c => c.text).join('').trim();
+          if (text.length > 0) return text.slice(0, 50);
+        }
+        return conv.title || '新会话';
+      })();
+      if (newTitle !== conv.title) {
+        await api.updateConversationTitle(appId, convId, newTitle).catch(() => {});
+        setConversations(prev => prev.map(c =>
+          c.id === convId ? { ...c, title: newTitle } : c
+        ));
+        setConversationTitle(convId, newTitle);
+      }
       // 从消息列表中推导待填表单：检查每个 assistant 消息是否有 form toolCall 且无对应 toolResult
       const restored = new Map<string, { formId: string; schema: FormSchema; toolCallId: string }>();
       for (let i = 0; i < conv.messages.length; i++) {
@@ -769,12 +796,18 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         setIsLoading(true);
         try {
           await api.sendMessage(appId, conv.id, content);
-          // 用第一条消息更新会话标题
-          await api.updateConversationTitle(appId, conv.id, messageContent.slice(0, 50));
+          // 用第一条消息自动生成会话标题（与开始菜单逻辑一致）
+          const title = (() => {
+            const text = messageContent.trim();
+            if (text.length >= 4) return text.slice(0, 150);
+            return text.slice(0, 50) || '新会话';
+          })();
+          // 保存标题，后续 AI 回复后 loadMessages 时会用 getConvTitle 重新计算
+          await api.updateConversationTitle(appId, conv.id, title);
           setConversations(prev => prev.map(c =>
-            c.id === conv.id ? { ...c, title: messageContent.slice(0, 50) } : c
+            c.id === conv.id ? { ...c, title } : c
           ));
-          setConversationTitle(conv.id, messageContent.slice(0, 50));
+          setConversationTitle(conv.id, title);
         } catch {}
       }
     } catch (error) {
@@ -1347,255 +1380,21 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
       )}
 
       {/* 消息列表 */}
-      <div className="chat-messages">
-        {(() => {
-          // 分支折叠逻辑：
-          // 消息列表 [A, B, C, D]，如果 D 回复了 A，那么 B~C 是历史分支可折叠
-          // 折叠范围 = (被回复消息的下一条, 回复消息的上一条)
-          // 如果有多个回复链，每条回复链的历史分支独立折叠
-
-          const msgMap = new Map(messages.map(m => [m.id, m]));
-
-          // 对于每条有 replyTo 的消息，计算其历史分支的范围 [startIdx, endIdx]
-          // startIdx = 被回复消息的 index + 1
-          // endIdx = 本条回复消息的 index - 1
-          // 如果 startIdx <= endIdx，就是可折叠的历史分支
-          const branchRanges: Array<{ start: number; end: number; key: string }> = [];
-          for (let i = 0; i < messages.length; i++) {
-            const msg = messages[i];
-            if (msg.replyTo && msgMap.has(msg.replyTo!)) {
-              const repliedIdx = messages.findIndex(m => m.id === msg.replyTo);
-              if (repliedIdx >= 0 && repliedIdx + 1 <= i - 1) {
-                branchRanges.push({
-                  start: repliedIdx + 1,
-                  end: i - 1,
-                  key: `branch-${msg.id}`,
-                });
-              }
-            }
-          }
-
-          // 判断某条消息是否在某个折叠的范围内
-          const isInCollapsedRange = (idx: number): string | null => {
-            for (const range of branchRanges) {
-              if (collapsedBranches.has(range.key) && idx >= range.start && idx <= range.end) {
-                return range.key;
-              }
-            }
-            return null;
-          };
-
-          // 检查某个 range 是否应该显示折叠/展开按钮（至少有一个折叠的）
-          const renderedRanges = new Set<string>();
-
-          return messages.map((msg, idx) => {
-            const refCallback = (el: HTMLDivElement | null) => {
-              if (el) messageRefs.current.set(msg.id, el);
-              else messageRefs.current.delete(msg.id);
-            };
-
-            // 如果在折叠范围内，跳过
-            const rangeKey = isInCollapsedRange(idx);
-            if (rangeKey) return null;
-
-            // toolResult 消息不独立显示，合并到前面的 assistant 消息中
-            if (msg.role === 'toolResult') return null;
-
-            const replyToMsg = msg.replyTo ? msgMap.get(msg.replyTo) : undefined;
-            const isHighlight = highlightMsgId === msg.id;
-
-            // 检查当前 idx 是否是一个折叠范围的结束位置+1（需要在之前显示折叠按钮）
-            const foldButton = (() => {
-              for (const range of branchRanges) {
-                if (range.end === idx - 1 && !renderedRanges.has(range.key)) {
-                  renderedRanges.add(range.key);
-                  const count = range.end - range.start + 1;
-                  const isCollapsed = collapsedBranches.has(range.key);
-                  return (
-                    <div className="branch-header" key={`fold-${range.key}`}>
-                      <button
-                        className="branch-toggle"
-                        onClick={() => toggleBranch(range.key)}
-                        title={isCollapsed ? '展开历史分支' : '折叠历史分支'}
-                      >
-                        {isCollapsed ? '↕' : '↑'}
-                        <span className="branch-label">历史分支 ({count} 条消息)</span>
-                      </button>
-                    </div>
-                  );
-                }
-              }
-              return null;
-            })();
-
-            return (
-              <React.Fragment key={msg.id}>
-                {foldButton}
-
-                {/* 引用条（回复了 xxx） */}
-                {replyToMsg && (
-                  <div
-                    className="reply-reference"
-                    onClick={() => handleReplyClick(msg.replyTo!)}
-                    title="点击跳转到被回复的消息"
-                  >
-                    <span className="reply-ref-icon">↩</span>
-                    <span className="reply-ref-text">
-                      回复了 {replyToMsg.role === 'user' ? 'user' : 'assistant'}
-                      : {getMessageText(replyToMsg).slice(0, 50)}
-                    </span>
-                  </div>
-                )}
-
-                {/* 消息主体 */}
-                <div
-                  ref={refCallback}
-                  className={`chat-message ${msg.role} ${isHighlight ? 'highlight' : ''} ${msg.edited ? 'edited' : ''}`}
-                >
-                  {msg.role === 'assistant' && msg.content.some(c => (c as any).type === 'thinking') && (
-                    <div className="thinking-block">
-                      <div className="thinking-header" onClick={() => toggleToolExpand(msg.id, '_thinking')}>
-                        <span className="thinking-label">已思考</span>
-                      </div>
-                      {(expandedByMsg[msg.id] || new Set()).has('_thinking') && (
-                        <div className="thinking-content">
-                          {msg.content.filter(c => (c as any).type === 'thinking').map((c, i) => (
-                            <pre key={i} className="thinking-text">{(c as any).text}</pre>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div className="chat-message-content">
-                    {renderMessageContent(msg, messages, idx)}
-                    {msg.edited && <span className="edited-badge"> (已编辑)</span>}
-                  </div>
-
-                  {/* 时间戳 + 操作按钮 */}
-                  <div className="chat-message-footer">
-                    {msg.timestamp && (
-                      <span className="chat-message-timestamp">{formatTime(msg.timestamp)}</span>
-                    )}
-                    <span style={{ flex: 1 }} />
-                    <button
-                      className="msg-action-btn"
-                      onClick={() => startReply(msg.id)}
-                      title="回复此消息"
-                    >↩</button>
-                    {msg.role === 'user' && !msg.edited && (
-                      <button
-                        className="msg-action-btn"
-                        onClick={() => startEdit(msg)}
-                        title="编辑消息"
-                      >✎</button>
-                    )}
-                    <button
-                      className="msg-action-btn msg-action-delete"
-                      onClick={() => deleteMsg(msg.id)}
-                      title="删除此消息"
-                    >🗑</button>
-                  </div>
-                </div>
-              </React.Fragment>
-            );
-          });
-        })()}
-
-        {/* 流式加载中 — 显示 thinking / tool_call / tool_result / 流式文本 */}
-        {isLoading && (
-          <>
-            {thinkingText && (
-              <div className="chat-message assistant">
-                <div className="chat-message-thinking">
-                  <span className="thinking-icon">◇</span>
-                  {thinkingText}
-                </div>
-              </div>
-            )}
-            {toolCalls.length > 0 && (
-              <div className="chat-message assistant">
-                <div className="chat-message-toolcalls">
-                  {toolCalls.map((tc) => (
-                    <LiveToolCallItem key={tc.toolCallId} tc={tc} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {streamingText && (
-              <div className="chat-message assistant">
-                <div className="chat-message-content streaming">
-                  <MarkdownView content={streamingText} />
-                  <span className="streaming-cursor">|</span>
-                </div>
-              </div>
-            )}
-            {!streamingText && !thinkingText && toolCalls.length === 0 && (
-              <div className="chat-message assistant">
-                <div className="chat-message-content">
-                  <span className="thinking-dots">思考中<span>.</span><span>.</span><span>.</span></span>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-        {/* 内嵌表单 — 在消息列表中渲染 pending 表单 */}
-        {pendingForms.size > 0 && (
-          <div className="chat-pending-forms">
-            {Array.from(pendingForms.entries()).map(([formId, pf]) => (
-              <div key={formId} className="chat-message assistant">
-                <div className="chat-message-content">
-                  <FormComponent
-                    appId={appId}
-                    convId={currentConvId!}
-                    formId={formId}
-                    toolCallId={pf.toolCallId}
-                    schema={pf.schema}
-                    onSubmitted={() => {
-                      setPendingForms(prev => { const n = new Map(prev); n.delete(formId); return n; });
-                      // 延迟一下再重新加载，等服务端处理好
-                      setTimeout(() => loadMessages(currentConvId!), 500);
-                    }}
-                    onCancelled={() => {
-                      setPendingForms(prev => { const n = new Map(prev); n.delete(formId); return n; });
-                      setTimeout(() => loadMessages(currentConvId!), 500);
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {/* 工作目录授权选择器 */}
-        {workspaceRequest && (
-          <div className="chat-message assistant">
-            <div className="chat-message-content">
-              <WorkspaceDirSelector
-                appId={appId!}
-                convId={currentConvId!}
-                toolCallId={workspaceRequest.toolCallId}
-                requestedPath={workspaceRequest.requestedPath}
-                onSubmitted={() => {
-                  setWorkspaceRequest(null);
-                  // 先加载消息让授权结果显示出来
-                  loadMessages(currentConvId!).then(() => {
-                    // 再进入 loading 等待 agent 继续
-                    setIsLoading(true);
-                    setThinkingText('处理中...');
-                  }).catch(() => {
-                    setIsLoading(true);
-                    setThinkingText('处理中...');
-                  });
-                }}
-                onCancelled={() => {
-                  setWorkspaceRequest(null);
-                  setTimeout(() => loadMessages(currentConvId!), 500);
-                }}
-              />
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
+      <MessageList
+        messages={messages}
+        isLoading={isLoading}
+        streamingText={streamingText}
+        thinkingText={thinkingText}
+        toolCalls={toolCalls}
+        pendingForms={pendingForms}
+        workspaceRequest={workspaceRequest}
+        onReply={startReply}
+        onEdit={startEdit}
+        onDelete={deleteMsg}
+        onReplyClick={handleReplyClick}
+        renderMessageContent={renderMessageContent}
+        highlightMsgId={highlightMsgId}
+      />
 
       {/* 输入区 */}
       {/* 停止按钮 — loading 时浮动显示 */}

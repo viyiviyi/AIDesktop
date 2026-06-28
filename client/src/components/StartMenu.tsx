@@ -5,6 +5,7 @@ import * as api from '../services/api';
 import { InjectionBar } from './InjectionBar';
 import { useAgentEventStream, type WsConvEvent } from '../services/useAgentEventStream';
 import { MarkdownView } from './MarkdownView';
+import { MessageList } from './MessageList';
 import { AppIcon } from './AppIcon';
 
 const APP_ID = 'desktop-assistant';
@@ -361,36 +362,16 @@ export function StartMenu() {
           </div>
           <InjectionBar key={`inj-${Date.now()}`} appId={APP_ID} convId={conversationId} />
           <div className="start-menu-conversation">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`chat-message ${msg.role}`}>
-                <div className="chat-message-content">
-                  <MarkdownView content={getMessageText(msg)} />
-                </div>
-              </div>
-            ))}
-            {/* 流式加载中 */}
-            {isLoading && (
-              <div className="chat-message assistant">
-                {thinkingText && (
-                  <div className="chat-message-thinking">
-                    <span className="thinking-icon">◇</span>
-                    {thinkingText}
-                  </div>
-                )}
-                {streamingText && (
-                  <div className="chat-message-content">
-                    <MarkdownView content={streamingText} />
-                    <span className="streaming-cursor">|</span>
-                  </div>
-                )}
-                {!streamingText && !thinkingText && (
-                  <div className="chat-message-content">
-                    <span className="thinking-dots">思考中<span>.</span><span>.</span><span>.</span></span>
-                  </div>
-                )}
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+            <MessageList
+              messages={messages}
+              isLoading={isLoading}
+              streamingText={streamingText}
+              thinkingText={thinkingText}
+              toolCalls={[]}
+              renderMessageContent={(msg) => (
+                <MarkdownView content={getMessageText(msg)} />
+              )}
+            />
           </div>
           <div className="start-menu-input-area">
             <input
