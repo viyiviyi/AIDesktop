@@ -122,11 +122,10 @@ export interface Conversation {
 export interface FormField {
   name: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'radio' | 'checkbox' | 'confirm' | 'file';
+  type: 'text' | 'textarea' | 'number' | 'select' | 'radio' | 'checkbox';
   required?: boolean;
   options?: string[];
   placeholder?: string;
-  accept?: string;
   description?: string;
 }
 

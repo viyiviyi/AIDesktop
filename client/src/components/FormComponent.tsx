@@ -124,33 +124,6 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
             <span>{field.label}</span>
           </label>
         );
-      case 'confirm':
-        return (
-          <button
-            className="form-confirm-btn"
-            onClick={() => setValue(field.name, true)}
-            type="button"
-          >
-            确认
-          </button>
-        );
-      case 'file':
-        return (
-          <input
-            id={fieldId}
-            type="file"
-            accept={field.accept}
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (file) {
-                const reader = new FileReader();
-                reader.onload = () => setValue(field.name, reader.result);
-                reader.readAsDataURL(file);
-              }
-            }}
-            className="form-input"
-          />
-        );
       default:
         return (
           <input
@@ -172,7 +145,7 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
       <div className="form-fields">
         {schema.fields.map((field, i) => (
           <div key={field.name || i} className="form-field">
-            {field.type !== 'checkbox' && field.type !== 'confirm' && (
+            {field.type !== 'checkbox' && (
               <label className="form-label" htmlFor={`form-field-${formId}-${field.name}`}>
                 {field.label}
                 {field.required && <span className="form-required">*</span>}
