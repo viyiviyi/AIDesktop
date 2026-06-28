@@ -282,7 +282,7 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
         });
         // 工具执行完成后，重新启动 agent 继续处理
         const updatedConv = await conversationService.getConversation(appId, convId);
-        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [{ type: 'text', text: '(continue)' }])
+        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [])
           .catch((err: any) => serverLogger.error('agent', `Continue after retry error: ${err.message}`));
       } catch (err: any) {
         const msg = err?.message || '';
@@ -313,12 +313,12 @@ router.post('/:convId/continue', async (req: Request, res: Response) => {
           data: { toolCallId, toolName, result: { error: err.message }, isError: true },
         });
         const updatedConv = await conversationService.getConversation(appId, convId);
-        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [{ type: 'text', text: '(continue)' }])
+        runAgentAsync(appId, convId, app, updatedConv?.messages || messages, [])
           .catch((err2: any) => serverLogger.error('agent', `Continue after retry error: ${err2.message}`));
       }
     } else {
-      // 正常继续——用已有消息历史 + (continue) 提示
-      runAgentAsync(appId, convId, app, messages, [{ type: 'text', text: '(continue)' }])
+      // 正常继续——用已有消息历史继续
+      runAgentAsync(appId, convId, app, messages, [])
         .catch((err: any) => serverLogger.error('agent', `Continue error: ${err.message}`));
     }
 

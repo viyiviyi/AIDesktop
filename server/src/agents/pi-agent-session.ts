@@ -622,8 +622,17 @@ export async function runAgentAsync(
           return { type: 'text' as const, text: '(image unavailable)' };
         }
       });
-    // 如果没有文本也没有图片，报错
-    if (!userText.trim() && userImages.length === 0) throw new Error('No text in user message');
+    // 如果没有文本也没有图片，但最后一条是 toolResult 或 user，用 continue 继续
+    const lastMsg = session.agent.state.messages[session.agent.state.messages.length - 1];
+    if (!userText.trim() && userImages.length === 0) {
+      if (lastMsg && (lastMsg.role === 'toolResult' || lastMsg.role === 'user')) {
+        serverLogger.info('agent', `Calling agent.continue for ${appId}/${convId}`);
+        await session.agent.continue();
+        serverLogger.info('agent', `agent.continue completed for ${appId}/${convId}`);
+        return;
+      }
+      throw new Error('No text in user message');
+    }
 
     serverLogger.info('agent', `Calling agent.prompt for ${appId}/${convId}, text: "${userText.slice(0, 50)}"`);
     await session.agent.prompt(userText || '(image input)', userImages.length > 0 ? userImages as any : undefined);
