@@ -623,9 +623,15 @@ export async function runAgentAsync(
         }
       });
     // 如果没有文本也没有图片，但最后一条是 toolResult 或 user，用 continue 继续
-    const lastMsg = session.agent.state.messages[session.agent.state.messages.length - 1];
+    // 注意：syncHistory 会截掉最后一条 user，但 continue 需要完整的上下文
+    const lastOriginalMsg = fullHistory.length > 0 ? fullHistory[fullHistory.length - 1] : null;
     if (!userText.trim() && userImages.length === 0) {
-      if (lastMsg && (lastMsg.role === 'toolResult' || lastMsg.role === 'user')) {
+      if (lastOriginalMsg && (lastOriginalMsg.role === 'toolResult' || lastOriginalMsg.role === 'user')) {
+        // syncHistory 截掉了最后一条 user，补回来
+        if (lastOriginalMsg.role === 'user') {
+          const piMsg = adMsgToPiMsg(lastOriginalMsg as any, appId, session.model.provider, session.model.id);
+          if (piMsg) session.agent.state.messages = [...session.agent.state.messages, piMsg as any];
+        }
         serverLogger.info('agent', `Calling agent.continue for ${appId}/${convId}`);
         await session.agent.continue();
         serverLogger.info('agent', `agent.continue completed for ${appId}/${convId}`);
