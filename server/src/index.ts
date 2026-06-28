@@ -19,8 +19,8 @@ import { setupWebSocket } from './services/wsServer.js';
 
 // __filename / __dirname — 兼容 ESM (tsx) 和 CJS (esbuild bundle)
 // ESM 下通过 import.meta.url 计算，CJS 下 __dirname/__filename 是原生全局变量
-let __filename: string;
-let __dirname: string;
+let __filename = '';
+let __dirname = '';
 try {
   __filename = fileURLToPath(import.meta.url);
   __dirname = dirname(__filename);
