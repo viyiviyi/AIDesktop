@@ -85,6 +85,7 @@ router.get('/', async (req: Request, res: Response) => {
     const appStats = await memoryService.stats('app', appId);
     let memoryDetail = `**应用级记忆** 总数：${appStats.total}`;
     const typeSummary = Object.entries(appStats.byType)
+      .filter(([t]) => t && t !== 'undefined' && t !== 'null')
       .map(([t, c]) => `- ${t}: ${c}`)
       .join('\n');
     if (typeSummary) memoryDetail += `\n${typeSummary}`;

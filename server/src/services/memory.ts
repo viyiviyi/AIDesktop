@@ -172,7 +172,7 @@ class MemoryService {
     const source: MemorySource = entry.source || 'agent';
     const newEntry: MemoryEntry = {
       id: this.generateId(),
-      type: entry.type,
+      type: entry.type || 'fact',
       key: entry.key,
       value: entry.value,
       content: entry.content || '',
