@@ -2,12 +2,10 @@ import { useState, useEffect } from 'react';
 import * as api from '../services/api';
 
 const SOURCE_CONFIG: Record<string, { icon: string; color: string }> = {
-  app: { icon: '📋', color: '#3b82f6' },
-  agents: { icon: '🤖', color: '#8b5cf6' },
-  skills: { icon: '📚', color: '#22c55e' },
-  goal: { icon: '🎯', color: '#f97316' },
-  memory: { icon: '🧠', color: '#06b6d4' },
-  prompt: { icon: '⚙️', color: '#6b7280' },
+  app:   { icon: '📋', color: '#3b82f6' },
+  tools: { icon: '🔧', color: '#8b5cf6' },
+  goal:  { icon: '🎯', color: '#f97316' },
+  memory:{ icon: '🧠', color: '#06b6d4' },
 };
 
 interface InjectionBarProps {

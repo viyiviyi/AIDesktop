@@ -1327,6 +1327,9 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         </div>
       )}
 
+      {/* 注入标记栏 — 标题栏和消息列表之间 */}
+      <InjectionBar appId={appId} convId={currentConvId} />
+
       {/* 消息列表 */}
       <div className="chat-messages">
         {(() => {
@@ -1641,7 +1644,6 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
           </div>
         );
       })()}
-      <InjectionBar appId={appId} convId={currentConvId} />
       <div className="chat-input-area">
         {editingMsgId ? (
           <>

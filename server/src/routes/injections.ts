@@ -6,6 +6,14 @@ import type { InjectionBlock } from '../types/index.js';
 
 const router = Router({ mergeParams: true });
 
+// 获取 App 实际可用的工具列表（合并 meta + config）
+function getEffectiveTools(appId: string): string[] {
+  const app = appState.getApp(appId);
+  if (!app) return [];
+  const merged = new Set([...(app.meta.tools || []), ...(app.config.tools || [])]);
+  return [...merged].sort();
+}
+
 // GET /:appId/injections — 构建注入摘要块列表
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -19,73 +27,61 @@ router.get('/', async (req: Request, res: Response) => {
 
     const blocks: InjectionBlock[] = [];
 
-    // ── source: 'app' ──────────────────────────────
+    // ── 第 1 位: 'app' — 应用状态（合并 app + agents + skills + prompt）──
     const appDetail = app.appMd
       ? app.appMd.slice(0, 200) + (app.appMd.length > 200 ? '...' : '')
       : '(无应用定义文档)';
-    blocks.push({
-      source: 'app',
-      label: '应用定义',
-      title: app.meta.name,
-      detail: appDetail,
-    });
 
-    // ── source: 'agents' ───────────────────────────
     const visibleApps = app.meta.visibleApps || [];
-    if (visibleApps.length > 0) {
-      const agentNames = visibleApps
-        .map(id => {
+    const agentNames = visibleApps.length > 0
+      ? visibleApps.map(id => {
           const agent = appState.getApp(id);
           return agent ? `${agent.meta.name} (${id})` : id;
-        })
-        .join('\n');
-      blocks.push({
-        source: 'agents',
-        label: '可调用的其他 Agent',
-        title: `${visibleApps.length} 个 Agent`,
-        detail: agentNames,
-      });
-    } else {
-      blocks.push({
-        source: 'agents',
-        label: '可调用的其他 Agent',
-        title: '无可用 Agent',
-        detail: '该应用未配置可调用的其他 Agent。',
-      });
-    }
+        }).join('、')
+      : '无';
 
-    // ── source: 'skills' ───────────────────────────
     const appSkillIds = app.skills || [];
+    let skillText = '无';
     if (appSkillIds.length > 0) {
       const enabledSkills = await skillService.getEnabledSkillsForApp(appSkillIds);
       if (enabledSkills.length > 0) {
-        const skillLines = enabledSkills
-          .map(s => `- ${s.name} (${s.id}): ${s.description}`)
-          .join('\n');
-        blocks.push({
-          source: 'skills',
-          label: '已加载的技能',
-          title: `${enabledSkills.length} 个技能`,
-          detail: skillLines,
-        });
-      } else {
-        blocks.push({
-          source: 'skills',
-          label: '已加载的技能',
-          title: '0 个技能',
-          detail: '应用配置了技能但未找到已启用的技能，请先在技能管理中启用。',
-        });
+        skillText = enabledSkills.map(s => s.name).join('、');
       }
-    } else {
-      blocks.push({
-        source: 'skills',
-        label: '已加载的技能',
-        title: '无技能',
-        detail: '该应用未配置技能。',
-      });
     }
 
-    // ── source: 'memory' ───────────────────────────
+    const modelConfig = await appState.getDefaultModel();
+    const modelText = modelConfig.providerId && modelConfig.modelId
+      ? `${modelConfig.providerId}/${modelConfig.modelId}`
+      : '未配置';
+
+    const appStatusDetail = [
+      `【应用名称】${app.meta.name}`,
+      `【系统提示】${appDetail}`,
+      `【可用 Agent】${agentNames}`,
+      `【已加载技能】${skillText}`,
+      `【当前模型】${modelText}`,
+    ].join('\n');
+
+    blocks.push({
+      source: 'app',
+      label: '应用状态',
+      title: app.meta.name,
+      detail: appStatusDetail,
+    });
+
+    // ── 可使用工具（始终显示在第 2 位）──
+    const effectiveTools = getEffectiveTools(appId);
+    const toolsDetail = effectiveTools.length > 0
+      ? effectiveTools.map(t => `- ${t}`).join('\n')
+      : '该应用未配置任何工具。';
+    blocks.push({
+      source: 'tools',
+      label: '可使用工具',
+      title: `${effectiveTools.length} 个工具`,
+      detail: toolsDetail,
+    });
+
+    // ── 第 3 位: 'memory' ──
     const appStats = await memoryService.stats('app', appId);
     let memoryDetail = `【应用级记忆】总数: ${appStats.total}`;
     const typeSummary = Object.entries(appStats.byType)
@@ -109,7 +105,7 @@ router.get('/', async (req: Request, res: Response) => {
       detail: memoryDetail,
     });
 
-    // ── source: 'goal' ─────────────────────────────
+    // ── 第 4 位: 'goal' ──
     if (convId) {
       const goals = await memoryService.getActiveGoals(appId, convId);
       const goalParts: string[] = [];
@@ -131,18 +127,6 @@ router.get('/', async (req: Request, res: Response) => {
         detail: '未指定会话 ID，无法获取目标。',
       });
     }
-
-    // ── source: 'prompt' ───────────────────────────
-    const modelConfig = await appState.getDefaultModel();
-    const promptDetail = modelConfig.providerId && modelConfig.modelId
-      ? `当前模型: ${modelConfig.providerId}/${modelConfig.modelId}`
-      : '未配置默认模型';
-    blocks.push({
-      source: 'prompt',
-      label: '系统提示词',
-      title: modelConfig.providerId || '未配置',
-      detail: promptDetail,
-    });
 
     res.json({ blocks });
   } catch (error) {

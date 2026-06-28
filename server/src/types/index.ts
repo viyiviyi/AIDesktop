@@ -421,7 +421,7 @@ export interface MemoryStats {
 }
 
 export interface InjectionBlock {
-  source: 'app' | 'agents' | 'skills' | 'memory' | 'goal' | 'prompt';
+  source: 'app' | 'tools' | 'memory' | 'goal';
   label: string;
   title: string;
   detail: string;
