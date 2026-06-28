@@ -6,15 +6,8 @@ import { SettingsMainWindow } from './SettingsMainWindow';
 import { AppDetailWindow } from './AppDetailWindow';
 import { AppSettingsWindow } from './AppSettingsWindow';
 import { LogWindow } from './LogWindow';
+import { AppIcon } from './AppIcon';
 import type { AppInfo } from '../types';
-
-// 默认图标（蓝色方块带字母A）
-const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-    <rect width="100" height="100" rx="20" fill="#0078d4"/>
-    <text x="50" y="65" font-size="50" fill="white" text-anchor="middle">A</text>
-  </svg>
-`);
 
 /**
  * 桌面组件 - 应用的主容器
@@ -154,12 +147,12 @@ export function Desktop() {
               onClick={() => handleIconClick(app)}
               onDoubleClick={() => handleIconDoubleClick(app)}
             >
-              <img
-                src={app.icon || DEFAULT_ICON}
+              <AppIcon
+                icon={app.icon}
+                name={app.name}
+                className=""
                 alt={app.name}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = DEFAULT_ICON;
-                }}
+                size={48}
               />
               <span>{app.name}</span>
             </div>

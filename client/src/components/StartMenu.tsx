@@ -5,13 +5,7 @@ import * as api from '../services/api';
 import { InjectionBar } from './InjectionBar';
 import { useAgentEventStream, type WsConvEvent } from '../services/useAgentEventStream';
 import { MarkdownView } from './MarkdownView';
-
-const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-    <rect width="100" height="100" rx="20" fill="#0078d4"/>
-    <text x="50" y="65" font-size="50" fill="white" text-anchor="middle">A</text>
-  </svg>
-`);
+import { AppIcon } from './AppIcon';
 
 const APP_ID = 'desktop-assistant';
 
@@ -311,13 +305,7 @@ export function StartMenu() {
                   className="start-menu-app-item"
                   onClick={() => handleAppClick(app)}
                 >
-                  <img
-                    src={app.icon || DEFAULT_ICON}
-                    alt={app.name}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = DEFAULT_ICON;
-                    }}
-                  />
+                  <AppIcon icon={app.icon} name={app.name} className="" size={36} />
                   <div className="app-item-info">
                     <span className="app-item-name">{app.name}</span>
                     <span className="app-item-desc">{app.description}</span>

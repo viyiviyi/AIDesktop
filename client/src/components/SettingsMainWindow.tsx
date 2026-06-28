@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
+import { AppIcon } from './AppIcon';
 import type { AppInfo } from '../types';
 import * as api from '../services/api';
 
@@ -53,18 +54,7 @@ export function SettingsMainWindow() {
             key={app.id}
             className="settings-main-item"
           >
-            <img
-              src={app.icon}
-              alt={app.name}
-              className="settings-main-item-icon"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  'data:image/svg+xml,' +
-                  encodeURIComponent(
-                    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#0078d4"/><text x="50" y="65" font-size="50" fill="white" text-anchor="middle">A</text></svg>`
-                  );
-              }}
-            />
+            <AppIcon icon={app.icon} name={app.name} className="settings-main-item-icon" size={40} />
             <div className="settings-main-item-info">
               <div className="settings-main-item-name">{app.name}</div>
               <div className="settings-main-item-meta">

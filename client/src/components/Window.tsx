@@ -69,14 +69,8 @@ function LiveToolCallItem({ tc }: { tc: { toolCallId: string; toolName: string; 
     </div>
   );
 }
-
-// 默认窗口图标（SVG格式的蓝色方块带字母A）
-const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-    <rect width="100" height="100" rx="20" fill="#0078d4"/>
-    <text x="50" y="65" font-size="50" fill="white" text-anchor="middle">A</text>
-  </svg>
-`);
+import { Desktop } from './Desktop';
+import { AppIcon } from './AppIcon';
 
 // 窗口组件属性接口
 interface WindowProps {
@@ -243,7 +237,7 @@ export function Window({ windowState, children }: WindowProps) {
       <div className="window-header" onMouseDown={handleHeaderMouseDown}>
         <div style={{ width: 84 }} />
         <div className="window-title">
-          <img src={windowState.icon || DEFAULT_ICON} alt="" className="window-title-icon" />
+          <AppIcon icon={windowState.icon} name={windowState.title} className="window-title-icon" size={16} />
           {windowState.title}
         </div>
         <div className="window-controls">
@@ -3572,14 +3566,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                 <div key={app.id} className="app-manager-item" style={{ cursor: 'pointer' }} onClick={() => {
                   openSystemApp('app-settings:' + app.id, '应用设置: ' + app.name, app.icon);
                 }}>
-                  <img
-                    src={app.icon}
-                    alt={app.name}
-                    className="app-manager-item-icon"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = DEFAULT_ICON;
-                    }}
-                  />
+                  <AppIcon icon={app.icon} name={app.name} className="app-manager-item-icon" size={40} />
                   <div className="app-manager-item-info">
                     <div className="app-manager-item-name">{app.name}</div>
                     <div className="app-manager-item-meta">

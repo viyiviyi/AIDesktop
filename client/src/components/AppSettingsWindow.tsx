@@ -5,6 +5,7 @@ import * as api from '../services/api';
 import { AppModelConfig } from './AppModelConfig';
 import { MediaSelector } from './MediaSelector';
 import { MemoryPanel } from './MemoryPanel';
+import { AppIcon } from './AppIcon';
 
 type SettingsTab = 'basic' | 'model' | 'tools' | 'skills' | 'visibility' | 'prompt' | 'memory';
 
@@ -621,19 +622,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   return (
     <div className="app-settings-window">
       <div className="app-settings-header">
-        <img
-          src={app.icon || ''}
-          alt={app.name}
-          className="app-settings-icon"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = 'data:image/svg+xml,' + encodeURIComponent(`
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-                <rect width="100" height="100" rx="20" fill="#0078d4"/>
-                <text x="50" y="65" font-size="50" fill="white" text-anchor="middle">A</text>
-              </svg>
-            `);
-          }}
-        />
+        <AppIcon icon={app.icon || ''} name={app.name} className="app-settings-icon" size={40} />
         <div style={{ flex: 1 }}>
           <span className="app-settings-title">{app.name}</span>
           <span className="app-settings-subtitle">应用设置</span>

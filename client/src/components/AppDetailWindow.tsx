@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
+import { AppIcon } from './AppIcon';
 import type { App, AppInfo } from '../types';
 import * as api from '../services/api';
 
@@ -143,19 +144,7 @@ export function AppDetailWindow({ appId }: AppDetailWindowProps) {
   return (
     <div className="app-detail-window">
       <div className="app-detail-header">
-        <img
-          src={app.icon || ''}
-          alt={app.name}
-          className="app-detail-icon"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = 'data:image/svg+xml,' + encodeURIComponent(`
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-                <rect width="100" height="100" rx="20" fill="#0078d4"/>
-                <text x="50" y="65" font-size="50" fill="white" text-anchor="middle">A</text>
-              </svg>
-            `);
-          }}
-        />
+        <AppIcon icon={app.icon || ''} name={app.name} className="app-detail-icon" size={56} />
         <div className="app-detail-title">
           <h2>{app.name}</h2>
           <div className="app-detail-badges">

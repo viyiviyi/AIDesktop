@@ -1,4 +1,6 @@
+import React from 'react';
 import type { App, ModelConfig, ModelProvider } from '../types';
+import { AppIcon } from './AppIcon';
 
 interface AppModelConfigProps {
   app: App;
@@ -50,18 +52,7 @@ export function AppModelConfig({ app, providers, onUpdate }: AppModelConfigProps
     <div className="app-model-config">
       <div className="app-model-config-item">
         <div className="app-model-config-header">
-          <img
-            src={app.icon}
-            alt={app.name}
-            className="app-model-config-icon"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src =
-                'data:image/svg+xml,' +
-                encodeURIComponent(
-                  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#0078d4"/><text x="50" y="65" font-size="50" fill="white" text-anchor="middle">A</text></svg>`
-                );
-            }}
-          />
+          <AppIcon icon={app.icon} name={app.name} className="app-model-config-icon" />
           <div className="app-model-config-info">
             <span className="app-model-config-name">{app.name}</span>
             <span className="app-model-config-meta">
@@ -159,18 +150,7 @@ export function AppModelConfigList({ apps, providers, onUpdate }: AppModelConfig
         return (
           <div key={app.id} className="app-model-config-item">
             <div className="app-model-config-header">
-              <img
-                src={app.icon}
-                alt={app.name}
-                className="app-model-config-icon"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'data:image/svg+xml,' +
-                    encodeURIComponent(
-                      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#0078d4"/><text x="50" y="65" font-size="50" fill="white" text-anchor="middle">A</text></svg>`
-                    );
-                }}
-              />
+              <AppIcon icon={app.icon} name={app.name} className="app-model-config-icon" />
               <div className="app-model-config-info">
                 <span className="app-model-config-name">{app.name}</span>
                 <span className="app-model-config-meta">
