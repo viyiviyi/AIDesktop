@@ -2,16 +2,24 @@ import { Router, Request, Response } from 'express';
 import { appState } from '../services/appState.js';
 import { memoryService } from '../services/memory.js';
 import { skillService } from '../services/skillService.js';
+import { buildPiToolsForApp } from '../agents/pi-tools.js';
 import type { InjectionBlock } from '../types/index.js';
 
 const router = Router({ mergeParams: true });
 
-// 获取 App 实际可用的工具列表（合并 meta + config）
+// 获取 App 实际可用的工具列表（与发给 AI 的列表一致，做过连通性过滤）
 function getEffectiveTools(appId: string): string[] {
   const app = appState.getApp(appId);
   if (!app) return [];
-  const merged = new Set([...(app.meta.tools || []), ...(app.config.tools || [])]);
-  return [...merged].sort();
+  try {
+    const agentTools = buildPiToolsForApp(app);
+    // 只取工具名称，与 AI 实际收到的保持一致
+    return agentTools.map(t => t.name).sort();
+  } catch {
+    // fallback: 直接返回配置列表
+    const merged = new Set([...(app.meta.tools || []), ...(app.config.tools || [])]);
+    return [...merged].sort();
+  }
 }
 
 // GET /:appId/injections — 构建注入摘要块列表
@@ -54,13 +62,17 @@ router.get('/', async (req: Request, res: Response) => {
       ? `${modelConfig.providerId}/${modelConfig.modelId}`
       : '未配置';
 
+    const effectiveTools = getEffectiveTools(appId);
+    const toolsDetail = effectiveTools.length > 0
+      ? effectiveTools.map(t => `  - \`${t}\``).join('\n')
+      : '  （无）';
+
     const appStatusDetail = [
-      `【应用名称】${app.meta.name}`,
-      `【系统提示】${appDetail}`,
-      `【可用 Agent】${agentNames}`,
-      `【已加载技能】${skillText}`,
-      `【当前模型】${modelText}`,
-    ].join('\n');
+      `**可用 Agent**：${agentNames}`,
+      `**已加载技能**：${skillText}`,
+      `**可使用工具**：\n${toolsDetail}`,
+      `**当前模型**：${modelText}`,
+    ].join('\n\n');
 
     blocks.push({
       source: 'app',
@@ -69,33 +81,21 @@ router.get('/', async (req: Request, res: Response) => {
       detail: appStatusDetail,
     });
 
-    // ── 可使用工具（始终显示在第 2 位）──
-    const effectiveTools = getEffectiveTools(appId);
-    const toolsDetail = effectiveTools.length > 0
-      ? effectiveTools.map(t => `- ${t}`).join('\n')
-      : '该应用未配置任何工具。';
-    blocks.push({
-      source: 'tools',
-      label: '可使用工具',
-      title: `${effectiveTools.length} 个工具`,
-      detail: toolsDetail,
-    });
-
-    // ── 第 3 位: 'memory' ──
+    // ── 第 2 位: 'memory' ──
     const appStats = await memoryService.stats('app', appId);
-    let memoryDetail = `【应用级记忆】总数: ${appStats.total}`;
+    let memoryDetail = `**应用级记忆** 总数：${appStats.total}`;
     const typeSummary = Object.entries(appStats.byType)
-      .map(([t, c]) => `${t}: ${c}`)
-      .join(', ');
-    if (typeSummary) memoryDetail += ` | ${typeSummary}`;
+      .map(([t, c]) => `- ${t}: ${c}`)
+      .join('\n');
+    if (typeSummary) memoryDetail += `\n${typeSummary}`;
 
     if (convId) {
       const convStats = await memoryService.stats('conversation', appId, convId);
-      memoryDetail += `\n【会话级记忆】总数: ${convStats.total}`;
+      memoryDetail += `\n**会话级记忆** 总数：${convStats.total}`;
       const convTypeSummary = Object.entries(convStats.byType)
-        .map(([t, c]) => `${t}: ${c}`)
-        .join(', ');
-      if (convTypeSummary) memoryDetail += ` | ${convTypeSummary}`;
+        .map(([t, c]) => `- ${t}: ${c}`)
+        .join('\n');
+      if (convTypeSummary) memoryDetail += `\n${convTypeSummary}`;
     }
 
     blocks.push({
@@ -109,9 +109,9 @@ router.get('/', async (req: Request, res: Response) => {
     if (convId) {
       const goals = await memoryService.getActiveGoals(appId, convId);
       const goalParts: string[] = [];
-      if (goals.level1) goalParts.push(`【一级目标】${goals.level1.value}`);
-      if (goals.level2) goalParts.push(`【二级目标】${goals.level2.value}`);
-      if (goals.level3) goalParts.push(`【三级目标】${goals.level3.value} ← 当前待办`);
+      if (goals.level1) goalParts.push(`**一级目标**：${goals.level1.value}`);
+      if (goals.level2) goalParts.push(`**二级目标**：${goals.level2.value}`);
+      if (goals.level3) goalParts.push(`**三级目标**：${goals.level3.value} ← 当前待办`);
       const goalDetail = goalParts.length > 0 ? goalParts.join('\n') : '当前会话无活跃目标。';
       blocks.push({
         source: 'goal',

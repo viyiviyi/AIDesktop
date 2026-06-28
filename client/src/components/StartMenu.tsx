@@ -4,6 +4,7 @@ import type { AppInfo, Message } from '../types';
 import * as api from '../services/api';
 import { InjectionBar } from './InjectionBar';
 import { useAgentEventStream, type WsConvEvent } from '../services/useAgentEventStream';
+import { MarkdownView } from './MarkdownView';
 
 const DEFAULT_ICON = 'data:image/svg+xml,' + encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -42,6 +43,9 @@ export function StartMenu() {
   useEffect(() => {
     if (state.startMenuOpen) {
       loadConversations();
+    } else {
+      // 关闭菜单时清理流式状态，但不清除消息（保留缓存避免闪烁）
+      setShowConvDropdown(false);
     }
   }, [state.startMenuOpen]);
 
@@ -367,11 +371,12 @@ export function StartMenu() {
               </div>
             )}
           </div>
+          <InjectionBar key={`inj-${Date.now()}`} appId={APP_ID} convId={conversationId} />
           <div className="start-menu-conversation">
             {messages.map((msg) => (
               <div key={msg.id} className={`chat-message ${msg.role}`}>
                 <div className="chat-message-content">
-                  {getMessageText(msg)}
+                  <MarkdownView content={getMessageText(msg)} />
                 </div>
               </div>
             ))}
@@ -386,7 +391,7 @@ export function StartMenu() {
                 )}
                 {streamingText && (
                   <div className="chat-message-content">
-                    {streamingText}
+                    <MarkdownView content={streamingText} />
                     <span className="streaming-cursor">|</span>
                   </div>
                 )}
@@ -399,7 +404,6 @@ export function StartMenu() {
             )}
             <div ref={messagesEndRef} />
           </div>
-          <InjectionBar appId={APP_ID} convId={conversationId} />
           <div className="start-menu-input-area">
             <input
               type="text"

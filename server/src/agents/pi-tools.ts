@@ -283,16 +283,16 @@ function buildExternalMcpAgentTools(allowedTools: Set<string>): AgentTool[] {
 
     const connectionId = client.getConnectionId();
     const connName = client.getServerInfo()?.name || connectionId;
+    const safeConnName = connName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const connTools = client.getTools();
 
     for (const tool of connTools) {
-      // 工具名: mcp_{连接名}_{工具名}（连接名用安全字符）
-      const safeConnName = (client.getServerInfo()?.name || connectionId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      // 给 AI Agent 的名字：mcp_连接名_工具名
       const safeToolName = (tool.name || tool.name).replace(/[^a-zA-Z0-9_-]/g, '_');
       const agentToolName = `mcp_${safeConnName}_${safeToolName}`;
 
-      // 在 app config 中存储的格式是 "external:连接ID:工具名"
-      const appToolKey = `external:${connectionId}:${tool.name}`;
+      // 在 app config 中存储的格式也用连接名，不用 UUID
+      const appToolKey = `external:${safeConnName}:${tool.name}`;
       if (allowedTools.size > 0 && !allowedTools.has(appToolKey) && !allowedTools.has('mcp.external') && !allowedTools.has('*')) continue;
 
       tools.push({

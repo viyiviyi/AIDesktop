@@ -150,6 +150,11 @@ async function buildSystemPrompt(app: App): Promise<string> {
     if (memoryBlock.trim()) {
       prompt += '\n\n' + memoryBlock;
     }
+    // 如果记忆工具可用，提示 AI 如何管理记忆
+    const appTools = [...(app.config.tools || []), ...(app.meta.tools || [])];
+    if (appTools.includes('mcp.memory')) {
+      prompt += `\n\n**关于记忆**：当用户告诉你新信息（如名字、偏好、重要事项）时，请使用 \`remember\` 工具保存到长期记忆，而不是口头说"记住了"。`;
+    }
   } catch {
     // 记忆加载失败不影响主流程
   }
@@ -302,7 +307,15 @@ export class PiAgentSession {
         const stream = streamSimple(model, context, streamOptions);
         stream.result().then((result: any) => {
           const text = (result?.content ?? []).filter((c: any) => c?.type === "text").map((c: any) => c.text).join("").slice(0, 200);
-          serverLogger.ai(`${model.provider}/${model.id}`, `<<< (${Date.now() - start}ms, ${result?.stopReason || "?"})`, { stopReason: result?.stopReason, errorMessage: result?.errorMessage, text: text.slice(0, 300) });
+          const toolCalls = (result?.content ?? []).filter((c: any) => c?.type === "toolCall" || c?.type === "tool_use");
+          if (toolCalls.length > 0) {
+            serverLogger.ai(`${model.provider}/${model.id}`, `<<< (${Date.now() - start}ms) 包含 ${toolCalls.length} 个工具调用`, {
+              stopReason: result?.stopReason,
+              toolCalls: toolCalls.map((tc: any) => ({ name: tc.name || tc.toolName, args: tc.input || tc.arguments })),
+            });
+          } else {
+            serverLogger.ai(`${model.provider}/${model.id}`, `<<< (${Date.now() - start}ms, ${result?.stopReason || "?"})`, { stopReason: result?.stopReason, errorMessage: result?.errorMessage, text: text.slice(0, 300) });
+          }
         }).catch((err: any) => {
           serverLogger.error('ai', `${model.provider}/${model.id}`, `FAILED: ${err?.message || err}`);
         });
@@ -567,9 +580,11 @@ export async function runAgentAsync(
         }
         break;
       case 'tool_execution_start':
+        serverLogger.info('agent', `工具调用: ${event.toolName}`, { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
         emit('tool_call', { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
         break;
       case 'tool_execution_end':
+        serverLogger.info('agent', `工具返回: ${event.toolName}`, { toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError });
         emit('tool_result', { toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError });
         break;
     }

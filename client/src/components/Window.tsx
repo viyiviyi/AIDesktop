@@ -11,6 +11,7 @@ import { WorkspaceDirSelector } from './WorkspaceDirSelector';
 import { MediaSelector } from './MediaSelector';
 import { PictureFilled } from '@ant-design/icons';
 import { InjectionBar } from './InjectionBar';
+import { MemoryPanel } from './MemoryPanel';
 
 // 流式 tool call 的展开状态管理（独立于 Window 内部展开状态，因为 toolCalls 不是 msg.content）
 const toolExpandStore = new Map<string, boolean>();
@@ -331,6 +332,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showConvList, setShowConvList] = useState(false);
+  const [showConvSettings, setShowConvSettings] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
@@ -1263,6 +1265,11 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         <button className="chat-header-btn chat-header-btn-primary" onClick={createNewConversation} title="新建会话">
           +
         </button>
+        {conversationId && (
+          <button className="chat-header-btn" onClick={() => setShowConvSettings(true)} title="会话设置">
+            ⚙️
+          </button>
+        )}
       </div>
 
       {/* 会话列表下拉面板 */}
@@ -1329,6 +1336,21 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
 
       {/* 注入标记栏 — 标题栏和消息列表之间 */}
       <InjectionBar appId={appId} convId={currentConvId} />
+
+      {/* 会话设置弹窗 */}
+      {showConvSettings && currentConvId && (
+        <div className="conv-settings-overlay" onClick={() => setShowConvSettings(false)}>
+          <div className="conv-settings-panel" onClick={e => e.stopPropagation()}>
+            <div className="conv-settings-header">
+              <h3>会话设置</h3>
+              <button className="conv-settings-close" onClick={() => setShowConvSettings(false)}>×</button>
+            </div>
+            <div className="conv-settings-body">
+              <MemoryPanel appId={appId} convId={currentConvId} scope="conversation" showGoals />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 消息列表 */}
       <div className="chat-messages">
@@ -3545,11 +3567,7 @@ export function SettingsApp(_props: SettingsAppProps) {
       case 'app':
         return (
           <div className="settings-section">
-            <h3>应用配置</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16 }}>
-              点击应用名称进入详细设置页面，配置模型、工具、可见性和提示词。
-            </p>
-            <div className="app-manager-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
+            <div className="app-manager-list" style={{ overflowY: 'auto' }}>
               {installedApps.map((app) => (
                 <div key={app.id} className="app-manager-item" style={{ cursor: 'pointer' }} onClick={() => {
                   openSystemApp('app-settings:' + app.id, '应用设置: ' + app.name, app.icon);

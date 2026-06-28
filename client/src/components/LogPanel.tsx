@@ -202,7 +202,7 @@ export function LogPanel({ onClose }: LogPanelProps) {
               <div className="log-entry-message">{log.message}</div>
               {log.data !== undefined && (
                 <pre className="log-entry-data">
-                  {typeof log.data === 'string' ? log.data : JSON.stringify(log.data, null, 2)}
+                  {(typeof log.data === 'string' ? log.data : JSON.stringify(log.data, null, 2)).slice(0, 2000)}
                 </pre>
               )}
             </div>

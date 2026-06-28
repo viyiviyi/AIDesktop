@@ -4,8 +4,9 @@ import type { App, AppInfo, ModelProvider, ModelConfig, ContentType } from '../t
 import * as api from '../services/api';
 import { AppModelConfig } from './AppModelConfig';
 import { MediaSelector } from './MediaSelector';
+import { MemoryPanel } from './MemoryPanel';
 
-type SettingsTab = 'basic' | 'model' | 'tools' | 'skills' | 'visibility' | 'prompt';
+type SettingsTab = 'basic' | 'model' | 'tools' | 'skills' | 'visibility' | 'prompt' | 'memory';
 
 interface AppSettingsWindowProps {
   appId: string;
@@ -380,8 +381,9 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
             <p className="app-settings-hint">已连接的 MCP 服务器提供的工具，可单独勾选。</p>
             {mcpExternals.filter(c => c.isConnected).map(conn => {
               const connName = conn.serverInfo?.name || conn.connectionId;
+              const safeConnName = connName.replace(/[^a-zA-Z0-9_-]/g, '_');
               const tools = conn.tools || [];
-              const checkedCount = tools.filter(t => formData.tools.includes(`external:${conn.connectionId}:${t.name}`)).length;
+              const checkedCount = tools.filter(t => formData.tools.includes(`external:${safeConnName}:${t.name}`)).length;
               const allChecked = checkedCount === tools.length && tools.length > 0;
               const partialChecked = checkedCount > 0 && !allChecked;
               const isExpanded = expandedMcpConns[conn.connectionId] ?? false;
@@ -406,7 +408,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
                       checked={allChecked}
                       onClick={e => e.stopPropagation()}
                       onChange={() => {
-                        const keys = tools.map(t => `external:${conn.connectionId}:${t.name}`);
+                        const keys = tools.map(t => `external:${safeConnName}:${t.name}`);
                         if (allChecked) {
                           keys.forEach(k => { if (formData.tools.includes(k)) toggleTool(k); });
                         } else {
@@ -424,7 +426,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
                   {isExpanded && (
                     <div style={{ padding: '0 12px 10px 32px' }}>
                       {tools.map(tool => {
-                        const toolKey = `external:${conn.connectionId}:${tool.name}`;
+                        const toolKey = `external:${safeConnName}:${tool.name}`;
                         return (
                           <label key={toolKey} className="app-settings-checkbox" style={{ marginBottom: 3, alignItems: 'flex-start' }}>
                             <input
@@ -656,6 +658,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         <button className={`app-settings-tab ${activeTab === 'skills' ? 'active' : ''}`} onClick={() => setActiveTab('skills')}>技能</button>
         <button className={`app-settings-tab ${activeTab === 'visibility' ? 'active' : ''}`} onClick={() => setActiveTab('visibility')}>权限</button>
         <button className={`app-settings-tab ${activeTab === 'prompt' ? 'active' : ''}`} onClick={() => setActiveTab('prompt')}>提示</button>
+        <button className={`app-settings-tab ${activeTab === 'memory' ? 'active' : ''}`} onClick={() => setActiveTab('memory')}>记忆</button>
       </div>
 
       <div className="app-settings-body">
@@ -779,6 +782,11 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         )}
         {activeTab === 'visibility' && renderVisibility()}
         {activeTab === 'prompt' && renderPrompt()}
+        {activeTab === 'memory' && (
+          <div className="app-settings-section">
+            <MemoryPanel appId={appId} scope="app" />
+          </div>
+        )}
       </div>
 
       <div className="app-settings-footer">

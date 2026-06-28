@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import * as api from '../services/api';
+import { MarkdownView } from './MarkdownView';
 
-const SOURCE_CONFIG: Record<string, { icon: string; color: string }> = {
-  app:   { icon: '📋', color: '#3b82f6' },
-  tools: { icon: '🔧', color: '#8b5cf6' },
-  goal:  { icon: '🎯', color: '#f97316' },
-  memory:{ icon: '🧠', color: '#06b6d4' },
+// 无硬编码颜色，全部由 CSS class 控制
+const SOURCE_CLASS: Record<string, string> = {
+  app:   'inj-app',
+  goal:  'inj-goal',
+  memory:'inj-memory',
 };
 
 interface InjectionBarProps {
@@ -35,30 +36,26 @@ export function InjectionBar({ appId, convId }: InjectionBarProps) {
   return (
     <div className="injection-bar">
       {blocks.map((block, idx) => {
-        const config = SOURCE_CONFIG[block.source] || { icon: '📌', color: '#6b7280' };
+        const cls = SOURCE_CLASS[block.source] || 'inj-default';
         const isExpanded = expandedIdx === idx;
 
         return (
           <div key={`${block.source}-${idx}`} className="injection-tag-wrapper">
             <div
-              className="injection-tag"
-              style={{
-                borderColor: config.color,
-                color: config.color,
-                background: isExpanded ? config.color + '20' : 'transparent',
-              }}
+              className={`injection-tag ${cls}${isExpanded ? ' expanded' : ''}`}
               onClick={() => setExpandedIdx(isExpanded ? null : idx)}
             >
-              <span className="injection-tag-icon">{config.icon}</span>
               <span className="injection-tag-label">{block.label}</span>
               <span className="injection-tag-title">{block.title}</span>
             </div>
             {isExpanded && (
-              <div className="injection-detail" style={{ borderColor: config.color }}>
-                <div className="injection-detail-header" style={{ color: config.color }}>
-                  {config.icon} {block.label}
+              <div className={`injection-detail ${cls}`}>
+                <div className="injection-detail-header">
+                  {block.label}
                 </div>
-                <pre className="injection-detail-content">{block.detail}</pre>
+                <div className="injection-detail-md">
+                  <MarkdownView content={block.detail} />
+                </div>
               </div>
             )}
           </div>
