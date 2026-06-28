@@ -635,9 +635,27 @@ export async function runAgentAsync(
         serverLogger.info('agent', `Calling agent.continue for ${appId}/${convId}`);
         await session.agent.continue();
         serverLogger.info('agent', `agent.continue completed for ${appId}/${convId}`);
-        // 完成后取消订阅并发送 done 事件
+        // 完成后取消订阅
         unsub();
         unsub2();
+        // 如果这是一个被调 agent（mcp.agent.call 场景），发送结果通知
+        const continueConv = await conversationService.getConversation(appId, convId);
+        if (continueConv?.source === 'agent' && continueConv.callChain && continueConv.callChain.length > 0) {
+          const lastCaller = continueConv.callChain[continueConv.callChain.length - 1];
+          if (lastCaller.callerAppId && lastCaller.callerAppId !== '_injected_') {
+            const piMessages = session.agent.state.messages;
+            const finalText = extractFinalText(piMessages, []);
+            if (finalText) {
+              eventBus.emit({ type: 'agent_call_end_auto' as any, appId, convId, data: {
+                callId: lastCaller.callId || '',
+                result: finalText,
+                fromAppId: appId,
+                timestamp: new Date().toISOString(),
+              }});
+            }
+          }
+        }
+        // 发送 done 事件
         eventBus.emit({ type: 'done', appId, convId, data: {} });
         return;
       }
