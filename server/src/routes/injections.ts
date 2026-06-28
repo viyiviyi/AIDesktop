@@ -4,7 +4,7 @@ import { memoryService } from '../services/memory.js';
 import { skillService } from '../services/skillService.js';
 import type { InjectionBlock } from '../types/index.js';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // GET /:appId/injections — 构建注入摘要块列表
 router.get('/', async (req: Request, res: Response) => {
