@@ -396,10 +396,13 @@ export function buildWorkspaceTools(app: App, convId: string): AgentTool[] {
   const services = mcpServiceRegistry.getAllServices();
   const tools: AgentTool[] = [];
 
+  // 没有配置任何工具时，不注入任何 workspace 工具
+  if (allowedTools.size === 0) return tools;
+
   for (const service of services) {
     if (service.category !== 'workspace') continue;
-    // 如果 allowedTools 不为空，检查 workspace 工具是否在允许列表中
-    if (allowedTools.size > 0 && !allowedTools.has(service.name)) continue;
+    // 检查 workspace 工具是否在允许列表中
+    if (!allowedTools.has(service.name)) continue;
 
     for (const method of service.methods) {
       const name = safeToolName(service.name, method);
