@@ -635,6 +635,10 @@ export async function runAgentAsync(
         serverLogger.info('agent', `Calling agent.continue for ${appId}/${convId}`);
         await session.agent.continue();
         serverLogger.info('agent', `agent.continue completed for ${appId}/${convId}`);
+        // 完成后取消订阅并发送 done 事件
+        unsub();
+        unsub2();
+        eventBus.emit({ type: 'done', appId, convId, data: {} });
         return;
       }
       throw new Error('No text in user message');
