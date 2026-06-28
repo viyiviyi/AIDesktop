@@ -317,6 +317,16 @@ class SkillService {
     return { id, files: createdFiles };
   }
 
+  /** 保存由 AI 生成的技能（名称+描述+prompt -> skill 目录） */
+  async saveGeneratedSkill(skill: { name: string; description: string; prompt: string }): Promise<{ id: string }> {
+    return this.createSkill({
+      id: '',
+      name: skill.name,
+      description: skill.description,
+      roadmapMd: skill.prompt,
+    });
+  }
+
   // 获取应用授权的技能列表
   async getEnabledSkillsForApp(appSkillIds: string[]): Promise<SkillMeta[]> {
     if (!appSkillIds || appSkillIds.length === 0) return [];

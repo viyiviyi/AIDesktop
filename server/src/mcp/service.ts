@@ -26,7 +26,7 @@ const builtInServices: Record<string, MCPService> = {
   'mcp.settings': {
     name: 'mcp.settings',
     description: '系统设置与技能管理服务 - 获取更新设置、从会话生成技能、管理应用技能配置',
-    methods: ['get', 'update', 'generateSkill', 'addSkillToApp', 'getSkills', 'getApps', 'getConversations', 'getConversation'],
+    methods: ['get', 'update', 'generateSkill', 'addSkillToApp', 'getApps', 'getConversations', 'getConversation'],
     category: 'admin',
   },
 
@@ -623,8 +623,6 @@ class MCPServiceRegistry {
         return appState.getSettings();
       case 'update':
         return appState.updateSettings(args as Record<string, unknown>);
-      case 'getSkills':
-        return appState.getSkills();
       case 'getApps': {
         const apps = appState.getAllApps();
         return { apps: apps.map(a => ({ id: a.meta.id, name: a.meta.name, skills: a.skills || [] })) };
@@ -714,12 +712,10 @@ class MCPServiceRegistry {
         const skillDesc = descMatch ? descMatch[1].trim() : '';
         const skillPrompt = promptMatch ? promptMatch[1].trim() : fullText;
 
-        const newSkill = { id: randomUUID(), name: skillName, description: skillDesc, prompt: skillPrompt, enabled: true, config: {} };
-        const currentSkills = await appState.getSkills();
-        currentSkills.skills.push(newSkill);
-        await appState.updateSkills({ skills: currentSkills.skills });
-
-        return { skill: newSkill, allSkills: currentSkills.skills };
+        const newSkill = { name: skillName, description: skillDesc, prompt: skillPrompt };
+        const { skillService } = await import('../services/skillService.js');
+        const result = await skillService.saveGeneratedSkill(newSkill);
+        return { skill: newSkill, id: result.id };
       }
       case 'addSkillToApp': {
         // args: { appId: string, skillId: string }

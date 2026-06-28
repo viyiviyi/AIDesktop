@@ -148,46 +148,6 @@ router.delete('/mcp/:connectionId', async (req: Request, res: Response) => {
   }
 });
 
-// Get skill settings
-router.get('/skills', async (req: Request, res: Response) => {
-  try {
-    const skills = await appState.getSkills();
-    res.json(skills);
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
-});
-
-// Update skill settings
-router.put('/skills', async (req: Request, res: Response) => {
-  try {
-    const skills = await appState.updateSkills(req.body);
-    res.json(skills);
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
-});
-
-// Add new skill
-router.post('/skills', async (req: Request, res: Response) => {
-  try {
-    const skills = await appState.addSkill(req.body);
-    res.json(skills);
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
-});
-
-// Delete skill
-router.delete('/skills/:skillId', async (req: Request, res: Response) => {
-  try {
-    const skills = await appState.deleteSkill(req.params.skillId);
-    res.json(skills);
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
-});
-
 // Get skills list from public_data/skills/ (带启用状态)
 router.get('/skills/list', async (req: Request, res: Response) => {
   try {
@@ -356,25 +316,19 @@ router.post('/skills/generate', async (req: Request, res: Response) => {
     const skillDesc = descMatch ? descMatch[1].trim() : '';
     const skillPrompt = promptMatch ? promptMatch[1].trim() : fullText;
 
-    // 4. 自动保存技能
+    // 4. 自动保存技能到 skillService
     const newSkill = {
-      id: randomUUID(),
       name: skillName,
       description: skillDesc,
       prompt: skillPrompt,
-      enabled: true,
-      config: {},
     };
-
-    const currentSkills = await appState.getSkills();
-    currentSkills.skills.push(newSkill);
-    await appState.updateSkills({ skills: currentSkills.skills });
+    const { skillService } = await import('../services/skillService.js');
+    await skillService.saveGeneratedSkill(newSkill);
 
     serverLogger.info('skill-maker', `Generated skill: ${skillName}`);
 
     res.json({
       skill: newSkill,
-      allSkills: currentSkills.skills,
     });
   } catch (error) {
     serverLogger.error('skill-maker', 'Failed to generate skill', error as Error);

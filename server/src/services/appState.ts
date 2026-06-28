@@ -16,7 +16,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { CONFIGS_DIR, APPS_DATA_DIR, SYSTEM_APPS_DIR, USER_APPS_DIR, MARKETPLACE_APPS_DIR, ensureDir } from '../utils/file.js';
-import type { DesktopSettings, ModelProvider, MCPConnection, Skill, App, AppMeta, AppConfig, AppSource } from '../types/index.js';
+import type { DesktopSettings, ModelProvider, MCPConnection, App, AppMeta, AppConfig, AppSource } from '../types/index.js';
 import { serverLogger } from '../utils/logger.js';
 
 // ============================================================
@@ -58,7 +58,6 @@ const DEFAULT_MODES: { providers: ModelProvider[] } = {
 
 const DEFAULT_MODEL_CONFIG: DefaultModelConfig = { providerId: '', modelId: '' };
 const DEFAULT_MCP: { connections: MCPConnection[] } = { connections: [] };
-const DEFAULT_SKILLS: { skills: Skill[]; globalEnabled: boolean } = { skills: [], globalEnabled: true };
 
 // ============================================================
 // AppState
@@ -69,7 +68,6 @@ class AppState {
   private settings: DesktopSettings | null = null;
   private modes: { providers: ModelProvider[] } | null = null;
   private mcp: { connections: MCPConnection[] } | null = null;
-  private skills: { skills: Skill[]; globalEnabled: boolean } | null = null;
   private modelConfig: DefaultModelConfig | null = null;
   private windowPositions: Record<string, { x: number; y: number }> | null = null;
 
@@ -82,7 +80,6 @@ class AppState {
     await this.loadSettings();
     await this.loadModes();
     await this.loadMcp();
-    await this.loadSkills();
     await this.loadModelConfig();
     await this.loadWindowPositions();
     await this.loadAllApps();
@@ -211,39 +208,6 @@ class AppState {
     this.mcp!.connections = this.mcp!.connections.filter(c => c.id !== connectionId);
     await this.writeJson(this.configPath('mcp.json'), this.mcp);
     return { connections: this.mcp!.connections };
-  }
-
-  // ==========================================================
-  // 技能配置
-  // ==========================================================
-
-  private async loadSkills(): Promise<void> {
-    this.skills = await this.readJson<{ skills: Skill[]; globalEnabled: boolean }>(this.configPath('skills.json'))
-      || { ...DEFAULT_SKILLS };
-  }
-
-  getSkills(): { skills: Skill[]; globalEnabled: boolean } {
-    return { ...this.skills! };
-  }
-
-  async updateSkills(updates: Partial<{ skills: Skill[]; globalEnabled: boolean }>): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
-    this.skills = { ...this.skills!, ...updates };
-    await this.writeJson(this.configPath('skills.json'), this.skills);
-    return { ...this.skills };
-  }
-
-  async addSkill(skill: Omit<Skill, 'id'>): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
-    if (!this.skills) await this.loadSkills();
-    this.skills!.skills.push({ ...skill, id: crypto.randomUUID() });
-    await this.writeJson(this.configPath('skills.json'), this.skills);
-    return { skills: this.skills!.skills, globalEnabled: this.skills!.globalEnabled };
-  }
-
-  async deleteSkill(skillId: string): Promise<{ skills: Skill[]; globalEnabled: boolean }> {
-    if (!this.skills) await this.loadSkills();
-    this.skills!.skills = this.skills!.skills.filter(s => s.id !== skillId);
-    await this.writeJson(this.configPath('skills.json'), this.skills);
-    return { skills: this.skills!.skills, globalEnabled: this.skills!.globalEnabled };
   }
 
   // ==========================================================
