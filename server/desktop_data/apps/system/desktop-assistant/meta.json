@@ -11,17 +11,45 @@
       "model": "qwen3.5-9b-uncensored-hauhaucs-aggressive",
       "priority": 1,
       "maxTokens": 128000,
-      "supports": ["text", "image"],
+      "supports": [
+        "text",
+        "image"
+      ],
       "params": {
         "temperature": 0.7,
         "top_p": 0.9
       }
     }
   ],
-  "supportedInputs": ["text", "image", "audio"],
+  "supportedInputs": [
+    "text",
+    "image",
+    "audio"
+  ],
   "inputDescription": "支持文本、图片、语音输入",
   "outputDescription": "返回文本、图片、语音回复",
-  "visibleApps": ["settings", "app-builder", "file-manager", "trash", "browser"],
-  "visibleServices": ["clipboard", "notification"],
-  "tools": ["mcp.filesystem", "mcp.window", "mcp.settings", "mcp.agent", "mcp.browser", "mcp.memory"]
+  "visibleApps": [
+    "settings",
+    "app-builder",
+    "file-manager",
+    "trash",
+    "browser"
+  ],
+  "visibleServices": [
+    "clipboard",
+    "notification"
+  ],
+  "tools": [
+    "mcp.filesystem",
+    "mcp.window",
+    "mcp.settings",
+    "mcp.agent",
+    "mcp.browser",
+    "mcp.memory",
+    "mcp.sleep",
+    "mcp.exec",
+    "mcp.http",
+    "mcp.form",
+    "mcp.skill"
+  ]
 }
