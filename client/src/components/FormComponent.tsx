@@ -79,20 +79,41 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
             className="form-input"
           />
         );
-      case 'select':
+      case 'tags':
         return (
-          <select
-            id={fieldId}
-            value={(val as string) || ''}
-            onChange={e => setValue(field.name, e.target.value || null)}
-            className="form-input"
-          >
-            <option value="">-- 请选择 --</option>
-            {(field.options || []).map((o, _i) => {
-              const opt = normOption(o);
-              return <option key={opt.value} value={opt.value}>{opt.label}</option>;
-            })}
-          </select>
+          <div className="form-tags-input">
+            <div className="form-tags-list">
+              {((val as string[]) || []).map((tag, ti) => (
+                <span key={ti} className="form-tag">
+                  {tag}
+                  <button type="button" className="form-tag-remove" onClick={() => {
+                    const arr = [...((val as string[]) || [])];
+                    arr.splice(ti, 1);
+                    setValue(field.name, arr);
+                  }}>&times;</button>
+                </span>
+              ))}
+            </div>
+            <input
+              type="text"
+              placeholder={field.placeholder || '输入后按 Enter 添加'}
+              className="form-input form-tag-input"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const input = e.currentTarget;
+                  const text = input.value.trim();
+                  if (text) {
+                    const arr = [...((val as string[]) || [])];
+                    arr.push(text);
+                    setValue(field.name, arr);
+                    input.value = '';
+                  }
+                }
+              }}
+            />
+            {field.description && <div className="form-field-desc">{field.description}</div>}
+          </div>
         );
       case 'radio':
         return (

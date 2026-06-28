@@ -105,7 +105,7 @@ export interface Conversation {
 export interface FormField {
   name: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'radio' | 'checkbox';
+  type: 'text' | 'textarea' | 'number' | 'tags' | 'radio' | 'checkbox';
   required?: boolean;
   options?: string[] | { label: string; value: string }[];
   placeholder?: string;
