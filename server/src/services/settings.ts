@@ -6,7 +6,7 @@ import { CONFIGS_DIR, readJsonFile, writeJsonFile, ensureDir } from '../utils/fi
 // 默认桌面设置
 const DEFAULT_SETTINGS: DesktopSettings = {
   theme: 'light',
-  wallpaper: '/wallpapers/default.jpg',
+  wallpaper: '',
   dock: {
     position: 'bottom',
     magnification: true,

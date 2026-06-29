@@ -4,7 +4,6 @@
   "description": "内置桌面助手，提供基础对话和系统操作功能。可以调用其他应用和服务来完成任务。",
   "source": "system",
   "type": "desktop",
-  "icon": "/public_icons/assistant.svg",
   "models": [
     {
       "provider": "local_llama",

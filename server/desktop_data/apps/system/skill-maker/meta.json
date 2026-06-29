@@ -4,12 +4,20 @@
   "description": "通过分析AI助手的对话记录，自动生成可复用的技能。选择会话、输入名称、AI自动完成。",
   "source": "system",
   "type": "desktop",
-  "icon": "/public_icons/app-builder.svg",
   "models": [],
-  "supportedInputs": ["text"],
+  "supportedInputs": [
+    "text"
+  ],
   "inputDescription": "",
   "outputDescription": "",
   "visibleApps": [],
   "visibleServices": [],
-  "tools": ["mcp.settings", "mcp.filesystem", "mcp.skill", "mcp.exec", "mcp.agent", "mcp.sleep"]
+  "tools": [
+    "mcp.settings",
+    "mcp.filesystem",
+    "mcp.skill",
+    "mcp.exec",
+    "mcp.agent",
+    "mcp.sleep"
+  ]
 }

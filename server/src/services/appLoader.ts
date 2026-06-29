@@ -162,7 +162,7 @@ class AppLoader {
       description: app.meta.description || '',
       source,
       type: app.meta.type || 'desktop',
-      icon: app.meta.icon || '/icons/default.png',
+      icon: app.meta.icon || '',
       models: app.meta.models || [],
       supportedInputs: app.meta.supportedInputs || ['text'],
       inputDescription: app.meta.inputDescription || '',

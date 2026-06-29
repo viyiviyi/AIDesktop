@@ -24,7 +24,7 @@ router.get('/', async (req: Request, res: Response) => {
           description: a.meta.description,
           source: a.meta.source,
           type: a.meta.type,
-          icon: merged.icon || '/public_icons/assistant.svg',
+          icon: merged.icon || '',
           backgroundImage: merged.backgroundImage,
           enabled: merged.enabled,
           supportedInputs: merged.supportedInputs || ['text'],
@@ -204,7 +204,7 @@ router.post('/reload', async (req: Request, res: Response) => {
           description: a.meta.description,
           source: a.meta.source,
           type: a.meta.type,
-          icon: merged.icon || '/public_icons/assistant.svg',
+          icon: merged.icon || '',
           enabled: merged.enabled,
           supportedInputs: merged.supportedInputs || ['text'],
         };

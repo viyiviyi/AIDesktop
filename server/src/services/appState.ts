@@ -35,7 +35,7 @@ export interface DefaultModelConfig {
 
 const DEFAULT_SETTINGS: DesktopSettings = {
   theme: 'light',
-  wallpaper: '/wallpapers/default.jpg',
+  wallpaper: '',
   dock: { position: 'bottom', magnification: true, autoHide: false },
   window: { defaultSize: { width: 800, height: 600 }, minSize: { width: 400, height: 300 }, maximized: false },
   menuBar: { autoHide: false },
@@ -377,7 +377,7 @@ class AppState {
     const id = app.meta.id || crypto.randomUUID();
     const fullMeta: AppMeta = {
       id, name: app.meta.name || '新应用', description: app.meta.description || '',
-      source, type: app.meta.type || 'desktop', icon: app.meta.icon || '/icons/default.png',
+      source, type: app.meta.type || 'desktop', icon: app.meta.icon || '',
       models: app.meta.models || [], supportedInputs: app.meta.supportedInputs || ['text'],
       inputDescription: app.meta.inputDescription || '', outputDescription: app.meta.outputDescription || '',
       visibleApps: app.meta.visibleApps || [], visibleServices: app.meta.visibleServices || [],

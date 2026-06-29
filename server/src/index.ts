@@ -91,7 +91,6 @@ const clientDistPath = (() => {
     return join(__dirname, '..', '..', 'client', 'dist');
   }
 })();
-app.use('/public_icons', express.static(join(DATA_DIR, 'public_icons')));
 app.use('/wallpapers', express.static(join(DATA_DIR, 'wallpapers')));
 app.use('/api/files', express.static(join(DATA_DIR, 'apps_data')));
 app.use(express.static(clientDistPath));

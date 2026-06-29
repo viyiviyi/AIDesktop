@@ -70,7 +70,6 @@ apps/user/{appId}/
   "description": "应用描述",
   "source": "user",
   "type": "desktop 或 background",
-  "icon": "/public_icons/assistant.svg",
   "models": [...],
   "supportedInputs": ["text"],
   "inputDescription": "...",
