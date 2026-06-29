@@ -1,7 +1,22 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-export const DATA_DIR = path.join(process.cwd(), 'desktop_data');
+// 数据目录：默认 process.cwd()/desktop_data，可通过 --data 参数或 DATA_DIR 环境变量覆盖
+// --data 指向 desktop_data 所在目录（即父目录）
+export function getDataDir(): string {
+  const idx = process.argv.findIndex(a => a === '--data');
+  const base = idx !== -1 && process.argv[idx + 1] ? path.resolve(process.argv[idx + 1])
+    : process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR)
+    : process.cwd();
+  return path.join(base, 'desktop_data');
+}
+
+// 系统应用目录：始终跟随程序位置
+export function getSystemAppsDir(bundleDir: string): string {
+  return path.join(bundleDir, 'apps', 'system');
+}
+
+export const DATA_DIR = getDataDir();
 export const APPS_DIR = path.join(DATA_DIR, 'apps');
 export const SYSTEM_APPS_DIR = path.join(APPS_DIR, 'system');
 export const USER_APPS_DIR = path.join(APPS_DIR, 'user');

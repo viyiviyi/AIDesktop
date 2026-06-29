@@ -15,7 +15,8 @@ import workspaceRouter from './routes/workspace.js';
 import mediaRouter from './routes/media.js';
 import injectionsRouter from './routes/injections.js';
 import memoryRouter from './routes/memory.js';
-import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR, DATA_DIR } from './utils/file.js';
+import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR, DATA_DIR, getSystemAppsDir } from './utils/file.js';
+import { appLoader } from './services/appLoader.js';
 import { setupWebSocket } from './services/wsServer.js';
 
 // __filename / __dirname — 兼容 ESM (tsx) 和 CJS (esbuild bundle)
@@ -32,7 +33,10 @@ try {
 }
 
 const app = express();
-const PORT = process.env.PORT || 27135;
+const PORT = process.env.PORT || (() => {
+  const idx = process.argv.findIndex(a => a === '--port');
+  return idx !== -1 && process.argv[idx + 1] ? parseInt(process.argv[idx + 1]) : 27135;
+})();
 
 // Middleware
 app.use(cors());
@@ -40,8 +44,26 @@ app.use(express.json({ limit: '50mb' }));
 
 // Initialize directories and load data
 async function init() {
-  await ensureDir(APPS_DIR);
-  await ensureDir(join(APPS_DIR, 'system'));
+  // 确定 bundle 目录（用于定位系统应用）
+  const bundleDir = (() => {
+    const candidates = [
+      __dirname,
+      join(__dirname, '..'),
+      join(__dirname, '..', '..'),
+      process.cwd(),
+    ];
+    for (const dir of candidates) {
+      try {
+        require('fs').accessSync(join(dir, 'apps', 'system'));
+        return dir;
+      } catch {}
+    }
+    return __dirname;
+  })();
+  const systemAppsDir = getSystemAppsDir(bundleDir);
+  appLoader.setSystemAppsDir(systemAppsDir);
+
+  await ensureDir(systemAppsDir);
   await ensureDir(join(APPS_DIR, 'user'));
   await ensureDir(join(APPS_DIR, 'marketplace'));
   await ensureDir(APPS_DATA_DIR);
@@ -81,24 +103,37 @@ app.get('/api/health', (req, res) => {
 // dev 模式: __dirname = server/src/ -> ../../client/dist
 // bundle 模式: __dirname = build/aidesktop/ -> ./client/dist
 const clientDistPath = (() => {
-  // 优先检测 bundle 同目录下的 client/dist
-  const localDist = join(__dirname, 'client', 'dist');
-  try {
-    require('fs').accessSync(localDist);
-    return localDist;
-  } catch {
-    // dev 模式
-    return join(__dirname, '..', '..', 'client', 'dist');
+  // 可能的位置列表
+  const candidates = [
+    join(__dirname, 'client', 'dist'),                    // bundle 同目录
+    join(__dirname, '..', 'client', 'dist'),              // 上级目录
+    join(__dirname, '..', '..', 'client', 'dist'),        // dev 模式
+    join(process.cwd(), 'client', 'dist'),                // cwd
+  ];
+  for (const dir of candidates) {
+    try {
+      const testPath = join(dir, 'index.html');
+      require('fs').accessSync(testPath);
+      return dir;
+    } catch {}
   }
+  // 最后的 fallback
+  return join(__dirname, 'client', 'dist');
 })();
-app.use('/wallpapers', express.static(join(DATA_DIR, 'wallpapers')));
+// 静态文件 — wallpapers 从 bundle 同级的 client/dist/wallpapers 加载
+const wallpapersDir = join(clientDistPath, 'wallpapers');
+app.use('/wallpapers', express.static(wallpapersDir));
 app.use('/api/files', express.static(join(DATA_DIR, 'apps_data')));
 app.use(express.static(clientDistPath));
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     res.status(404).json({ error: 'Not found' });
   } else {
-    res.sendFile(join(clientDistPath, 'index.html'));
+    try {
+      res.sendFile('index.html', { root: clientDistPath });
+    } catch {
+      res.sendFile('index.html', { root: process.cwd() });
+    }
   }
 });
 
@@ -106,6 +141,8 @@ app.get('*', (req, res) => {
 init().then(() => {
   const httpServer = app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Data directory: ${DATA_DIR}`);
+    console.log(`System apps: ${join(__dirname, 'apps', 'system')}`);
     setupWebSocket(httpServer);
   });
 }).catch((error) => {

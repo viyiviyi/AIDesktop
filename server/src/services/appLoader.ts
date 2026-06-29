@@ -4,7 +4,6 @@ import type { App, AppMeta, AppConfig, AppSource } from '../types/index.js';
 import {
   APPS_DIR,
   APPS_DATA_DIR,
-  SYSTEM_APPS_DIR,
   USER_APPS_DIR,
   MARKETPLACE_APPS_DIR,
   readJsonFile,
@@ -25,10 +24,22 @@ import {
 class AppLoader {
   // 应用内存缓存
   private apps: Map<string, App> = new Map();
+  // 系统应用目录（由 index.ts 传入，跟随程序位置）
+  private systemAppsDir = '';
+
+  /** 设置系统应用目录（必须在 loadAll 前调用） */
+  setSystemAppsDir(dir: string): void {
+    this.systemAppsDir = dir;
+  }
 
   // 加载所有应用（从三个目录）
   async loadAll(): Promise<void> {
-    await this.loadFromDirectory(SYSTEM_APPS_DIR, 'system');
+    if (this.systemAppsDir) {
+      await this.loadFromDirectory(this.systemAppsDir, 'system');
+    } else {
+      // fallback: 从数据目录加载
+      await this.loadFromDirectory(path.join(APPS_DIR, 'system'), 'system');
+    }
     await this.loadFromDirectory(USER_APPS_DIR, 'user');
     await this.loadFromDirectory(MARKETPLACE_APPS_DIR, 'marketplace');
   }
@@ -173,7 +184,7 @@ class AppLoader {
     };
 
     // 根据来源确定目录
-    const sourceDir = source === 'system' ? SYSTEM_APPS_DIR :
+    const sourceDir = source === 'system' ? (this.systemAppsDir || path.join(APPS_DIR, 'system')) :
                       source === 'user' ? USER_APPS_DIR :
                       MARKETPLACE_APPS_DIR;
 
@@ -217,7 +228,7 @@ class AppLoader {
 
     // 如果有 appMd 更新，也写入文件系统并更新内存
     if (appMd !== undefined) {
-      const sourceDir = app.meta.source === 'system' ? SYSTEM_APPS_DIR
+      const sourceDir = app.meta.source === 'system' ? (this.systemAppsDir || path.join(APPS_DIR, 'system'))
         : app.meta.source === 'user' ? USER_APPS_DIR
         : MARKETPLACE_APPS_DIR;
       const { writeFile } = await import('fs/promises');
