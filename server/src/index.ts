@@ -15,7 +15,7 @@ import workspaceRouter from './routes/workspace.js';
 import mediaRouter from './routes/media.js';
 import injectionsRouter from './routes/injections.js';
 import memoryRouter from './routes/memory.js';
-import { ensureDir, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR, DATA_DIR, getSystemAppsDir } from './utils/file.js';
+import { ensureDir, BASE_DIR, DATA_DIR, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR } from './utils/file.js';
 import { appLoader } from './services/appLoader.js';
 import { setupWebSocket } from './services/wsServer.js';
 
@@ -36,16 +36,15 @@ const PORT = process.env.PORT || (() => {
   return idx !== -1 && process.argv[idx + 1] ? parseInt(process.argv[idx + 1]) : 27135;
 })();
 
+// 系统应用目录（启动时确定，供各处使用）
+const systemAppsDir = join(scriptDir, 'desktop_data', 'apps', 'system');
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 // Initialize directories and load data
 async function init() {
-  // 系统应用目录：跟随程序位置（server.cjs 同级的 desktop_data/apps/system/）
-  const systemAppsDir = join(scriptDir, 'desktop_data', 'apps', 'system');
-  console.log(`[init] scriptDir=${scriptDir}`);
-  console.log(`[init] systemAppsDir=${systemAppsDir}`);
   appLoader.setSystemAppsDir(systemAppsDir);
   appState.setSystemAppsDir(systemAppsDir);
 
@@ -54,7 +53,7 @@ async function init() {
   await ensureDir(join(APPS_DIR, 'marketplace'));
   await ensureDir(APPS_DATA_DIR);
   await ensureDir(CONFIGS_DIR);
-  await ensureDir(join(CONFIGS_DIR, '..', 'public_data', 'skills'));
+  await ensureDir(join(DATA_DIR, 'public_data', 'skills'));
 
   // 统一状态管理初始化（加载所有配置和 App）
   await appState.init();
@@ -63,6 +62,7 @@ async function init() {
   await mcpClientRegistry.initializeFromConfig();
 
   console.log('Server initialized');
+  console.log(`Base directory: ${BASE_DIR}`);
   console.log(`Data directory: ${DATA_DIR}`);
   console.log(`System apps: ${systemAppsDir}`);
 }
@@ -128,7 +128,7 @@ init().then(() => {
   const httpServer = app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(`Data directory: ${DATA_DIR}`);
-    console.log(`System apps: ${join(scriptDir, 'apps', 'system')}`);
+    console.log(`System apps: ${systemAppsDir}`);
     setupWebSocket(httpServer);
   });
 }).catch((error) => {

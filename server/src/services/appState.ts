@@ -15,7 +15,7 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { CONFIGS_DIR, APPS_DATA_DIR, SYSTEM_APPS_DIR, USER_APPS_DIR, MARKETPLACE_APPS_DIR, ensureDir } from '../utils/file.js';
+import { CONFIGS_DIR, APPS_DATA_DIR, APPS_DIR, USER_APPS_DIR, MARKETPLACE_APPS_DIR, ensureDir } from '../utils/file.js';
 import type { DesktopSettings, ModelProvider, MCPConnection, App, AppMeta, AppConfig, AppSource } from '../types/index.js';
 import { serverLogger } from '../utils/logger.js';
 
@@ -74,7 +74,7 @@ class AppState {
   // App 缓存（id → App）
   private apps: Map<string, App> = new Map();
   // 系统应用目录（由 index.ts 传入，跟随程序位置）
-  private systemAppsDir = SYSTEM_APPS_DIR;
+  private systemAppsDir = path.join(APPS_DIR, 'system');
 
   /** 设置系统应用目录（必须在 init 前调用） */
   setSystemAppsDir(dir: string): void {

@@ -1,30 +1,28 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-// 数据目录：默认 process.cwd()/desktop_data，可通过 --data 参数或 DATA_DIR 环境变量覆盖
-// --data 指向 desktop_data 所在目录（即父目录）
-export function getDataDir(): string {
+// ── 基础目录 ──
+// BASE_DIR: 通过 --data 参数或 DATA_DIR 环境变量指定，默认 process.cwd()
+// DATA_DIR: 始终为 BASE_DIR/desktop_data（所有数据的根目录）
+function resolveBaseDir(): string {
   const idx = process.argv.findIndex(a => a === '--data');
-  const base = idx !== -1 && process.argv[idx + 1] ? path.resolve(process.argv[idx + 1])
-    : process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR)
-    : process.cwd();
-  return path.join(base, 'desktop_data');
+  if (idx !== -1 && process.argv[idx + 1]) return path.resolve(process.argv[idx + 1]);
+  if (process.env.DATA_DIR) return path.resolve(process.env.DATA_DIR);
+  return process.cwd();
 }
 
-// 系统应用目录：始终跟随程序位置
-export function getSystemAppsDir(bundleDir: string): string {
-  return path.join(bundleDir, 'apps', 'system');
-}
+export const BASE_DIR = resolveBaseDir();
+export const DATA_DIR = path.join(BASE_DIR, 'desktop_data');
 
-export const DATA_DIR = getDataDir();
+// ── 数据子目录（全部基于 DATA_DIR，启动时静态定义） ──
 export const APPS_DIR = path.join(DATA_DIR, 'apps');
-export const SYSTEM_APPS_DIR = path.join(APPS_DIR, 'system');
 export const USER_APPS_DIR = path.join(APPS_DIR, 'user');
 export const MARKETPLACE_APPS_DIR = path.join(APPS_DIR, 'marketplace');
 export const APPS_DATA_DIR = path.join(DATA_DIR, 'apps_data');
 export const PUBLIC_DATA_DIR = path.join(DATA_DIR, 'public_data');
 export const CONFIGS_DIR = path.join(DATA_DIR, 'configs');
 
+// ── 工具函数 ──
 export async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
 }
