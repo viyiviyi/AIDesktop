@@ -91,7 +91,7 @@ echo ""
 echo ""
 echo "--- Step 5: Copy Desktop Data ---"
 
-# 系统应用（只读，必需）
+# 系统应用（只读，必硩）
 mkdir -p "$DIST_DIR/desktop_data/apps"
 cp -r "$PROJECT_DIR/server/desktop_data/apps/system" "$DIST_DIR/desktop_data/apps/system"
 echo "  system apps: copied"

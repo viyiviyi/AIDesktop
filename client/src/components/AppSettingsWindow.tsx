@@ -113,8 +113,8 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         tools: fullApp.tools || [],
         skills: fullApp.skills || [],
         appMd: fullApp.appMd || '',
-        headerParams: fullApp.models?.[0]?.headerParams || [],
-        bodyParams: fullApp.models?.[0]?.bodyParams || [],
+        headerParams: (fullApp as any).paramOverrides?.headerParams || [],
+        bodyParams: (fullApp as any).paramOverrides?.bodyParams || [],
       });
     } catch (error) {
       console.error('Failed to load app settings:', error);
@@ -150,12 +150,11 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         tools: formData.tools,
         skills: formData.skills,
         appMd: formData.appMd,
-        // headerParams/bodyParams 写入 models[0]，不在顶层
-        models: app.models?.length ? [{
-          ...app.models[0],
-          headerParams: formData.headerParams,
-          bodyParams: formData.bodyParams,
-        }] : [],
+        // headerParams/bodyParams 存为 paramOverrides（只存 key + enabled，不从 provider 复制 value）
+        paramOverrides: {
+          headerParams: formData.headerParams.map(p => ({ key: p.key, enabled: p.enabled })),
+          bodyParams: formData.bodyParams.map(p => ({ key: p.key, enabled: p.enabled })),
+        },
       };
 
       await api.updateApp(app.id, updates as any);

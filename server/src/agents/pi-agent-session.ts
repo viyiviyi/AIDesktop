@@ -227,29 +227,26 @@ export class PiAgentSession {
         serverLogger.ai(`${model.provider}/${model.id}`, `>>> ${textPreview}`, { messages: context.messages.length });
         const start = Date.now();
 
-        // 每次流式调用时从当前 app 配置读取 bodyParams（支持运行时修改）
+        // 从 provider 定义读取参数，从 app config 读取覆盖的启用状态
         const currentApp = appState.getApp(app.meta.id);
-        // 使用 mergeConfig 统一合并 meta+config，与前端显示保持一致
-        const mergedMeta: any = { ...(currentApp?.meta || {}) };
-        const mergedConfig: any = currentApp?.config || {};
-        // 手动合并（与 mergeConfig 逻辑一致）
-        if (mergedConfig.enabled !== undefined) mergedMeta.enabled = mergedConfig.enabled;
-        for (const key of ['backgroundImage', 'icon', 'supportedInputs', 'inputDescription', 'outputDescription',
-                           'visibleApps', 'visibleServices', 'tools', 'models']) {
-          if (mergedConfig[key] !== undefined) {
-            mergedMeta[key] = mergedConfig[key];
-          }
-        }
-        const currentModelConfig: any = mergedMeta.models?.[0] || {};
+        const modes = appState.getModes();
+        const provider = modes.providers.find((p: any) => p.id === model.provider);
+        const modelDef = provider?.models?.find((m: any) => m.id === model.id);
+        const providerModelParams = modelDef || {};
+        const paramOverrides: any = currentApp?.config?.paramOverrides || {};
+
+        // 合并 bodyParams
         const bodyParams: Record<string, unknown> = {};
-        if (currentModelConfig.bodyParams) {
-          for (const p of currentModelConfig.bodyParams) {
-            if (p.enabled) {
-              try { bodyParams[p.key] = JSON.parse(p.value); } catch { bodyParams[p.key] = p.value; }
-            }
+        const providerBodyParams: Array<{ key: string; value: string; enabled: boolean }> = (providerModelParams as any)?.bodyParams || [];
+        const bodyOverrides: Array<{ key: string; enabled: boolean }> = paramOverrides.bodyParams || [];
+        for (const bp of providerBodyParams) {
+          const override = bodyOverrides.find(o => o.key === bp.key);
+          const enabled = override !== undefined ? override.enabled : bp.enabled;
+          if (enabled) {
+            try { bodyParams[bp.key] = JSON.parse(bp.value); } catch { bodyParams[bp.key] = bp.value; }
           }
         }
-        serverLogger.debug('PiAgentSession', `Dynamic bodyParams: ${JSON.stringify(bodyParams)} from ${app.meta.id}`);
+        serverLogger.debug('PiAgentSession', `Dynamic bodyParams: ${JSON.stringify(bodyParams)} from ${app.meta.id}, provider: ${model.provider}/${model.id}`);
 
         // 注入 body 参数（如 thinking: { type: "disabled" }）
         let streamOptions = { ...options, apiKey: this.apiKey };
@@ -290,11 +287,15 @@ export class PiAgentSession {
           return p;
         };
 
-        // 注入 header 参数
-        if (currentModelConfig.headerParams) {
+        // 注入 header 参数（从 provider 定义读取，从 app config 读取覆盖）
+        const providerHeaderParams: Array<{ key: string; value: string; enabled: boolean }> = (providerModelParams as any)?.headerParams || [];
+        const headerOverrides: Array<{ key: string; enabled: boolean }> = paramOverrides.headerParams || [];
+        if (providerHeaderParams.length > 0) {
           const headers: Record<string, string> = {};
-          for (const hp of currentModelConfig.headerParams) {
-            if (hp.enabled) headers[hp.key] = hp.value;
+          for (const hp of providerHeaderParams) {
+            const override = headerOverrides.find(o => o.key === hp.key);
+            const enabled = override !== undefined ? override.enabled : hp.enabled;
+            if (enabled) headers[hp.key] = hp.value;
           }
           if (Object.keys(headers).length > 0) {
             streamOptions = {

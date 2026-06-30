@@ -73,6 +73,13 @@ class AppState {
 
   // App 缓存（id → App）
   private apps: Map<string, App> = new Map();
+  // 系统应用目录（由 index.ts 传入，跟随程序位置）
+  private systemAppsDir = SYSTEM_APPS_DIR;
+
+  /** 设置系统应用目录（必须在 init 前调用） */
+  setSystemAppsDir(dir: string): void {
+    this.systemAppsDir = dir;
+  }
 
   // ---- 初始化 ----
   async init(): Promise<void> {
@@ -150,6 +157,18 @@ class AppState {
     if (idx >= 0) this.modes!.providers[idx] = provider;
     await this.writeJson(this.configPath('modes.json'), this.modes);
     return { providers: this.modes!.providers };
+  }
+
+  /** 获取指定模型的参数定义（headerParams/bodyParams），用于应用级覆盖 */
+  async getModelParams(appId: string, providerId: string, modelId: string): Promise<{ headerParams?: Array<{ key: string; value: string; enabled: boolean }>; bodyParams?: Array<{ key: string; value: string; enabled: boolean }> } | null> {
+    const provider = this.modes?.providers.find(p => p.id === providerId);
+    if (!provider) return null;
+    const model = provider.models?.find(m => m.id === modelId);
+    if (!model) return null;
+    return {
+      headerParams: (model as any).headerParams,
+      bodyParams: (model as any).bodyParams,
+    };
   }
 
   async addProvider(provider: ModelProvider): Promise<{ providers: ModelProvider[] }> {
@@ -262,7 +281,7 @@ class AppState {
 
   /** 加载所有应用（从三个目录） */
   private async loadAllApps(): Promise<void> {
-    await this.loadAppsFromDir(SYSTEM_APPS_DIR, 'system');
+    await this.loadAppsFromDir(this.systemAppsDir, 'system');
     await this.loadAppsFromDir(USER_APPS_DIR, 'user');
     await this.loadAppsFromDir(MARKETPLACE_APPS_DIR, 'marketplace');
   }
@@ -352,7 +371,7 @@ class AppState {
     await this.writeAppConfig(id, newConfig);
 
     if (appMd !== undefined) {
-      const sourceDir = app.meta.source === 'system' ? SYSTEM_APPS_DIR
+      const sourceDir = app.meta.source === 'system' ? this.systemAppsDir
         : app.meta.source === 'user' ? USER_APPS_DIR : MARKETPLACE_APPS_DIR;
       await fs.writeFile(path.join(sourceDir, id, 'app.md'), appMd, 'utf-8');
     }
@@ -384,7 +403,7 @@ class AppState {
       tools: app.meta.tools || [],
     };
 
-    const sourceDir = source === 'system' ? SYSTEM_APPS_DIR : source === 'user' ? USER_APPS_DIR : MARKETPLACE_APPS_DIR;
+    const sourceDir = source === 'system' ? this.systemAppsDir : source === 'user' ? USER_APPS_DIR : MARKETPLACE_APPS_DIR;
     const appDir = path.join(sourceDir, id);
     await ensureDir(appDir);
     await ensureDir(path.join(APPS_DATA_DIR, id, 'conversations'));

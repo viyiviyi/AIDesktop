@@ -1,4 +1,4 @@
-import type { App, AppInfo, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel } from '../types';
+import type { App, AppInfo, AppConfig, Conversation, DesktopSettings, Message, Content, ModelProvider, MCPConnection, Skill, ProviderModel } from '../types';
 import { logger } from './logger';
 
 // ============ SSE 事件类型 ============
@@ -146,6 +146,7 @@ export async function getApp(appId: string): Promise<App> {
     appMd: string;
     mcpServices: string[];
     skills: string[];
+    paramOverrides?: AppConfig['paramOverrides'];
   }>(`/apps/${appId}`);
   // 将服务器返回的嵌套格式展开为客户端平面结构
   return {
@@ -153,7 +154,7 @@ export async function getApp(appId: string): Promise<App> {
     appMd: data.appMd,
     mcpServices: data.mcpServices || [],
     skills: data.skills || [],
-    config: {},
+    config: { paramOverrides: data.paramOverrides || undefined },
   };
 }
 

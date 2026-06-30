@@ -164,6 +164,7 @@ class MemoryService {
       content?: string;
       tags?: string[];
       source?: MemorySource;
+      importance?: 'low' | 'normal' | 'high';
       ttl?: number;
     },
     convId?: string,

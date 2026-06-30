@@ -52,6 +52,7 @@ router.get('/:appId', async (req: Request, res: Response) => {
       appMd: app.appMd,
       mcpServices: app.mcpServices,
       skills: app.skills,
+      paramOverrides: app.config.paramOverrides || null,
     });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -109,7 +110,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
       models, enabled, icon, backgroundImage, supportedInputs,
       inputDescription, outputDescription,
       visibleApps, visibleServices, tools, skills,
-      appMd,
+      appMd, paramOverrides,
     } = req.body;
 
     const configUpdates: Record<string, unknown> = {};
@@ -125,6 +126,7 @@ router.put('/:appId', async (req: Request, res: Response) => {
     if (models !== undefined) configUpdates.models = models;
     if (skills !== undefined) configUpdates.skills = skills;
     if (appMd !== undefined) configUpdates.appMd = appMd;
+    if (paramOverrides !== undefined) configUpdates.paramOverrides = paramOverrides;
 
     if (Object.keys(configUpdates).length === 0) {
       return res.status(400).json({ error: 'No configurable fields provided' });

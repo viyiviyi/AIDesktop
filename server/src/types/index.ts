@@ -187,6 +187,11 @@ export interface AppConfig {
   tools?: string[];
   skills?: string[];
   models?: ModelConfig[];
+  /** 参数覆盖：只存 key + enabled，value 从 provider 定义读取 */
+  paramOverrides?: {
+    headerParams?: Array<{ key: string; enabled: boolean }>;
+    bodyParams?: Array<{ key: string; enabled: boolean }>;
+  };
 }
 
 export interface App {

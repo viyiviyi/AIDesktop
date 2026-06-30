@@ -1105,7 +1105,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   };
 
   // 渲染消息内容。toolResult 消息不独立渲染，而是合并到前面的 assistant 消息中。
-  const renderMessageContent = useCallback((msg: Message, allMessages?: Message[], idx?: number): React.ReactNode => {
+  const renderMessageContent = useCallback((msg: Message, _expandedSet: Set<string>, _toggleExpand: (msgId: string, toolCallId: string) => void, allMessages?: Message[], idx?: number): React.ReactNode => {
     // toolResult 由 assistant 消息合并渲染，独立不渲染
     if (msg.role === 'toolResult') return null;
 

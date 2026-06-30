@@ -21,15 +21,13 @@ import { setupWebSocket } from './services/wsServer.js';
 
 // __filename / __dirname — 兼容 ESM (tsx) 和 CJS (esbuild bundle)
 // ESM 下通过 import.meta.url 计算，CJS 下 __dirname/__filename 是原生全局变量
-let __filename = '';
-let __dirname = '';
+let scriptDir = '';
 try {
-  __filename = fileURLToPath(import.meta.url);
-  __dirname = dirname(__filename);
+  scriptDir = dirname(fileURLToPath(import.meta.url));
 } catch {
   // CJS bundle: esbuild 的 CJS 模板中 __dirname/__filename 可直接使用
-  __filename = typeof __filename !== 'undefined' ? __filename : '';
-  __dirname = typeof __dirname !== 'undefined' ? __dirname : '';
+  // 注意：不能用 let __dirname 覆盖全局，否则 __dirname 为 ''
+  scriptDir = typeof __dirname !== 'undefined' ? __dirname : '';
 }
 
 const app = express();
@@ -44,26 +42,14 @@ app.use(express.json({ limit: '50mb' }));
 
 // Initialize directories and load data
 async function init() {
-  // 确定 bundle 目录（用于定位系统应用）
-  const bundleDir = (() => {
-    const candidates = [
-      __dirname,
-      join(__dirname, '..'),
-      join(__dirname, '..', '..'),
-      process.cwd(),
-    ];
-    for (const dir of candidates) {
-      try {
-        require('fs').accessSync(join(dir, 'apps', 'system'));
-        return dir;
-      } catch {}
-    }
-    return __dirname;
-  })();
-  const systemAppsDir = getSystemAppsDir(bundleDir);
+  // 系统应用目录：跟随程序位置（server.cjs 同级的 desktop_data/apps/system/）
+  const systemAppsDir = join(scriptDir, 'desktop_data', 'apps', 'system');
+  console.log(`[init] scriptDir=${scriptDir}`);
+  console.log(`[init] systemAppsDir=${systemAppsDir}`);
   appLoader.setSystemAppsDir(systemAppsDir);
+  appState.setSystemAppsDir(systemAppsDir);
 
-  await ensureDir(systemAppsDir);
+  await ensureDir(APPS_DIR);
   await ensureDir(join(APPS_DIR, 'user'));
   await ensureDir(join(APPS_DIR, 'marketplace'));
   await ensureDir(APPS_DATA_DIR);
@@ -77,9 +63,9 @@ async function init() {
   await mcpClientRegistry.initializeFromConfig();
 
   console.log('Server initialized');
+  console.log(`Data directory: ${DATA_DIR}`);
+  console.log(`System apps: ${systemAppsDir}`);
 }
-
-// API Routes
 app.use('/api/apps', appsRouter);
 app.use('/api/apps/:appId/conversations', conversationsRouter);
 app.use('/api/settings', settingsRouter);
@@ -100,15 +86,15 @@ app.get('/api/health', (req, res) => {
 
 // Serve static files from client build in production
 // 使用 utils/file.ts 中统一的 DATA_DIR（基于 process.cwd()）
-// dev 模式: __dirname = server/src/ -> ../../client/dist
-// bundle 模式: __dirname = build/aidesktop/ -> ./client/dist
+// dev 模式: scriptDir = server/src/ -> ../../client/dist
+// bundle 模式: scriptDir = build/aidesktop/ -> ./client/dist
 const clientDistPath = (() => {
   // 可能的位置列表
   const candidates = [
-    join(__dirname, 'client', 'dist'),                    // bundle 同目录
-    join(__dirname, '..', 'client', 'dist'),              // 上级目录
-    join(__dirname, '..', '..', 'client', 'dist'),        // dev 模式
+    join(scriptDir, 'client', 'dist'),                    // bundle 同目录
     join(process.cwd(), 'client', 'dist'),                // cwd
+    join(scriptDir, '..', 'client', 'dist'),              // 上级目录
+    join(scriptDir, '..', '..', 'client', 'dist'),        // dev 模式
   ];
   for (const dir of candidates) {
     try {
@@ -118,7 +104,7 @@ const clientDistPath = (() => {
     } catch {}
   }
   // 最后的 fallback
-  return join(__dirname, 'client', 'dist');
+  return join(scriptDir, 'client', 'dist');
 })();
 // 静态文件 — wallpapers 从 bundle 同级的 client/dist/wallpapers 加载
 const wallpapersDir = join(clientDistPath, 'wallpapers');
@@ -142,7 +128,7 @@ init().then(() => {
   const httpServer = app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(`Data directory: ${DATA_DIR}`);
-    console.log(`System apps: ${join(__dirname, 'apps', 'system')}`);
+    console.log(`System apps: ${join(scriptDir, 'apps', 'system')}`);
     setupWebSocket(httpServer);
   });
 }).catch((error) => {
