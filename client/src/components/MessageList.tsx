@@ -25,8 +25,10 @@ export interface MessageListProps {
   onReplyClick?: (msgId: string) => void;
   /** 自定义渲染消息内容（缺省使用 renderMessageContent） */
   renderMessageContent: (msg: Message, expandedSet: Set<string>, toggleExpand: (msgId: string, toolCallId: string) => void, allMessages?: Message[], idx?: number) => React.ReactNode;
-  /** 高亮的消息 ID */
-  highlightMsgId?: string | null;
+  /** 自定义渲染待填表单 */
+  renderPendingForm?: (formId: string, schema: FormSchema, toolCallId: string) => React.ReactNode;
+  /** 自定义渲染工作区确认 */
+  renderWorkspaceRequest?: (toolCallId: string, requestedPath?: string) => React.ReactNode;
   /** 流式 tool call 展开状态 */
   toolExpandStore?: Map<string, boolean>;
 }
@@ -61,6 +63,8 @@ export function MessageList({
   onReplyClick,
   renderMessageContent,
   highlightMsgId,
+  renderPendingForm,
+  renderWorkspaceRequest,
 }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -240,7 +244,10 @@ export function MessageList({
           {Array.from(pendingForms.entries()).map(([formId, pf]) => (
             <div key={formId} className="chat-message assistant">
               <div className="chat-message-content">
-                <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>表单: {pf.schema?.title || formId}</p>
+                {renderPendingForm
+                  ? renderPendingForm(formId, pf.schema, pf.toolCallId)
+                  : <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>表单: {pf.schema?.title || formId}</p>
+                }
               </div>
             </div>
           ))}
@@ -251,9 +258,10 @@ export function MessageList({
       {workspaceRequest && (
         <div className="chat-message assistant">
           <div className="chat-message-content">
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              允许访问路径: {workspaceRequest.requestedPath || '当前工作目录'}?
-            </p>
+            {renderWorkspaceRequest
+              ? renderWorkspaceRequest(workspaceRequest.toolCallId, workspaceRequest.requestedPath)
+              : <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>允许访问路径: {workspaceRequest.requestedPath || '当前工作目录'}?</p>
+            }
           </div>
         </div>
       )}

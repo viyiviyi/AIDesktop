@@ -1394,6 +1394,45 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         onReplyClick={handleReplyClick}
         renderMessageContent={renderMessageContent}
         highlightMsgId={highlightMsgId}
+        renderPendingForm={(formId, schema, toolCallId) => (
+          <FormComponent
+            appId={appId!}
+            convId={currentConvId!}
+            formId={formId}
+            toolCallId={toolCallId}
+            schema={schema}
+            onSubmitted={() => {
+              setPendingForms(prev => { const n = new Map(prev); n.delete(formId); return n; });
+              setTimeout(() => loadMessages(currentConvId!), 500);
+            }}
+            onCancelled={() => {
+              setPendingForms(prev => { const n = new Map(prev); n.delete(formId); return n; });
+              setTimeout(() => loadMessages(currentConvId!), 500);
+            }}
+          />
+        )}
+        renderWorkspaceRequest={(toolCallId, requestedPath) => (
+          <WorkspaceDirSelector
+            appId={appId!}
+            convId={currentConvId!}
+            toolCallId={toolCallId}
+            requestedPath={requestedPath}
+            onSubmitted={() => {
+              setWorkspaceRequest(null);
+              loadMessages(currentConvId!).then(() => {
+                setIsLoading(true);
+                setThinkingText('处理中...');
+              }).catch(() => {
+                setIsLoading(true);
+                setThinkingText('处理中...');
+              });
+            }}
+            onCancelled={() => {
+              setWorkspaceRequest(null);
+              setTimeout(() => loadMessages(currentConvId!), 500);
+            }}
+          />
+        )}
       />
 
       {/* 输入区 */}
