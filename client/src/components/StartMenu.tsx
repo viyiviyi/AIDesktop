@@ -4,7 +4,6 @@ import type { AppInfo, Message } from '../types';
 import * as api from '../services/api';
 import { InjectionBar } from './InjectionBar';
 import { useAgentEventStream, type WsConvEvent } from '../services/useAgentEventStream';
-import { MarkdownView } from './MarkdownView';
 import { MessageList } from './MessageList';
 import { AppIcon } from './AppIcon';
 
@@ -368,9 +367,6 @@ export function StartMenu() {
               streamingText={streamingText}
               thinkingText={thinkingText}
               toolCalls={[]}
-              renderMessageContent={(msg) => (
-                <MarkdownView content={getMessageText(msg)} />
-              )}
             />
           </div>
           <div className="start-menu-input-area">

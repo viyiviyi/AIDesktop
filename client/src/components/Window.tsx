@@ -1,11 +1,10 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
 import { useToast } from '../contexts/ToastContext';
 import type { WindowState, Message, ModelProvider, MCPConnection, AppInfo, App, ProviderModel, Content, FormSchema } from '../types';
 import * as api from '../services/api';
 import { useAgentEventStream } from '../services/useAgentEventStream';
 import type { WsConvEvent } from '../services/useAgentEventStream';
-import { MarkdownView } from './MarkdownView';
 import { FormComponent } from './FormComponent';
 import { WorkspaceDirSelector } from './WorkspaceDirSelector';
 import { MediaSelector } from './MediaSelector';
@@ -14,63 +13,6 @@ import { InjectionBar } from './InjectionBar';
 import { MemoryPanel } from './MemoryPanel';
 import { MessageList } from './MessageList';
 
-// 流式 tool call 的展开状态管理（独立于 Window 内部展开状态，因为 toolCalls 不是 msg.content）
-const toolExpandStore = new Map<string, boolean>();
-function useToolExpand(id: string): [boolean, () => void] {
-  const [expanded, setExpanded] = useState(() => toolExpandStore.get(id) ?? false);
-  const toggle = useCallback(() => {
-    setExpanded(prev => {
-      const next = !prev;
-      toolExpandStore.set(id, next);
-      return next;
-    });
-  }, [id]);
-  return [expanded, toggle];
-}
-
-// 实时的 tool call item（流式加载中使用）
-function LiveToolCallItem({ tc }: { tc: { toolCallId: string; toolName: string; args?: unknown; result?: unknown; isError?: boolean } }) {
-  const [expanded, toggle] = useToolExpand(tc.toolCallId);
-  const icon = tc.isError ? '✗' : tc.result ? '✓' : '◌';
-  const argsStr = tc.args ? JSON.stringify(tc.args) : '';
-  const resultStr = tc.result ? JSON.stringify(tc.result) : '';
-  const hasDetail = argsStr.length > 60 || !!resultStr;
-  const argsPreview = argsStr.length > 60 ? argsStr.slice(0, 60) + '...' : argsStr;
-
-  const fmt = (v: unknown): string => {
-    if (v === undefined || v === null) return '(空)';
-    if (typeof v === 'string') return v;
-    try { return JSON.stringify(v, null, 2); } catch { return String(v); }
-  };
-
-  return (
-    <div className={`tool-call-item live ${tc.isError ? 'tool-error' : ''}`}>
-      <div className="tool-call-header" onClick={hasDetail ? toggle : undefined}>
-        <span className="tool-call-icon">{icon}</span>
-        <span className="tool-call-name">{tc.toolName}</span>
-        {argsPreview && <span className="tool-call-args-preview">{argsPreview}</span>}
-        {hasDetail && <span className="tool-call-expand">{expanded ? '▲' : '▼'}</span>}
-      </div>
-      {expanded && (
-        <div className="tool-call-detail">
-          {!!tc.args && (
-            <div className="tool-call-section">
-              <div className="tool-call-section-label">参数</div>
-              <pre className="tool-call-section-content">{fmt(tc.args)}</pre>
-            </div>
-          )}
-          {!!tc.result && (
-            <div className="tool-call-section">
-              <div className="tool-call-section-label">结果 {tc.isError ? '(错误)' : ''}</div>
-              <pre className="tool-call-section-content">{fmt(tc.result)}</pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-import { Desktop } from './Desktop';
 import { AppIcon } from './AppIcon';
 
 // 窗口组件属性接口
@@ -341,9 +283,8 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState('');
-  const [collapsedBranches, setCollapsedBranches] = useState<Set<string>>(new Set());
   // 跳转高亮消息 id
-  const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
+  const [highlightMsgId, setHighlightMsgId] = useState<string | undefined>(undefined);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const initRef = useRef(false);
   const currentConvIdRef = useRef(currentConvId);
@@ -520,12 +461,30 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         }]);
         break;
       case 'tool_result':
+        // 同时更新 toolCalls（实时卡片）和 messages（消息内的 toolCall 块）
         setToolCalls(prev =>
           prev.map(tc =>
             tc.toolCallId === event.data.toolCallId
               ? { ...tc, result: event.data.result, isError: event.data.isError as boolean }
               : tc
           )
+        );
+        setMessages(prev =>
+          prev.map(msg => {
+            if (msg.role !== 'assistant') return msg;
+            const hasMatch = msg.content.some(c =>
+              (c as any).type === 'toolCall' && (c as any).id === event.data.toolCallId
+            );
+            if (!hasMatch) return msg;
+            return {
+              ...msg,
+              content: msg.content.map(c =>
+                (c as any).type === 'toolCall' && (c as any).id === event.data.toolCallId
+                  ? { ...(c as any), result: event.data.result, isError: event.data.isError as boolean }
+                  : c
+              ),
+            };
+          })
         );
         break;
       case 'message_start': {
@@ -545,7 +504,6 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         // 如果没有任何实际内容，跳过（后面 done 事件会 loadMessages）
         if (!text && toolCallBlocks.length === 0) {
           setStreamingText('');
-          setToolCalls([]);
           setThinkingText('');
           break;
         }
@@ -569,13 +527,14 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
           return [...prev, finalMsg];
         });
         setStreamingText('');
-        setToolCalls([]);
+        // 不入 toolCalls，由 done 事件统一清理
         setThinkingText('');
         break;
       }
       case 'done':
         // 完成后重新加载当前会话消息同步
         setIsLoading(false);
+        setToolCalls([]);
         const cId = currentConvIdRef.current;
         if (cId) loadMessages(cId);
         // 刷新会话列表以更新 workspaceDir
@@ -597,10 +556,11 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
       case 'form_request': {
         const formId = event.data.formId as string;
         const schema = event.data.schema as FormSchema;
+        const reqToolCallId = (event.data.toolCallId as string) || '';
         if (formId && schema) {
           setPendingForms(prev => {
             const next = new Map(prev);
-            next.set(formId, { formId, schema, toolCallId: '' });
+            next.set(formId, { formId, schema, toolCallId: reqToolCallId });
             return next;
           });
           // 表单已出现，关闭 loading 状态让用户填写
@@ -946,22 +906,13 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   };
   const cancelEdit = () => { setEditingMsgId(null); setEditInput(''); };
 
-  // 分支折叠
-  const toggleBranch = (branchRootId: string) => {
-    setCollapsedBranches(prev => {
-      const next = new Set(prev);
-      if (next.has(branchRootId)) next.delete(branchRootId); else next.add(branchRootId);
-      return next;
-    });
-  };
-
   // 跳转到消息
   const scrollToMsg = (msgId: string) => {
     const el = messageRefs.current.get(msgId);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setHighlightMsgId(msgId);
-      setTimeout(() => setHighlightMsgId(null), 2000);
+      setTimeout(() => setHighlightMsgId(undefined), 2000);
     }
   };
 
@@ -1060,17 +1011,6 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
       .join('');
   };
 
-  // 格式化时间为 HH:mm:ss
-  const formatTime = (ts: string): string => {
-    try {
-      const d = new Date(ts);
-      return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch {
-      return '';
-    }
-  };
-
-  // 格式化时间为 MM-dd HH:mm
   const formatShortDateTime = (ts: string): string => {
     try {
       const d = new Date(ts);
@@ -1079,185 +1019,6 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
     } catch {
       return '';
     }
-  };
-
-  // 展开/收起 tool call 详情 — 按 {msgId: Set<toolCallId>} 独立
-  const [expandedByMsg, setExpandedByMsg] = useState<Record<string, Set<string>>>({});
-  const toggleToolExpand = useCallback((msgId: string, toolId: string) => {
-    setExpandedByMsg(prev => {
-      const next = { ...prev };
-      const s = new Set(next[msgId] || []);
-      if (s.has(toolId)) s.delete(toolId); else s.add(toolId);
-      next[msgId] = s;
-      return next;
-    });
-  }, []);
-
-  // 格式化未知类型的值用于显示
-  const fmt = (v: unknown): string => {
-    if (v === undefined || v === null) return '(空)';
-    if (v && typeof v === 'object' && '_fileRef' in (v as object)) {
-      const ref = v as { _fileRef: string; _originalSize: number };
-      return `[文件引用: ${ref._fileRef} (${ref._originalSize} 字节)]`;
-    }
-    if (typeof v === 'string') return v;
-    try { return JSON.stringify(v, null, 2); } catch { return String(v); }
-  };
-
-  // 渲染消息内容。toolResult 消息不独立渲染，而是合并到前面的 assistant 消息中。
-  const renderMessageContent = useCallback((msg: Message, _expandedSet: Set<string>, _toggleExpand: (msgId: string, toolCallId: string) => void, allMessages?: Message[], idx?: number): React.ReactNode => {
-    // toolResult 由 assistant 消息合并渲染，独立不渲染
-    if (msg.role === 'toolResult') return null;
-
-    const expandedSet = expandedByMsg[msg.id] || new Set();
-
-    // 提取附件（图片、文件）
-    const imageBlocks = msg.content.filter((c): c is any => c.type === 'image');
-    const fileBlocks = msg.content.filter((c): c is any => c.type === 'file');
-
-    // assistant 消息：提取 text、thinking 和 toolCall blocks
-    const textParts: string[] = [];
-    const thinkingParts: string[] = [];
-    const toolCallMap = new Map<string, { id: string; name: string; args?: unknown }>();
-    for (const c of msg.content) {
-      if (c.type === 'text') {
-        textParts.push(c.text);
-      } else if (c.type === 'thinking') {
-        thinkingParts.push(c.text);
-      } else if (c.type === 'toolCall') {
-        toolCallMap.set(c.id, { id: c.id, name: c.name, args: c.arguments });
-      }
-    }
-
-    // 收集后续 toolResult 消息
-    const toolResults = new Map<string, { toolCallId: string; toolName: string; result?: unknown; isError: boolean; timestamp?: string }>();
-    if (allMessages && idx !== undefined) {
-      for (let i = idx + 1; i < allMessages.length; i++) {
-        const next = allMessages[i];
-        if (next.role !== 'toolResult') break;
-        const meta = next.toolResultMeta;
-        if (meta) {
-          const text = next.content.filter(c => c.type === 'text').map(c => c.text).join('');
-          toolResults.set(meta.toolCallId, {
-            toolCallId: meta.toolCallId,
-            toolName: meta.toolName,
-            result: text || undefined,
-            isError: meta.isError,
-            timestamp: next.timestamp,
-          });
-        }
-      }
-    }
-
-    // 合并：toolCall 有 result 的合并显示，只有 toolCall 没有 result 的显示为"等待中"
-    const mergedItems: Array<{ id: string; name: string; args?: unknown; result?: unknown; isError: boolean; callTime?: string; resTime?: string }> = [];
-    for (const [id, tc] of toolCallMap) {
-      const tr = toolResults.get(id);
-      mergedItems.push({
-        id,
-        name: tc.name,
-        args: tc.args,
-        result: tr?.result,
-        isError: tr?.isError || false,
-        callTime: msg.timestamp,
-        resTime: tr?.timestamp,
-      });
-    }
-    // 只有 result 没有 toolCall 的也加上（异常情况）
-    for (const [id, tr] of toolResults) {
-      if (!toolCallMap.has(id)) {
-        mergedItems.push({
-          id,
-          name: tr.toolName,
-          result: tr.result,
-          isError: tr.isError,
-          resTime: tr.timestamp,
-        });
-      }
-    }
-
-    // 纯文本（或附件+文本）
-    const hasAttachments = imageBlocks.length > 0 || fileBlocks.length > 0;
-    if (mergedItems.length === 0) {
-      return (
-        <>
-          {hasAttachments && renderAttachments(imageBlocks, fileBlocks)}
-          <MarkdownView content={textParts.join('')} />
-        </>
-      );
-    }
-
-    // 混合内容：附件 + 文本(用 Markdown 渲染) + 工具调用结果块
-    return (
-      <>
-        {hasAttachments && renderAttachments(imageBlocks, fileBlocks)}
-        {textParts.length > 0 && <div className="tool-call-text-block"><MarkdownView content={textParts.join('')} /></div>}
-        <div className="tool-log-list">
-          {mergedItems.map((tp) => {
-            const isExpanded = expandedSet.has(tp.id);
-            const argsStr = tp.args ? JSON.stringify(tp.args) : '';
-            const resultStr = tp.result !== undefined ? String(tp.result) : '';
-            const hasDetail = argsStr.length > 0 || resultStr.length > 0;
-            const argsPreview = argsStr.length > 60 ? argsStr.slice(0, 60) + '...' : argsStr;
-            const icon = tp.isError ? '✗' : (tp.result !== undefined ? '✓' : '→');
-            return (
-              <div key={tp.id} className={'tool-call-item' + (tp.isError ? ' tool-error' : '')}>
-                <div className="tool-call-header" onClick={() => toggleToolExpand(msg.id, tp.id)}>
-                  <span className="tool-call-icon">{icon}</span>
-                  <span className="tool-call-name">{tp.name}</span>
-                  {argsPreview && <span className="tool-call-args-preview">{argsPreview}</span>}
-                  <span className="tool-call-times">
-                    {tp.callTime && <span className="tool-call-time">调用 {formatTime(tp.callTime)}</span>}
-                    {tp.resTime && <span className="tool-call-time">响应 {formatTime(tp.resTime)}</span>}
-                  </span>
-                  {hasDetail && <span className="tool-call-expand">{isExpanded ? '▲' : '▼'}</span>}
-                </div>
-                {isExpanded && (
-                  <div className="tool-call-detail">
-                    {argsStr.length > 0 && (
-                      <div className="tool-call-section">
-                        <div className="tool-call-section-label">参数</div>
-                        <pre className="tool-call-section-content">{fmt(tp.args)}</pre>
-                      </div>
-                    )}
-                    {resultStr.length > 0 && (
-                      <div className="tool-call-section">
-                        <div className="tool-call-section-label">结果 {tp.isError ? '(错误)' : ''}</div>
-                        <pre className="tool-call-section-content">{fmt(tp.result)}</pre>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </>
-    );
-  }, [expandedByMsg, toggleToolExpand]);
-
-  // 渲染消息中的附件（图片预览 + 文件列表）
-  const renderAttachments = (images: any[], files: any[]) => {
-    return (
-      <div className="chat-msg-attachments">
-        {images.map((img, i) => (
-          <div key={i} className="chat-msg-image-wrapper">
-            <img
-              src={img.url}
-              alt={img.alt || ''}
-              className="chat-msg-image"
-              onClick={() => window.open(img.url, '_blank')}
-              style={{ cursor: 'pointer', maxWidth: '100%', maxHeight: 300, borderRadius: 8, objectFit: 'contain' }}
-            />
-          </div>
-        ))}
-        {files.map((f, i) => (
-          <div key={i} className="chat-msg-file">
-            📎 {f.name || f.path?.split('/').pop() || '附件'}
-          </div>
-        ))}
-      </div>
-    );
   };
 
   const currentConvTitle = conversations.find((c) => c.id === currentConvId)?.title || '会话';
@@ -1392,7 +1153,6 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         onEdit={startEdit}
         onDelete={deleteMsg}
         onReplyClick={handleReplyClick}
-        renderMessageContent={renderMessageContent}
         highlightMsgId={highlightMsgId}
         renderPendingForm={(formId, schema, toolCallId) => (
           <FormComponent
