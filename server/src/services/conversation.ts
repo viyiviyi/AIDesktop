@@ -1,7 +1,7 @@
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { readFileSync } from 'fs';
-import type { Conversation, Message, Content, ConversationSource } from '../types/index.js';
+import type { Conversation, Message, Content, ConversationSource, FileRef } from '../types/index.js';
 import {
   APPS_DATA_DIR,
   readJsonFile,
@@ -115,18 +115,90 @@ class ConversationService {
     this.cache.set(appId, convs);
   }
 
-  // 获取单个会话
-  async getConversation(appId: string, convId: string): Promise<Conversation | null> {
+  /**
+   * 内部：获取缓存中的原始会话引用（供写操作使用）
+   * 不深拷贝、不解引用，直接操作缓存对象
+   */
+  private async getCachedConversation(appId: string, convId: string): Promise<Conversation | null> {
     if (!this.cache.has(appId)) {
       await this.loadConversations(appId);
     }
-    // 如果缓存中没有，尝试重新加载
     if (!this.cache.get(appId)!.has(convId)) {
       await this.loadConversations(appId);
     }
-    const conv = this.cache.get(appId)!.get(convId) || null;
+    return this.cache.get(appId)!.get(convId) || null;
+  }
 
-    return conv;
+  /** 写操作完成后，将修改后的 conv 同步到缓存 */
+  private syncToCache(conv: Conversation): void {
+    const appId = conv.appId;
+    if (!this.cache.has(appId)) {
+      this.cache.set(appId, new Map());
+    }
+    this.cache.get(appId)!.set(conv.id, conv);
+  }
+
+  /**
+   * 获取单个会话（公开的读接口）
+   * 返回深拷贝 + 已解引 _fileRef 的数据，不污染缓存
+   */
+  async getConversation(appId: string, convId: string): Promise<Conversation | null> {
+    const conv = await this.getCachedConversation(appId, convId);
+    if (!conv) return null;
+
+    // 深拷贝，避免污染缓存
+    const resolved = JSON.parse(JSON.stringify(conv)) as Conversation;
+    await this.resolveFileRefs(resolved.messages, appId);
+    return resolved;
+  }
+
+  /**
+   * 递归扫描消息中的 _fileRef 对象，读取实际文件内容替换。
+   * _fileRef 格式: 'appId/convFolderName/uuid.txt'
+   * 物理路径: APPS_DATA_DIR/appId/conversations/convFolderName/attachments/uuid.txt
+   */
+  private async resolveFileRefs(messages: Message[], appId: string): Promise<void> {
+    const fs = await import('fs/promises');
+    const resolveDir = path.join(APPS_DATA_DIR, appId, 'conversations');
+
+    async function walk(value: unknown): Promise<unknown> {
+      if (!value || typeof value !== 'object') return value;
+      if (Array.isArray(value)) {
+        return Promise.all(value.map(v => walk(v)));
+      }
+      const obj = value as Record<string, unknown>;
+      // 检测 _fileRef 对象
+      if (typeof obj._fileRef === 'string' && typeof obj._originalSize === 'number') {
+        const ref = obj as unknown as FileRef;
+        // _fileRef 格式: appId/convFolderName/uuid.txt
+        const parts = ref._fileRef.split('/');
+        if (parts.length === 3) {
+          const [_appId, convFolder, fileName] = parts;
+          const filePath = path.join(resolveDir, convFolder, 'attachments', fileName);
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            return content;
+          } catch {
+            // 文件不存在或无法读取，保持原样
+            return value;
+          }
+        }
+        return value;
+      }
+      // 普通对象，递归处理
+      for (const key of Object.keys(obj)) {
+        obj[key] = await walk(obj[key]);
+      }
+      return obj;
+    }
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      // 递归处理 content 数组中的每个 block
+      if (Array.isArray(msg.content)) {
+        msg.content = await walk(msg.content) as Content[];
+      }
+    }
   }
 
   // 创建新会话
@@ -150,10 +222,7 @@ class ConversationService {
     await ensureDir(convFolder);
     await writeJsonFile(path.join(convFolder, 'conversation.json'), conv);
 
-    if (!this.cache.has(appId)) {
-      this.cache.set(appId, new Map());
-    }
-    this.cache.get(appId)!.set(conv.id, conv);
+    this.syncToCache(conv);
 
     return conv;
   }
@@ -167,7 +236,7 @@ class ConversationService {
     toolCalls?: { id: string; tool: string; method: string; args: Record<string, unknown> }[],
     replyTo?: string,
   ): Promise<Message | null> {
-    const conv = await this.getConversation(appId, convId);
+    const conv = await this.getCachedConversation(appId, convId);
     if (!conv) return null;
 
     const message: Message = {
@@ -185,6 +254,7 @@ class ConversationService {
     const convFolder = await this.getConvFolder(appId, convId);
     if (convFolder) await writeJsonFile(path.join(convFolder, 'conversation.json'), conv);
 
+    // 缓存已通过引用更新
     return message;
   }
 
@@ -195,7 +265,7 @@ class ConversationService {
     msgId: string,
     content: Content[],
   ): Promise<Message | null> {
-    const conv = await this.getConversation(appId, convId);
+    const conv = await this.getCachedConversation(appId, convId);
     if (!conv) return null;
 
     const idx = conv.messages.findIndex(m => m.id === msgId);
@@ -227,7 +297,7 @@ class ConversationService {
 
   // 更新会话标题
   async updateConversationTitle(appId: string, convId: string, title: string): Promise<boolean> {
-    const conv = await this.getConversation(appId, convId);
+    const conv = await this.getCachedConversation(appId, convId);
     if (!conv) return false;
 
     conv.title = title;
@@ -241,7 +311,7 @@ class ConversationService {
 
   // 删除会话
   async deleteConversation(appId: string, convId: string): Promise<boolean> {
-    const conv = await this.getConversation(appId, convId);
+    const conv = await this.getCachedConversation(appId, convId);
     if (!conv) return false;
 
     const convDir = this.getConversationsDir(appId);
@@ -258,7 +328,7 @@ class ConversationService {
 
   // 更新会话（全量替换）
   async updateConversation(appId: string, convId: string, updates: Partial<Conversation>): Promise<boolean> {
-    const conv = await this.getConversation(appId, convId);
+    const conv = await this.getCachedConversation(appId, convId);
     if (!conv) return false;
 
     Object.assign(conv, updates);
