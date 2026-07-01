@@ -603,9 +603,13 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         }
         break;
       }
-      case 'workspace_response':
+      case 'workspace_response': {
+        setWorkspaceRequest(null);
+        break;
+      }
       case 'workspace_cancelled': {
         setWorkspaceRequest(null);
+        addToast('error', '不允许访问此目录');
         break;
       }
       case 'workspace_request': {
