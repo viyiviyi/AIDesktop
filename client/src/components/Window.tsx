@@ -507,11 +507,12 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
           setThinkingText('');
           break;
         }
-        // 构建完整消息 content
+        // 构建完整消息 content，保留之前实时写入的 result
         const msgContent: any[] = [];
         if (text) msgContent.push({ type: 'text', text });
         for (const tc of toolCallBlocks) {
-          msgContent.push({ type: 'toolCall', id: tc.id, name: tc.name, arguments: tc.arguments || {} });
+          const tcBlock: any = { type: 'toolCall', id: tc.id, name: tc.name, arguments: tc.arguments || {} };
+          msgContent.push(tcBlock);
         }
         const finalMsg: Message = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -520,6 +521,20 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
           timestamp: new Date().toISOString(),
         };
         setMessages(prev => {
+          // 从现有 messages 中提取已实时写入的 toolCall result
+          for (const tcBlock of msgContent) {
+            if (tcBlock.type !== 'toolCall') continue;
+            for (const msg of prev) {
+              if (msg.role !== 'assistant') continue;
+              const existing = (msg.content as any[]).find((c: any) => c.type === 'toolCall' && c.id === tcBlock.id);
+              if (existing && existing.result !== undefined) {
+                tcBlock.result = existing.result;
+                tcBlock.isError = existing.isError;
+                break;
+              }
+            }
+          }
+          finalMsg.content = msgContent;
           const last = prev[prev.length - 1];
           if (last && last.role === 'assistant' && !getMessageText(last) && !last.content.some(c => (c as any).type === 'toolCall' || (c as any).type === 'tool_result')) {
             return [...prev.slice(0, -1), finalMsg];
