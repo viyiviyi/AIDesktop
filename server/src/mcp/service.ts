@@ -1166,10 +1166,18 @@ class MCPServiceRegistry {
     const conv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
     const authorizedDirs: string[] = [...(conv?.authorizedDirs || [])];
     const workspaceDirVal = conv?.workspaceDir;
+    const pathModule = await import('path');
+    const requestedPath = (args.path as string) || '';
 
-    // 没有工作目录时，弹出授权框要求用户设置
+    // 没有工作目录时，根据路径类型决定行为
     if (!workspaceDirVal) {
-      const requestedPath = (args.path as string) || '';
+      // 相对路径：直接用 APPS_DATA_DIR/appId 作为基础目录
+      if (requestedPath && !pathModule.isAbsolute(requestedPath)) {
+        const { APPS_DATA_DIR } = await import('../utils/file.js');
+        const dataDir = pathModule.join(APPS_DATA_DIR, context.appId || '');
+        return this.handleWorkspaceCodeWithBase(method, args, dataDir);
+      }
+      // 绝对路径或空路径：弹出授权框要求用户设置工作目录
       const authResult = await this.requestWorkspaceAuthorization(context, '首次使用需要设置工作目录', requestedPath);
       // 授权成功后，重新获取会话（包含了新设置的工作目录）
       const updatedConv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
@@ -1195,11 +1203,10 @@ class MCPServiceRegistry {
     }
 
     // 如果访问了任何外部路径，检查授权
-    const path = await import('path');
     const unauthorizedPaths: string[] = [];
     for (const ap of accessedPaths) {
-      const isInWorkspace = path.relative(workspaceDirVal, ap).startsWith('..') === false;
-      const isAuthorized = authorizedDirs.some(a => !path.relative(a, ap).startsWith('..'));
+      const isInWorkspace = pathModule.relative(workspaceDirVal, ap).startsWith('..') === false;
+      const isAuthorized = authorizedDirs.some(a => !pathModule.relative(a, ap).startsWith('..'));
       if (!isInWorkspace && !isAuthorized) {
         unauthorizedPaths.push(ap);
       }
@@ -1213,10 +1220,10 @@ class MCPServiceRegistry {
     // 权限通过，继续执行
     const fs = await import('fs/promises');
     const filePath = args.path as string || '';
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(workspaceDirVal, filePath);
+    const fullPath = pathModule.isAbsolute(filePath) ? filePath : pathModule.join(workspaceDirVal, filePath);
 
     // 安全检查
-    if (path.relative(workspaceDirVal, fullPath).startsWith('..') && !authorizedDirs.some(a => !path.relative(a, fullPath).startsWith('..'))) {
+    if (pathModule.relative(workspaceDirVal, fullPath).startsWith('..') && !authorizedDirs.some(a => !pathModule.relative(a, fullPath).startsWith('..'))) {
       throw new Error('Path traversal denied: path must be within workspace or authorized directory');
     }
 
@@ -1277,6 +1284,90 @@ class MCPServiceRegistry {
           return { name: e.name, type: e.isDirectory() ? 'directory' : 'file', size: stat?.size || 0, modified: stat?.mtime?.toISOString() || '' };
         }));
         return { items, path: dirPath, workspaceDir: workspaceDirVal };
+      }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  /**
+   * 使用指定基础目录执行 workspace.code 操作（跳过工作目录检查和授权）
+   * 用于没有设置工作目录时的默认行为（直接用 APPS_DATA_DIR/appId）
+   */
+  private async handleWorkspaceCodeWithBase(
+    method: string,
+    args: Record<string, unknown>,
+    baseDir: string,
+  ): Promise<unknown> {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const filePath = args.path as string || '';
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(baseDir, filePath);
+
+    // 安全检查
+    if (path.relative(baseDir, fullPath).startsWith('..')) {
+      throw new Error('Path traversal denied: path must be within app data directory');
+    }
+
+    switch (method) {
+      case 'read': {
+        if (!filePath) throw new Error('path is required');
+        const content = await fs.readFile(fullPath, 'utf-8');
+        const stat = await fs.stat(fullPath);
+        return { content, size: stat.size, path: filePath };
+      }
+      case 'write': {
+        if (!filePath) throw new Error('path is required');
+        const content = args.content as string;
+        if (content === undefined) throw new Error('content is required');
+        await fs.mkdir(path.dirname(fullPath), { recursive: true });
+        await fs.writeFile(fullPath, content, 'utf-8');
+        return { success: true, path: filePath };
+      }
+      case 'patch': {
+        if (!filePath) throw new Error('path is required');
+        const oldStr = args.old_string as string;
+        const newStr = args.new_string as string;
+        if (!oldStr) throw new Error('old_string is required');
+        if (newStr === undefined) throw new Error('new_string is required');
+        const replaceAll = !!args.replace_all;
+        let content = await fs.readFile(fullPath, 'utf-8');
+        const occurrences = content.split(oldStr).length - 1;
+        if (occurrences === 0) throw new Error('String not found in file');
+        if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
+        content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
+        await fs.writeFile(fullPath, content, 'utf-8');
+        return { success: true, path: filePath, replacements: occurrences > 1 ? occurrences : 1 };
+      }
+      case 'search': {
+        const pattern = args.pattern as string;
+        if (!pattern) throw new Error('pattern is required');
+        const fileGlob = args.file_glob as string | undefined;
+        const maxResults = (args.max_results as number) || 50;
+        const { execSync } = await import('child_process');
+        let cmd = `rg -n --max-count ${maxResults}`;
+        if (fileGlob) cmd += ` -g '${fileGlob}'`;
+        cmd += ` '${pattern}' '${fullPath}'`;
+        try {
+          const output = execSync(cmd, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+          const lines = output.trim().split('\n').filter(Boolean);
+          const results = lines.map((line: string) => {
+            const sepIdx = line.indexOf(':');
+            const lineSep = sepIdx > 0 ? line.indexOf(':', sepIdx + 1) : -1;
+            if (sepIdx < 0 || lineSep < 0) return { file: line, line: 0, content: '' };
+            return { file: line.slice(0, sepIdx), line: parseInt(line.slice(sepIdx + 1, lineSep), 10) || 0, content: line.slice(lineSep + 1) };
+          });
+          return { results, total: results.length };
+        } catch { return { results: [], total: 0 }; }
+      }
+      case 'list': {
+        const dirPath = filePath || '.';
+        const entries = await fs.readdir(fullPath, { withFileTypes: true });
+        const items = await Promise.all(entries.map(async e => {
+          const stat = e.isFile() ? await fs.stat(path.join(fullPath, e.name)).catch(() => null) : null;
+          return { name: e.name, type: e.isDirectory() ? 'directory' : 'file', size: stat?.size || 0, modified: stat?.mtime?.toISOString() || '' };
+        }));
+        return { items, path: dirPath };
       }
       default:
         throw new Error(`Unknown method: ${method}`);
