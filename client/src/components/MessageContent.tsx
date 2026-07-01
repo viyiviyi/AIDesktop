@@ -42,23 +42,32 @@ export function renderMessageContent(
   // assistant 消息：提取 text、thinking 和 toolCall blocks
   const textParts: string[] = [];
   const thinkingParts: string[] = [];
-  const toolCallMap = new Map<string, { id: string; name: string; args?: unknown }>();
+  const toolCallMap = new Map<string, { id: string; name: string; args?: unknown; result?: unknown; isError?: boolean }>();
   for (const c of msg.content) {
     if (c.type === 'text') {
       textParts.push(c.text);
     } else if (c.type === 'thinking') {
       thinkingParts.push(c.text);
     } else if (c.type === 'toolCall') {
-      toolCallMap.set(c.id, { id: c.id, name: c.name, args: c.arguments });
+      // 注意：运行时 Window.tsx 的 tool_result 事件会把 result 写入 toolCall block
+      // 所以这里需要同时读取 result，而不只是从后续 toolResult 消息中获取
+      toolCallMap.set(c.id, {
+        id: c.id,
+        name: c.name,
+        args: c.arguments,
+        result: (c as any).result,
+        isError: (c as any).isError,
+      });
     }
   }
 
-  // 收集后续 toolResult 消息
+  // 从后续消息中收集 toolResult：在遇到下一个 assistant 前停止
   const toolResults = new Map<string, { toolCallId: string; toolName: string; result?: unknown; isError: boolean; timestamp?: string }>();
   if (allMessages && idx !== undefined) {
     for (let i = idx + 1; i < allMessages.length; i++) {
       const next = allMessages[i];
-      if (next.role !== 'toolResult') break;
+      if (next.role === 'assistant') break;
+      if (next.role !== 'toolResult') continue;
       const meta = (next as any).toolResultMeta;
       if (meta) {
         const text = next.content.filter(c => c.type === 'text').map(c => c.text).join('');
@@ -81,8 +90,9 @@ export function renderMessageContent(
       id,
       name: tc.name,
       args: tc.args,
-      result: tr?.result,
-      isError: tr?.isError || false,
+      // 优先用 toolCall block 上实时写入的 result，再退回到 toolResult 消息
+      result: tc.result !== undefined ? tc.result : tr?.result,
+      isError: tc.isError ?? tr?.isError ?? false,
       callTime: msg.timestamp,
       resTime: tr?.timestamp,
     });

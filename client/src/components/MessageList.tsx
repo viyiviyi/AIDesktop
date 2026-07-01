@@ -80,12 +80,13 @@ function renderMsgContent(
     }
   }
 
-  // 从后续 toolResult 消息合并 result（fallback，持久化数据用）
+  // 从后续消息中收集 toolResult：在遇到下一个 assistant 前停止
   const toolResults = new Map<string, { toolCallId: string; toolName: string; result?: unknown; isError: boolean; timestamp?: string }>();
   if (allMessages && idx !== undefined) {
     for (let i = idx + 1; i < allMessages.length; i++) {
       const next = allMessages[i];
-      if (next.role !== 'toolResult') break;
+      if (next.role === 'assistant') break;  // 遇到下一个 assistant 停止
+      if (next.role !== 'toolResult') continue;
       const meta = next.toolResultMeta;
       if (meta) {
         const text = next.content.filter(c => c.type === 'text').map(c => c.text).join('');
