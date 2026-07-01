@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React from 'react';
 import { MarkdownView } from './MarkdownView';
 import type { Message } from '../types';
 

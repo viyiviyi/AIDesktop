@@ -1,4 +1,3 @@
-import React from 'react';
 import type { App, ModelConfig, ModelProvider } from '../types';
 import { AppIcon } from './AppIcon';
 

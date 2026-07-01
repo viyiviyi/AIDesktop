@@ -22,7 +22,7 @@ interface MemoryPanelProps {
   onClose?: () => void;
 }
 
-export function MemoryPanel({ appId, convId, scope, showGoals, onClose }: MemoryPanelProps) {
+export function MemoryPanel({ appId, convId, scope, showGoals, onClose: _onClose }: MemoryPanelProps) {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
   const [goals, setGoals] = useState<{ level1?: { value: string }; level2?: { value: string }; level3?: { value: string } } | null>(null);
   const [archivedGoals, setArchivedGoals] = useState<any[]>([]);
