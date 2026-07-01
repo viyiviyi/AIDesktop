@@ -1489,7 +1489,7 @@ class MCPServiceRegistry {
     });
 
     if (result.type === 'workspace_cancelled' || result.data?.cancelled) {
-      throw new Error('用户取消了工作目录设置');
+      throw new Error('不允许访问此目录');
     }
 
     // 授权成功，workspace-response 路由已经保存了 workspaceDir，不需要返回任何内容

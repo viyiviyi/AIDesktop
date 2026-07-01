@@ -545,6 +545,8 @@ export async function runAgentAsync(
 
   // 标记是否因 workspace 授权被中止（非错误）
   let workspaceAuthAbort = false;
+  // toolResult 保存队列（串行化，防止并发修改 conversation.json）
+  let toolResultSaveQueue: Promise<void> | null = null;
 
   serverLogger.info('agent', `runAgentAsync starting for ${appId}/${convId}, existingMsgs: ${existingMessages.length}, userContent: ${JSON.stringify(userContent).slice(0, 100)}`);
 
@@ -575,8 +577,13 @@ export async function runAgentAsync(
             serverLogger.error('agent', `Failed to save assistant message: ${err.message}`));
         } else if (event.message.role === 'toolResult') {
           // 实时保存 toolResult，避免中断时丢失
-          saveNewMessages(appId, convId, [event.message], conversationService).catch((err: any) =>
-            serverLogger.error('agent', `Failed to save toolResult: ${err.message}`));
+          // 串行化保存，避免并发修改 conversation.json 产生竞态
+          if (!toolResultSaveQueue) toolResultSaveQueue = Promise.resolve();
+          toolResultSaveQueue = toolResultSaveQueue.then(() =>
+            saveNewMessages(appId, convId, [event.message], conversationService)
+          ).catch((err: any) =>
+            serverLogger.error('agent', `Failed to save toolResult: ${err.message}`)
+          );
           emit('tool_result', { toolCallId: event.message.toolCallId, toolName: event.message.toolName, result: event.message.content, isError: event.message.isError });
         }
         break;
@@ -586,7 +593,16 @@ export async function runAgentAsync(
         break;
       case 'tool_execution_end':
         serverLogger.info('agent', `工具返回: ${event.toolName}`, { toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError });
-        emit('tool_result', { toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError });
+        // event.result = { content: [{ type: "text", text: "..." }], details: result }
+        // 提取纯文本传给前端，不要传整个对象
+        const execResult = event.result as any;
+        const execText = execResult?.content
+          ? (Array.isArray(execResult.content)
+            ? execResult.content.filter((c: any) => c?.type === 'text').map((c: any) => c.text).join('\n')
+            : String(execResult.content))
+          : String(execResult ?? '');
+        serverLogger.info('agent', `tool_execution_end> toolCallId=${event.toolCallId}, toolName=${event.toolName}, execTextLen=${execText.length}, hasDetails=${!!execResult?.details}`);
+        emit('tool_result', { toolCallId: event.toolCallId, toolName: event.toolName, result: execText, isError: event.isError });
         break;
     }
   });
