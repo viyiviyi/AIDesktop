@@ -820,6 +820,10 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         const messageContent = input;
         const content: Content[] = [{ type: 'text', text: messageContent }];
         setInput('');
+        // 重置输入框高度
+        if (inputRef.current) {
+          inputRef.current.style.height = '';
+        }
         setIsLoading(true);
         try {
           await api.sendMessage(appId, conv.id, content);
@@ -1067,7 +1071,12 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const autoResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const el = e.target;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    // 内容清空时恢复初始高度
+    if (!el.value.trim()) {
+      el.style.height = '';
+    } else {
+      el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
   };
 
   // 提取消息文本内容

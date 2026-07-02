@@ -496,21 +496,19 @@ class MCPServiceRegistry {
     const path = await import('path');
     const { DATA_DIR } = await import('../utils/file.js');
 
-    // 相对路径以 desktop_data 为基准，绝对路径直接使用
-    const filePath = args.path as string || '';
-    let baseDir: string;
-    if (path.isAbsolute(filePath)) {
-      baseDir = '';
-    } else {
-      baseDir = DATA_DIR;
+    // mcp.filesystem 只操作 apps_data 目录，不支持绝对路径
+    const rawPath = args.path as string || '';
+    const rawBaseDir = args.baseDir as string | undefined;
+    if (path.isAbsolute(rawPath)) {
+      throw new Error('mcp.filesystem does not support absolute paths. Use workspace.code for project files.');
     }
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(DATA_DIR, filePath);
+    const fullPath = rawBaseDir
+      ? path.join(DATA_DIR, rawBaseDir, rawPath)
+      : path.join(DATA_DIR, rawPath);
 
-    // 安全检查：防止相对路径穿越到 desktop_data 之外
-    if (!path.isAbsolute(filePath)) {
-      if (path.relative(DATA_DIR, fullPath).startsWith('..')) {
-        throw new Error('Path traversal denied: path must be within desktop_data directory');
-      }
+    // 安全检查：防止路径穿越
+    if (path.relative(DATA_DIR, fullPath).startsWith('..')) {
+      throw new Error('Path traversal denied: path must be within desktop_data directory');
     }
 
     switch (method) {
@@ -518,7 +516,19 @@ class MCPServiceRegistry {
         try {
           const content = await fs.readFile(fullPath, 'utf-8');
           const stat = await fs.stat(fullPath);
-          return { content, size: stat.size, path: filePath };
+          const lines = content.split('\n');
+          const offset = (args.offset as number) || 1;
+          const limit = (args.limit as number) || lines.length;
+          const startIdx = Math.max(0, offset - 1);
+          const sliced = lines.slice(startIdx, startIdx + limit);
+          return {
+            content: sliced.join('\n'),
+            total_lines: lines.length,
+            size: stat.size,
+            path: rawPath,
+            offset,
+            limit,
+          };
         } catch (err: any) {
           throw new Error(`Failed to read file: ${err.message}`);
         }
@@ -526,12 +536,12 @@ class MCPServiceRegistry {
         try {
           await fs.mkdir(path.dirname(fullPath), { recursive: true });
           await fs.writeFile(fullPath, args.content as string, 'utf-8');
-          return { success: true, path: filePath };
+          return { success: true, path: rawPath };
         } catch (err: any) {
           throw new Error(`Failed to write file: ${err.message}`);
         }
       case 'patch': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const oldStr = args.old_string as string;
         const newStr = args.new_string as string;
         if (!oldStr) throw new Error('old_string is required');
@@ -544,7 +554,7 @@ class MCPServiceRegistry {
           if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
           content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
           await fs.writeFile(fullPath, content, 'utf-8');
-          return { success: true, path: filePath, replacements: occurrences > 1 ? occurrences : 1 };
+          return { success: true, path: rawPath, replacements: occurrences > 1 ? occurrences : 1 };
         } catch (err: any) {
           if (err.message.startsWith('String not found') || err.message.startsWith('Found')) throw err;
           throw new Error(`Failed to patch file: ${err.message}`);
@@ -555,11 +565,13 @@ class MCPServiceRegistry {
         if (!pattern) throw new Error('pattern is required');
         const fileGlob = args.file_glob as string | undefined;
         const maxResults = (args.max_results as number) || 50;
+        // search 在 apps_data 下执行
+        const searchDir = rawBaseDir ? path.join(DATA_DIR, rawBaseDir) : DATA_DIR;
         try {
           const { execSync } = await import('child_process');
           let cmd = `rg -n --no-heading -m 5 '${pattern.replace(/'/g, "'\\''")}'`;
           if (fileGlob) cmd += ` -g '${fileGlob.replace(/'/g, "'\\''")}'`;
-          cmd += ` '${baseDir.replace(/'/g, "'\\''")}' 2>/dev/null | head -${maxResults}`;
+          cmd += ` '${searchDir.replace(/'/g, "'\\''")}' 2>/dev/null | head -${maxResults}`;
           const output = execSync(cmd, { encoding: 'utf-8', maxBuffer: 1024 * 1024 });
           const lines = output.trim().split('\n').filter(Boolean);
           const results = lines.map(line => {
@@ -571,9 +583,9 @@ class MCPServiceRegistry {
               content: line.slice(lineSep + 1),
             };
           });
-          return { results, total: results.length, path: baseDir || '.' };
+          return { results, total: results.length, path: searchDir };
         } catch {
-          return { results: [], total: 0, path: baseDir || '.' };
+          return { results: [], total: 0, path: searchDir };
         }
       }
       case 'list':
@@ -588,7 +600,7 @@ class MCPServiceRegistry {
               modified: stat?.mtime?.toISOString() || '',
             };
           }));
-          return { items, path: filePath || '.' };
+          return { items, path: rawPath || '.' };
         } catch (err: any) {
           throw new Error(`Failed to list directory: ${err.message}`);
         }
@@ -1021,9 +1033,9 @@ class MCPServiceRegistry {
 
     // 路径安全：限制在 apps_data 目录下
     const baseDir = args.baseDir as string || '';
-    const filePath = args.path as string || '';
+    const rawPath = args.path as string || '';
     const fullDir = path.join(APPS_DATA_DIR, baseDir);
-    const fullPath = path.join(APPS_DATA_DIR, baseDir, filePath);
+    const fullPath = path.join(APPS_DATA_DIR, baseDir, rawPath);
 
     // 安全检查：防止路径穿越
     if (path.relative(APPS_DATA_DIR, fullPath).startsWith('..') || path.relative(APPS_DATA_DIR, fullDir).startsWith('..')) {
@@ -1032,31 +1044,31 @@ class MCPServiceRegistry {
 
     switch (method) {
       case 'read': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         try {
           const content = await fs.readFile(fullPath, 'utf-8');
           const stat = await fs.stat(fullPath);
-          return { content, size: stat.size, path: filePath };
+          return { content, size: stat.size, path: rawPath };
         } catch (err: any) {
           throw new Error(`Failed to read file: ${err.message}`);
         }
       }
 
       case 'write': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const content = args.content as string;
         if (content === undefined) throw new Error('content is required');
         try {
           await fs.mkdir(path.dirname(fullPath), { recursive: true });
           await fs.writeFile(fullPath, content, 'utf-8');
-          return { success: true, path: filePath };
+          return { success: true, path: rawPath };
         } catch (err: any) {
           throw new Error(`Failed to write file: ${err.message}`);
         }
       }
 
       case 'patch': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const oldStr = args.old_string as string;
         const newStr = args.new_string as string;
         if (!oldStr) throw new Error('old_string is required');
@@ -1069,7 +1081,7 @@ class MCPServiceRegistry {
           if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
           content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
           await fs.writeFile(fullPath, content, 'utf-8');
-          return { success: true, path: filePath, replacements: occurrences > 1 ? occurrences : 1 };
+          return { success: true, path: rawPath, replacements: occurrences > 1 ? occurrences : 1 };
         } catch (err: any) {
           if (err.message.startsWith('String not found') || err.message.startsWith('Found')) throw err;
           throw new Error(`Failed to patch file: ${err.message}`);
@@ -1105,7 +1117,7 @@ class MCPServiceRegistry {
       }
 
       case 'list': {
-        const dirPath = filePath || '.';
+        const dirPath = rawPath || '.';
         try {
           const entries = await fs.readdir(fullPath, { withFileTypes: true });
           const items = await Promise.all(entries.map(async e => {
@@ -1190,8 +1202,8 @@ class MCPServiceRegistry {
 
     // 权限通过，继续执行
     const fs = await import('fs/promises');
-    const filePath = args.path as string || '';
-    const fullPath = pathModule.isAbsolute(filePath) ? filePath : pathModule.join(workspaceDirVal, filePath);
+    const rawPath = args.path as string || '';
+    const fullPath = pathModule.isAbsolute(rawPath) ? rawPath : pathModule.join(workspaceDirVal, rawPath);
 
     // 安全检查
     if (pathModule.relative(workspaceDirVal, fullPath).startsWith('..') && !authorizedDirs.some(a => !pathModule.relative(a, fullPath).startsWith('..'))) {
@@ -1200,21 +1212,21 @@ class MCPServiceRegistry {
 
     switch (method) {
       case 'read': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const content = await fs.readFile(fullPath, 'utf-8');
         const stat = await fs.stat(fullPath);
-        return { content, size: stat.size, path: filePath };
+        return { content, size: stat.size, path: rawPath };
       }
       case 'write': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const content = args.content as string;
         if (content === undefined) throw new Error('content is required');
         await fs.mkdir(path.dirname(fullPath), { recursive: true });
         await fs.writeFile(fullPath, content, 'utf-8');
-        return { success: true, path: filePath };
+        return { success: true, path: rawPath };
       }
       case 'patch': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const oldStr = args.old_string as string;
         const newStr = args.new_string as string;
         if (!oldStr) throw new Error('old_string is required');
@@ -1225,7 +1237,7 @@ class MCPServiceRegistry {
         if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
         content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
         await fs.writeFile(fullPath, content, 'utf-8');
-        return { success: true, path: filePath, replacements: occurrences > 1 ? occurrences : 1 };
+        return { success: true, path: rawPath, replacements: occurrences > 1 ? occurrences : 1 };
       }
       case 'search': {
         const pattern = args.pattern as string;
@@ -1248,7 +1260,7 @@ class MCPServiceRegistry {
         } catch { return { results: [], total: 0, workspaceDir: workspaceDirVal }; }
       }
       case 'list': {
-        const dirPath = filePath || '.';
+        const dirPath = rawPath || '.';
         const entries = await fs.readdir(fullPath, { withFileTypes: true });
         const items = await Promise.all(entries.map(async e => {
           const stat = e.isFile() ? await fs.stat(path.join(fullPath, e.name)).catch(() => null) : null;
@@ -1272,8 +1284,8 @@ class MCPServiceRegistry {
   ): Promise<unknown> {
     const fs = await import('fs/promises');
     const path = await import('path');
-    const filePath = args.path as string || '';
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(baseDir, filePath);
+    const rawPath = args.path as string || '';
+    const fullPath = path.isAbsolute(rawPath) ? rawPath : path.join(baseDir, rawPath);
 
     // 安全检查
     if (path.relative(baseDir, fullPath).startsWith('..')) {
@@ -1282,21 +1294,21 @@ class MCPServiceRegistry {
 
     switch (method) {
       case 'read': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const content = await fs.readFile(fullPath, 'utf-8');
         const stat = await fs.stat(fullPath);
-        return { content, size: stat.size, path: filePath };
+        return { content, size: stat.size, path: rawPath };
       }
       case 'write': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const content = args.content as string;
         if (content === undefined) throw new Error('content is required');
         await fs.mkdir(path.dirname(fullPath), { recursive: true });
         await fs.writeFile(fullPath, content, 'utf-8');
-        return { success: true, path: filePath };
+        return { success: true, path: rawPath };
       }
       case 'patch': {
-        if (!filePath) throw new Error('path is required');
+        if (!rawPath) throw new Error('path is required');
         const oldStr = args.old_string as string;
         const newStr = args.new_string as string;
         if (!oldStr) throw new Error('old_string is required');
@@ -1308,7 +1320,7 @@ class MCPServiceRegistry {
         if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
         content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
         await fs.writeFile(fullPath, content, 'utf-8');
-        return { success: true, path: filePath, replacements: occurrences > 1 ? occurrences : 1 };
+        return { success: true, path: rawPath, replacements: occurrences > 1 ? occurrences : 1 };
       }
       case 'search': {
         const pattern = args.pattern as string;
@@ -1332,7 +1344,7 @@ class MCPServiceRegistry {
         } catch { return { results: [], total: 0 }; }
       }
       case 'list': {
-        const dirPath = filePath || '.';
+        const dirPath = rawPath || '.';
         const entries = await fs.readdir(fullPath, { withFileTypes: true });
         const items = await Promise.all(entries.map(async e => {
           const stat = e.isFile() ? await fs.stat(path.join(fullPath, e.name)).catch(() => null) : null;
@@ -1611,11 +1623,11 @@ class MCPServiceRegistry {
       case 'read': {
         // 读取技能中的任意文件
         const skillId = args.skillId as string;
-        const filePath = args.path as string;
-        if (!skillId || !filePath) throw new Error('skillId and path are required');
-        const content = await skillService.readSkillFile(skillId, filePath);
-        if (content === null) throw new Error(`File "${filePath}" not found in skill "${skillId}"`);
-        return { skillId, path: filePath, content };
+        const rawPath = args.path as string;
+        if (!skillId || !rawPath) throw new Error('skillId and path are required');
+        const content = await skillService.readSkillFile(skillId, rawPath);
+        if (content === null) throw new Error(`File "${rawPath}" not found in skill "${skillId}"`);
+        return { skillId, path: rawPath, content };
       }
       case 'readEntry': {
         // 读取技能入口文档（roadmap.md）
@@ -1660,14 +1672,9 @@ class MCPServiceRegistry {
           if (conv?.workspaceDir) {
             cwd = conv.workspaceDir;
           } else if (context.appId) {
-            // 没有 workspaceDir，在 desktop_data/workspaces/{appId}/{convId}/ 创建
-            const { DATA_DIR } = await import('../utils/file.js');
-            const workspaceRoot = path_mod.join(DATA_DIR, 'workspaces', context.appId, context.convId);
-            const fs_mod = await import('fs/promises');
-            await fs_mod.mkdir(workspaceRoot, { recursive: true });
-            cwd = workspaceRoot;
-            // 保存到会话
-            await conversationService.updateConversation(context.appId, context.convId, { workspaceDir: cwd } as any);
+            // 没有 workspaceDir，用 APPS_DATA_DIR/appId 作为工作目录（不自动创建新目录）
+            const { APPS_DATA_DIR } = await import('../utils/file.js');
+            cwd = path_mod.join(APPS_DATA_DIR, context.appId || '');
           }
         }
 

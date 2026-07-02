@@ -40,68 +40,72 @@ const formRequestSchema = Type.Object({
   }, { additionalProperties: false }), { minItems: 1, description: '表单项列表' }),
 }, { additionalProperties: false, description: '向用户展示一个表单收集结构化信息' });
 
-/** mcp.code 各方法的参数 schema */
+/** mcp.filesystem 各方法的参数 schema（仅限 apps_data 目录） */
 const codeReadSchema = Type.Object({
-  path: Type.String({ description: '文件路径（相对 apps_data）' }),
+  path: Type.String({ description: '文件路径（相对 apps_data 目录），如 server/src/types/index.ts 或 config.json；不能用于项目文件目录' }),
+  offset: Type.Optional(Type.Number({ description: '从第几行开始读取（1-indexed），用于分页' })),
+  limit: Type.Optional(Type.Number({ description: '最多读取多少行，用于分页' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
-}, { additionalProperties: false, description: '读取文件内容' });
+}, { additionalProperties: false, description: '[apps_data] 读取应用数据文件（仅限 apps_data 目录，不适用于项目代码）' });
 
 const codeWriteSchema = Type.Object({
-  path: Type.String({ description: '文件路径（相对 apps_data）' }),
+  path: Type.String({ description: '文件路径（相对 apps_data 目录）' }),
   content: Type.String({ description: '写入的内容' }),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
-}, { additionalProperties: false, description: '写入文件（自动创建父目录）' });
+}, { additionalProperties: false, description: '[apps_data] 写入应用数据文件（仅限 apps_data 目录）' });
 
 const codePatchSchema = Type.Object({
-  path: Type.String({ description: '文件路径（相对 apps_data）' }),
-  old_string: Type.String({ description: '要替换的旧文本（须唯一，除非 replace_all=true）' }),
+  path: Type.String({ description: '文件路径（相对 apps_data 目录）' }),
+  old_string: Type.String({ description: '要替换的旧文本（必须完全匹配原始文件，含缩进和换行；使用 replace_all=true 替换所有出现）' }),
   new_string: Type.String({ description: '替换的新文本' }),
   replace_all: Type.Optional(Type.Boolean({ description: '替换所有匹配项而非仅第一个' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
-}, { additionalProperties: false, description: '在文件中查找替换文本' });
+}, { additionalProperties: false, description: '[apps_data] 在应用数据文件中查找替换文本' });
 
 const codeSearchSchema = Type.Object({
   pattern: Type.String({ description: '搜索的正则表达式' }),
   file_glob: Type.Optional(Type.String({ description: '文件过滤 glob，如 "*.ts"' })),
   max_results: Type.Optional(Type.Number({ description: '最大结果数，默认 50' })),
   baseDir: Type.Optional(Type.String({ description: '搜索的基础目录（相对 apps_data），默认为空' })),
-}, { additionalProperties: false, description: '在文件中搜索文本（使用 ripgrep）' });
+}, { additionalProperties: false, description: '[apps_data] 在应用数据文件中搜索文本' });
 
 const codeListSchema = Type.Object({
   path: Type.Optional(Type.String({ description: '目录路径（相对 apps_data），默认为根目录' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对 apps_data），默认为空' })),
-}, { additionalProperties: false, description: '列出目录内容' });
+}, { additionalProperties: false, description: '[apps_data] 列出应用数据目录内容' });
 
 const codeReadSchema_w = Type.Object({
-  path: Type.String({ description: '文件路径（相对工作目录）' }),
+  path: Type.String({ description: '文件路径（相对工作目录或绝对路径如 /mnt/c/apps/...）' }),
+  offset: Type.Optional(Type.Number({ description: '从第几行开始读取（1-indexed），用于分页' })),
+  limit: Type.Optional(Type.Number({ description: '最多读取多少行，用于分页' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '读取文件内容' });
+}, { additionalProperties: false, description: '[工作目录] 读取项目文件内容（支持 offset/limit）' });
 
 const codeWriteSchema_w = Type.Object({
-  path: Type.String({ description: '文件路径（相对工作目录）' }),
+  path: Type.String({ description: '文件路径（相对工作目录或绝对路径如 /mnt/c/apps/...）' }),
   content: Type.String({ description: '写入的内容' }),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '写入文件（自动创建父目录）' });
+}, { additionalProperties: false, description: '[工作目录] 写入项目文件（自动创建父目录）' });
 
 const codePatchSchema_w = Type.Object({
-  path: Type.String({ description: '文件路径（相对工作目录）' }),
-  old_string: Type.String({ description: '要替换的旧文本（须唯一，除非 replace_all=true）' }),
+  path: Type.String({ description: '文件路径（相对工作目录或绝对路径如 /mnt/c/apps/...）' }),
+  old_string: Type.String({ description: '要替换的旧文本（必须完全匹配原始文件，含缩进和换行；使用 replace_all=true 替换所有出现）' }),
   new_string: Type.String({ description: '替换的新文本' }),
   replace_all: Type.Optional(Type.Boolean({ description: '替换所有匹配项而非仅第一个' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '在文件中查找替换文本' });
+}, { additionalProperties: false, description: '[工作目录] 在项目文件中查找替换文本' });
 
 const codeSearchSchema_w = Type.Object({
   pattern: Type.String({ description: '搜索的正则表达式' }),
   file_glob: Type.Optional(Type.String({ description: '文件过滤 glob，如 "*.ts"' })),
   max_results: Type.Optional(Type.Number({ description: '最大结果数，默认 50' })),
-  baseDir: Type.Optional(Type.String({ description: '搜索的基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '在文件中搜索文本（使用 ripgrep）' });
+  baseDir: Type.Optional(Type.String({ description: '搜索的基础目录（相对工作目录或绝对路径），默认为空' })),
+}, { additionalProperties: false, description: '[工作目录] 在项目文件中搜索文本（使用 ripgrep）' });
 
 const codeListSchema_w = Type.Object({
-  path: Type.Optional(Type.String({ description: '目录路径（相对工作目录），默认为根目录' })),
+  path: Type.Optional(Type.String({ description: '目录路径（相对工作目录或绝对路径如 /mnt/c/apps/...），默认为工作目录根' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '列出目录内容' });
+}, { additionalProperties: false, description: '[工作目录] 列出项目目录内容' });
 
 /** 将 service.name.method 转为 LLM 兼容的 tool name（. → _） */
 function safeToolName(serviceName: string, method: string): string {
