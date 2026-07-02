@@ -3661,6 +3661,68 @@ button {
   border-color: rgba(243, 156, 18, 0.3) !important;
 }
 
+/* 表单已提交/已取消只读视图 */
+.form-submitted {
+  opacity: 0.85;
+  border-color: var(--border-primary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.form-submitted .form-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-status-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.form-status-submitted {
+  background: rgba(39, 174, 96, 0.15);
+  color: #2ecc71;
+}
+
+.form-status-cancelled {
+  background: rgba(149, 165, 166, 0.15);
+  color: #95a5a6;
+}
+
+.form-submitted-data {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.form-submitted-field {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.form-submitted-label {
+  color: var(--text-secondary);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.form-submitted-value {
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.form-cancelled-msg {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  font-style: italic;
+}
+
 /* pending 表单容器 — 消息列表中的内嵌表单 */
 .chat-pending-forms {
   padding: 0 16px;

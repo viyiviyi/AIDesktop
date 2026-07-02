@@ -518,16 +518,7 @@ export async function runAgentAsync(
   existingMessages: any[],
   userContent: any[],
 ): Promise<void> {
-  // 过滤掉 pending 状态的 toolResult
-  const filteredMessages = existingMessages.filter((m: any) => {
-    if (m.role === 'toolResult' && m.content) {
-      const text = (m.content as any[]).filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');
-      if (text.includes('"status":"pending"') || text.includes('"status": "pending"')) return false;
-    }
-    return true;
-  });
-
-  const fullHistory = filteredMessages;
+  const fullHistory = existingMessages;
   serverLogger.info('agent', `runAgentAsync getOrCreate for ${appId}/${convId}`);
   const session = await piAgentManager.getOrCreate(appId, app);
   // 每次运行时刷新最新配置（model、tools、systemPrompt）

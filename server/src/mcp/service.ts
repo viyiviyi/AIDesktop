@@ -974,65 +974,36 @@ class MCPServiceRegistry {
         if (!title) throw new Error('title is required');
         if (!fields || !Array.isArray(fields) || fields.length === 0) throw new Error('fields is required');
 
-        const schema: FormSchema = {
-          title,
-          description,
-          fields: fields.map(f => ({
-            name: f.name as string,
-            label: f.label as string,
-            type: (f.type as any) || 'text',
-            required: f.required as boolean | undefined,
-            options: f.options as string[] | undefined,
-            placeholder: f.placeholder as string | undefined,
-            accept: f.accept as string | undefined,
-            description: f.description as string | undefined,
-          })),
-        };
-
-        const formId = `form-${uuidv4()}`;
-        const formInfo = {
-          formId,
-          toolCallId: args._toolCallId as string || '',
-          schema,
-          createdAt: new Date().toISOString(),
-        };
-
         const toolCallId = args._toolCallId as string || '';
 
-        // 直接 emit form_request 到前端
+        // 不再等待 form_response —— 工具立即返回 pending 状态
+        // toolResult 由 form-response route 直接保存到会话 JSON
+        // agent 的继续由 form-response route 在检查所有表单都完成后触发
         if (context.appId && context.convId) {
+          const schema: FormSchema = {
+            title,
+            description,
+            fields: fields.map(f => ({
+              name: f.name as string,
+              label: f.label as string,
+              type: (f.type as any) || 'text',
+              required: f.required as boolean | undefined,
+              options: f.options as string[] | undefined,
+              placeholder: f.placeholder as string | undefined,
+              accept: f.accept as string | undefined,
+              description: f.description as string | undefined,
+            })),
+          };
           eventBus.emit({
             type: 'form_request',
             appId: context.appId,
             convId: context.convId,
-            data: formInfo,
+            data: { toolCallId, schema, createdAt: new Date().toISOString() },
           });
         }
 
-        // 等待用户提交/取消表单——会在 form_response 或 form_cancelled 任一触发时结束
-        const formResult = await new Promise<ConvEvent>((resolve) => {
-          const done = (event: ConvEvent) => {
-            // 用 toolCallId 匹配（兼容 workspace 授权场景没有 formId 的情况），或 fallback 到 formId
-            const match = event.data?.formId === formId
-              || (event.data?.toolCallId && event.data?.toolCallId === toolCallId);
-            if (match) {
-              cleanup();
-              resolve(event);
-            }
-          };
-          const cleanup = () => {
-            eventBus.ee.off('form_response', done);
-            eventBus.ee.off('form_cancelled', done);
-          };
-          eventBus.ee.on('form_response', done);
-          eventBus.ee.on('form_cancelled', done);
-        });
-
-        if (formResult.type === 'form_cancelled' || formResult.data?.cancelled) {
-          return { status: 'cancelled', message: '用户取消了表单填写' };
-        }
-
-        return formResult.data?.formData || {};
+        // 工具立即返回空结果（不生成 toolResult），表单提交后由 form-response route 保存 toolResult
+        return { _skip: true };
       }
       default:
         throw new Error(`Unknown method: ${method}`);
@@ -1439,7 +1410,7 @@ class MCPServiceRegistry {
             required: ['path'],
           },
         } as any, { ...context as any, _toolCallId: toolCallId });
-        return { status: 'pending', form: formResult };
+        return { _skip: true };
       }
       default:
         throw new Error(`Unknown method: ${method}`);

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { FormSchema, FormField } from '../types';
 import * as api from '../services/api';
 
@@ -8,13 +8,25 @@ interface FormComponentProps {
   formId: string;
   toolCallId: string;
   schema: FormSchema;
+  /** 如果已提交过，传之前提交的数据过来显示摘要 */
+  submittedData?: Record<string, unknown> | null;
+  /** 如果已取消 */
+  cancelled?: boolean;
   onSubmitted?: () => void;
   onCancelled?: () => void;
 }
 
-export function FormComponent({ appId, convId, formId, toolCallId, schema, onSubmitted, onCancelled }: FormComponentProps) {
-  const [values, setValues] = useState<Record<string, unknown>>({});
+export function FormComponent({ appId, convId, formId, toolCallId, schema, submittedData, cancelled, onSubmitted, onCancelled }: FormComponentProps) {
+  const [values, setValues] = useState<Record<string, unknown>>(submittedData || {});
   const [submitting, setSubmitting] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState(false);
+
+  // submittedData 变化时同步到 values（如覆盖提交后刷新数据）
+  useEffect(() => {
+    if (submittedData) setValues(submittedData);
+  }, [submittedData]);
+
+  const isDone = cancelled || justSubmitted;
 
   const setValue = useCallback((name: string, value: unknown) => {
     setValues(prev => ({ ...prev, [name]: value }));
@@ -24,6 +36,7 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
     setSubmitting(true);
     try {
       await api.submitFormResponse(appId, convId, formId, toolCallId, values);
+      setJustSubmitted(true);
       onSubmitted?.();
     } catch (err) {
       console.error('Form submit failed', err);
@@ -48,7 +61,6 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
     const val = values[field.name];
     const fieldId = `form-field-${formId}-${field.name}`;
 
-    // options 支持两种格式：string[] 或 {label, value}[]
     const normOption = (o: unknown): { label: string; value: string } => {
       if (o && typeof o === 'object' && 'label' in (o as any) && 'value' in (o as any)) {
         return { label: (o as any).label as string, value: (o as any).value as string };
@@ -160,8 +172,14 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
   };
 
   return (
-    <div className="form-inline">
-      <div className="form-title">{schema.title}</div>
+    <div className={`form-inline ${isDone ? 'form-submitted' : ''}`}>
+      <div className="form-title">
+        {schema.title}
+        {cancelled && <span className="form-status-badge form-status-cancelled">已取消</span>}
+        {(justSubmitted || submittedData) && !cancelled && (
+          <span className="form-status-badge form-status-submitted">已提交 ✓</span>
+        )}
+      </div>
       {schema.description && <div className="form-description">{schema.description}</div>}
       <div className="form-fields">
         {schema.fields.map((field, i) => (
@@ -178,10 +196,10 @@ export function FormComponent({ appId, convId, formId, toolCallId, schema, onSub
         ))}
       </div>
       <div className="form-actions">
-        <button className="form-submit-btn" onClick={handleSubmit} disabled={submitting}>
-          {submitting ? '提交中...' : '提交'}
+        <button className="form-submit-btn" onClick={handleSubmit} disabled={submitting || cancelled}>
+          {submitting ? '提交中...' : (justSubmitted || submittedData ? '重新提交' : '提交')}
         </button>
-        <button className="form-cancel-btn" onClick={handleCancel} disabled={submitting}>
+        <button className="form-cancel-btn" onClick={handleCancel} disabled={submitting || cancelled}>
           取消
         </button>
       </div>

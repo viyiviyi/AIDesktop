@@ -15,6 +15,15 @@ import { MessageList } from './MessageList';
 
 import { AppIcon } from './AppIcon';
 
+/** 表单条目状态：未提交 / 已提交 / 已取消 */
+interface PendingFormEntry {
+  formId: string;
+  schema: FormSchema;
+  toolCallId: string;
+  submittedData?: Record<string, unknown> | null;
+  cancelled?: boolean;
+}
+
 // 窗口组件属性接口
 interface WindowProps {
   windowState: WindowState;
@@ -293,7 +302,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const [attachments, setAttachments] = useState<{ id: string; type: 'image' | 'audio' | 'video' | 'file'; url: string; name: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 表单状态 — 等待用户填写的表单
-  const [pendingForms, setPendingForms] = useState<Map<string, { formId: string; schema: FormSchema; toolCallId: string }>>(new Map());
+  const [pendingForms, setPendingForms] = useState<Map<string, PendingFormEntry>>(new Map());
   // 待处理的工作目录授权请求
   const [workspaceRequest, setWorkspaceRequest] = useState<{ toolCallId: string; requestedPath?: string } | null>(null);
   // 工作目录修改弹窗
@@ -573,9 +582,11 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         const schema = event.data.schema as FormSchema;
         const reqToolCallId = (event.data.toolCallId as string) || '';
         if (formId && schema) {
+          // 用 form-${toolCallId} 作为统一 key，与 loadMessages 恢复时一致
+          const unifiedKey = reqToolCallId ? `form-${reqToolCallId}` : formId;
           setPendingForms(prev => {
             const next = new Map(prev);
-            next.set(formId, { formId, schema, toolCallId: reqToolCallId });
+            next.set(unifiedKey, { formId: unifiedKey, schema, toolCallId: reqToolCallId });
             return next;
           });
           // 表单已出现，关闭 loading 状态让用户填写
@@ -589,17 +600,30 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
       case 'form_response':
       case 'form_cancelled': {
         const respondFormId = event.data.formId as string;
-        if (respondFormId) {
-          setPendingForms(prev => {
-            const next = new Map(prev);
-            next.delete(respondFormId);
-            return next;
-          });
-          // 表单已提交/取消，重新进入 loading 等待 AI 回复
+        const respondToolCallId = (event.data as any).toolCallId as string;
+        const submittedData = event.data.formData as Record<string, unknown> | undefined;
+        const allDone = (event.data as any).allDone as boolean;
+        // 用 toolCallId 派生统一 key（与 form_request handler 和 loadMessages 一致）
+        const matchKey = respondToolCallId ? `form-${respondToolCallId}` : respondFormId;
+        if (allDone) {
+          // 所有表单都已完成，清除 pendingForms，等待 agent 回复
+          setPendingForms(new Map());
           setIsLoading(true);
           setThinkingText('处理中...');
           setStreamingText('');
           setToolCalls([]);
+        } else if (matchKey) {
+          setPendingForms(prev => {
+            const entry = prev.get(matchKey);
+            if (!entry) return prev;
+            const next = new Map(prev);
+            if (event.type === 'form_cancelled') {
+              next.set(matchKey, { ...entry, cancelled: true, submittedData: undefined });
+            } else {
+              next.set(matchKey, { ...entry, submittedData: submittedData || {}, cancelled: false });
+            }
+            return next;
+          });
         }
         break;
       }
@@ -712,43 +736,67 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         ));
         setConversationTitle(convId, newTitle);
       }
-      // 从消息列表中推导待填表单：检查每个 assistant 消息是否有 form toolCall 且无对应 toolResult
-      const restored = new Map<string, { formId: string; schema: FormSchema; toolCallId: string }>();
+      // 从消息列表中推导表单状态：检查每个 assistant 消息是否有 form toolCall
+      const restored = new Map<string, PendingFormEntry>();
       for (let i = 0; i < conv.messages.length; i++) {
         const msg = conv.messages[i];
         if (msg.role !== 'assistant') continue;
-        for (const c of msg.content) {
-          const tc = c as any;
-          if (tc.type === 'toolCall' && (tc.name === 'mcp_form_requestInput' || tc.name === 'mcp.form.requestInput')) {
-            // 检查后面是否有对应的 toolResult
-            let hasResult = false;
-            for (let j = i + 1; j < conv.messages.length; j++) {
-              const next = conv.messages[j];
-              if (next.role === 'toolResult' && next.toolResultMeta?.toolCallId === tc.id) {
-                // 排除 pending 状态的 toolResult（这只表示表单已发送，还没填写）
-                const text = next.content.filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');
-                if (text.includes('"status":"pending"') || text.includes('"status": "pending"')) continue;
-                hasResult = true;
-                break;
+        // 收集这条消息中所有的 form toolCall
+        const formToolCalls = (msg.content || []).filter((c: any) =>
+          c.type === 'toolCall' && (c.name === 'mcp_form_requestInput' || c.name === 'mcp.form.requestInput')
+        );
+        if (formToolCalls.length === 0) continue;
+        // 检查每个 form toolCall 是否有对应的 toolResult
+        const results: { tc: any; hasResult: boolean; resultData: Record<string, unknown> | null; isCancelled: boolean }[] = [];
+        let allHaveResults = true;
+        for (const tc of formToolCalls) {
+          let hasResult = false;
+          let resultData: Record<string, unknown> | null = null;
+          let isCancelled = false;
+          for (let j = i + 1; j < conv.messages.length; j++) {
+            const next = conv.messages[j];
+            if (next.role === 'toolResult' && next.toolResultMeta?.toolCallId === tc.id) {
+              const text = next.content.filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');
+              hasResult = true;
+              try {
+                const parsed = JSON.parse(text);
+                if (parsed.status === 'cancelled') {
+                  isCancelled = true;
+                } else {
+                  resultData = parsed;
+                }
+              } catch {
+                resultData = { value: text };
               }
-            }
-            if (!hasResult) {
-              const formId = `form-${tc.id}`;
-              restored.set(formId, {
-                formId,
-                toolCallId: tc.id,
-                schema: {
-                  title: (tc.arguments as any)?.title || '请填写表单',
-                  description: (tc.arguments as any)?.description || '',
-                  fields: ((tc.arguments as any)?.fields || []).map((f: any) => ({
-                    name: f.name, label: f.label, type: f.type || 'text',
-                    required: f.required, options: f.options, placeholder: f.placeholder,
-                    accept: f.accept, description: f.description,
-                  })),
-                },
-              });
+              break;
             }
           }
+          results.push({ tc, hasResult, resultData, isCancelled });
+          if (!hasResult) allHaveResults = false;
+        }
+        if (allHaveResults) {
+          // 全部都有 toolResult → 不渲染表单，走常规 toolCall/toolResult 渲染
+          continue;
+        }
+        // 存在缺少 toolResult 的 → 渲染为表单，已有结果的填充数据
+        for (const r of results) {
+          const formId = `form-${r.tc.id}`;
+          const schema: FormSchema = {
+            title: (r.tc.arguments as any)?.title || '请填写表单',
+            description: (r.tc.arguments as any)?.description || '',
+            fields: ((r.tc.arguments as any)?.fields || []).map((f: any) => ({
+              name: f.name, label: f.label, type: f.type || 'text',
+              required: f.required, options: f.options, placeholder: f.placeholder,
+              accept: f.accept, description: f.description,
+            })),
+          };
+          restored.set(formId, {
+            formId,
+            toolCallId: r.tc.id,
+            schema,
+            submittedData: r.hasResult && !r.isCancelled ? r.resultData : undefined,
+            cancelled: r.hasResult && r.isCancelled ? true : undefined,
+          });
         }
       }
       setPendingForms(restored);
@@ -1173,23 +1221,41 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
         onDelete={deleteMsg}
         onReplyClick={handleReplyClick}
         highlightMsgId={highlightMsgId}
-        renderPendingForm={(formId, schema, toolCallId) => (
-          <FormComponent
-            appId={appId!}
-            convId={currentConvId!}
-            formId={formId}
-            toolCallId={toolCallId}
-            schema={schema}
-            onSubmitted={() => {
-              setPendingForms(prev => { const n = new Map(prev); n.delete(formId); return n; });
-              setTimeout(() => loadMessages(currentConvId!), 500);
-            }}
-            onCancelled={() => {
-              setPendingForms(prev => { const n = new Map(prev); n.delete(formId); return n; });
-              setTimeout(() => loadMessages(currentConvId!), 500);
-            }}
-          />
-        )}
+        renderPendingForm={(formId, schema, toolCallId) => {
+          // 从 pendingForms 中获取完整的表单状态（如已提交数据）
+          const entry = pendingForms.get(formId);
+          return (
+            <FormComponent
+              appId={appId!}
+              convId={currentConvId!}
+              formId={formId}
+              toolCallId={toolCallId}
+              schema={schema}
+              submittedData={entry?.submittedData}
+              cancelled={entry?.cancelled}
+              onSubmitted={() => {
+                // 同步标记 pendingForms 中的该表单为已提交（不等 ws 事件）
+                setPendingForms(prev => {
+                  const entry = prev.get(formId);
+                  if (!entry) return prev;
+                  const next = new Map(prev);
+                  next.set(formId, { ...entry, submittedData: entry.submittedData || {} });
+                  return next;
+                });
+                // ws 的 form_response 事件会处理 UI 更新，这里不额外操作
+              }}
+              onCancelled={() => {
+                setPendingForms(prev => {
+                  const entry = prev.get(formId);
+                  if (!entry) return prev;
+                  const next = new Map(prev);
+                  next.set(formId, { ...entry, cancelled: true, submittedData: undefined });
+                  return next;
+                });
+              }}
+            />
+          );
+        }}
         renderWorkspaceRequest={(toolCallId, requestedPath) => (
           <WorkspaceDirSelector
             appId={appId!}

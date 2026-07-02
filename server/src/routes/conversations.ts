@@ -12,6 +12,9 @@ import fs from 'fs/promises';
 import * as crypto from 'node:crypto';
 import { APPS_DATA_DIR, ensureDir, readDir } from '../utils/file.js';
 
+/** 记录哪些 convId 已经触发过 allDone 继续（防止重复触发） */
+const allDoneCache = new Set<string>();
+
 const router = Router({ mergeParams: true });
 
 // 存储活跃的 agent 流（convId -> abort）
@@ -375,27 +378,119 @@ router.delete('/:convId/messages/:msgId', async (req: Request, res: Response) =>
   }
 });
 
+/** 检查会话消息中所有 mcp.form.requestInput toolCall 是否都有对应的 toolResult */
+function checkAllFormsDone(messages: any[]): boolean {
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role !== 'assistant') continue;
+    const formToolCalls = (msg.content || []).filter((c: any) =>
+      c.type === 'toolCall' && (c.name === 'mcp_form_requestInput' || c.name === 'mcp.form.requestInput')
+    );
+    if (formToolCalls.length === 0) continue;
+    // 检查每个 form toolCall 是否有对应的 toolResult
+    for (const tc of formToolCalls) {
+      let found = false;
+      for (let j = i + 1; j < messages.length; j++) {
+        const next = messages[j];
+        if (next.role === 'toolResult' && next.toolResultMeta?.toolCallId === tc.id) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) return false;
+    }
+  }
+  return true;
+}
+
 // POST /:convId/form-response — 提交/取消表单
 router.post('/:convId/form-response', async (req: Request, res: Response) => {
   try {
     const { appId, convId } = req.params;
-    const { formId, data, cancelled } = req.body;
+    const { formId, data, cancelled, toolCallId } = req.body;
 
     if (!formId) return res.status(400).json({ error: 'formId is required' });
 
     serverLogger.info('system', `Form ${formId} ${cancelled ? 'cancelled' : 'submitted'} for ${appId}/${convId}`);
 
-    // 通过 eventBus 通知 handleFormMethod 中等待的 Promise
-    eventBus.emit({
-      type: cancelled ? 'form_cancelled' : 'form_response',
-      appId,
-      convId,
-      data: {
-        formId,
-        formData: data || {},
-        cancelled: !!cancelled,
-      },
-    });
+    // 保存 toolResult 到会话 JSON（同步写入，不依赖异步流程）
+    // 相同 toolCallId 的多次提交只保留最后一个结果
+    if (toolCallId) {
+      const contentText = cancelled
+        ? JSON.stringify({ status: 'cancelled', message: '用户取消了表单填写' })
+        : JSON.stringify(data || {});
+      const toolResultMeta: any = { toolCallId, toolName: 'mcp.form.requestInput', isError: false };
+      const resultContent: any = [{ type: 'text' as const, text: contentText }];
+
+      const conv = await conversationService.getConversation(appId, convId);
+      if (conv) {
+        // 查找是否已有相同 toolCallId 的 toolResult，有则覆盖
+        const existingIdx = conv.messages.findIndex((m: any) =>
+          m.role === 'toolResult' && m.toolResultMeta?.toolCallId === toolCallId
+        );
+        if (existingIdx >= 0) {
+          // 覆盖已有的 toolResult
+          conv.messages[existingIdx].content = resultContent;
+          conv.messages[existingIdx].toolResultMeta = toolResultMeta;
+          await conversationService.updateConversation(appId, convId, { messages: conv.messages } as any);
+        } else {
+          // 新增 toolResult
+          const saveMsg = await conversationService.addMessage(appId, convId, 'toolResult' as any, resultContent);
+          if (saveMsg) {
+            const conv2 = await conversationService.getConversation(appId, convId);
+            if (conv2) {
+              const savedMsg = conv2.messages.find((m: any) => m.id === saveMsg.id);
+              if (savedMsg) {
+                savedMsg.toolResultMeta = toolResultMeta;
+                await conversationService.updateConversation(appId, convId, { messages: conv2.messages } as any);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 检查所有表单是否都已完成，如果是则触发 agent 继续
+    const conv = await conversationService.getConversation(appId, convId);
+    if (conv) {
+      const allDone = checkAllFormsDone(conv.messages);
+      const hadAllDoneBefore = allDoneCache.has(`${appId}:${convId}`);
+      if (allDone && !hadAllDoneBefore) {
+        allDoneCache.add(`${appId}:${convId}`);
+        serverLogger.info('agent', `All forms done for ${appId}/${convId}, resuming agent...`);
+        const app = appState.getApp(appId);
+        if (app) {
+          // 通知前端所有表单已完成，可以清理 UI
+          eventBus.emit({
+            type: 'form_response',
+            appId, convId,
+            data: { formId, toolCallId: toolCallId || '', formData: data || {}, cancelled: !!cancelled, allDone: true },
+          });
+          // 用最新的会话消息调用 runAgentAsync
+          const latestConv = await conversationService.getConversation(appId, convId);
+          if (latestConv) {
+            // 异步触发 agent 继续，不阻塞 response
+            runAgentAsync(appId, convId, app, latestConv.messages, []).catch((err: any) =>
+              serverLogger.error('agent', `Form resume agent failed: ${err.message}`)
+            );
+          }
+        }
+      } else if (allDone && hadAllDoneBefore) {
+        // 全部已完成且已经触发过继续，只通知前端 UI 更新，不重复启动 agent
+        eventBus.emit({
+          type: 'form_response',
+          appId, convId,
+          data: { formId, toolCallId: toolCallId || '', formData: data || {}, cancelled: !!cancelled, allDone: false },
+        });
+      } else {
+        // 还有未完成的表单，只通知前端这个表单已提交
+        eventBus.emit({
+          type: 'form_response',
+          appId, convId,
+          data: { formId, toolCallId: toolCallId || '', formData: data || {}, cancelled: !!cancelled, allDone: false },
+        });
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {
