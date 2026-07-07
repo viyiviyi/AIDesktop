@@ -1,1 +1,1 @@
-["mcp.filesystem", "mcp.window", "mcp.settings", "mcp.agent", "mcp.browser"]
+["mcp.filesystem", "mcp.settings", "mcp.browser", "mcp.memory", "mcp.sleep", "mcp.exec", "mcp.http", "mcp.form", "workspace.code", "workspace.shell"]

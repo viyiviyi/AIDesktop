@@ -40,15 +40,14 @@
   ],
   "tools": [
     "mcp.filesystem",
-    "mcp.window",
     "mcp.settings",
-    "mcp.agent",
     "mcp.browser",
     "mcp.memory",
     "mcp.sleep",
     "mcp.exec",
     "mcp.http",
     "mcp.form",
-    "mcp.skill"
+    "workspace.code",
+    "workspace.shell"
   ]
 }

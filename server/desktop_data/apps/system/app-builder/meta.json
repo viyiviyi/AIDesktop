@@ -31,8 +31,9 @@
   "visibleServices": [],
   "tools": [
     "mcp.filesystem",
-    "mcp.agent",
+    "mcp.settings",
     "mcp.memory",
-    "mcp.form"
+    "mcp.form",
+    "workspace.code"
   ]
 }

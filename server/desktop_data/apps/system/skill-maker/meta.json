@@ -15,9 +15,8 @@
   "tools": [
     "mcp.settings",
     "mcp.filesystem",
-    "mcp.skill",
     "mcp.exec",
-    "mcp.agent",
-    "mcp.sleep"
+    "mcp.sleep",
+    "workspace.code"
   ]
 }
