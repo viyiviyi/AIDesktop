@@ -66,8 +66,8 @@ const codeSearchSchema = Type.Object({
   pattern: Type.String({ description: '搜索的正则表达式' }),
   file_glob: Type.Optional(Type.String({ description: '文件过滤 glob，如 "*.ts"' })),
   max_results: Type.Optional(Type.Number({ description: '最大结果数，默认 50' })),
-  baseDir: Type.Optional(Type.String({ description: '搜索的基础目录（相对 apps_data），默认为空' })),
-}, { additionalProperties: false, description: '[apps_data] 在应用数据文件中搜索文本' });
+  baseDir: Type.String({ description: '【必填】搜索的基础目录（绝对路径或相对 apps_data 的路径）' }),
+}, { additionalProperties: false, description: '[apps_data] 在指定目录中搜索文本' });
 
 const codeListSchema = Type.Object({
   path: Type.Optional(Type.String({ description: '目录路径（相对 apps_data），默认为根目录' })),
@@ -99,8 +99,8 @@ const codeSearchSchema_w = Type.Object({
   pattern: Type.String({ description: '搜索的正则表达式' }),
   file_glob: Type.Optional(Type.String({ description: '文件过滤 glob，如 "*.ts"' })),
   max_results: Type.Optional(Type.Number({ description: '最大结果数，默认 50' })),
-  baseDir: Type.Optional(Type.String({ description: '搜索的基础目录（相对工作目录或绝对路径），默认为空' })),
-}, { additionalProperties: false, description: '[工作目录] 在项目文件中搜索文本（使用 ripgrep）' });
+  baseDir: Type.String({ description: '【必填】搜索的基础目录（绝对路径或相对工作目录的路径）' }),
+}, { additionalProperties: false, description: '[工作目录] 在指定目录中搜索文本' });
 
 const codeListSchema_w = Type.Object({
   path: Type.Optional(Type.String({ description: '目录路径（相对工作目录或绝对路径如 /mnt/c/apps/...），默认为工作目录根' })),
@@ -131,9 +131,14 @@ export function parseToolName(toolName: string): { serviceName: string; method: 
 }
 
 /**
- * 为指定 app 构建 AgentTool 列表
- * 只包含 builtin 类型的服务（通用的辅助工具）
- * admin 类型（系统管理工具）和 workspace 类型（由 buildWorkspaceTools 单独注入）不会被包含在这里
+ * 为指定 app 构建 AgentTool 列表（2026-07 重构）
+ *
+ * 注入以下三类工具：
+ *   系统维护工具 (admin) — 从 allowedTools 过滤
+ *   系统通用工具 (builtin) — 从 allowedTools 过滤
+ *   外部 MCP 工具 — 从 allowedTools 过滤
+ *
+ * workspace 工具和动态配置工具由独立的函数注入。
  */
 export function buildPiToolsForApp(app: App): AgentTool[] {
   const allowedTools = new Set([...(app.config.tools || []), ...(app.meta.tools || [])]);
@@ -144,13 +149,9 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
   if (allowedTools.size === 0) return tools;
 
   for (const service of services) {
-    // 只注入 allowedTools 中明确列出的服务
+    // 只注入 admin 和 builtin 类型的服务
+    if (service.category !== 'admin' && service.category !== 'builtin') continue;
     if (!allowedTools.has(service.name)) continue;
-
-    // 外部 MCP 服务的工具单独处理（每个工具生成一个 AgentTool）
-    if (service.name === 'mcp.external') {
-      continue;
-    }
 
     for (const method of service.methods) {
       const name = safeToolName(service.name, method);
@@ -207,63 +208,6 @@ export function buildPiToolsForApp(app: App): AgentTool[] {
   // 为外部 MCP 工具的每个启用的工具生成独立的 AgentTool
   const externalTools = buildExternalMcpAgentTools(allowedTools);
   tools.push(...externalTools);
-
-  // 如果 app 有授权的技能，自动注入三个技能工具
-  const appSkillIds = [...(app.config.skills || [])];
-  if (appSkillIds.length > 0) {
-    // mcp.skill.list — 获取当前 app 已授权的技能列表
-    tools.push({
-      name: 'mcp_skill_list',
-      label: 'mcp.skill - list',
-      description: 'list - Get the list of skills that this app has access to, including their files and scripts.',
-      parameters: Type.Object({}, { additionalProperties: false }),
-      execute: async (toolCallId, params, signal, onUpdate) => {
-        try {
-          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'list', {}, { appId: app.meta.id });
-          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
-        } catch (error) {
-          return { content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }], details: null };
-        }
-      },
-    });
-    // mcp.skill.read — 读取技能文件（相对路径）
-    tools.push({
-      name: 'mcp_skill_read',
-      label: 'mcp.skill - read',
-      description: 'read - Read a file from a skill by skill ID and relative path.',
-      parameters: Type.Object({
-        skillId: Type.String({ description: '技能 ID' }),
-        path: Type.String({ description: '文件相对于技能目录的路径' }),
-      }, { additionalProperties: false }),
-      execute: async (toolCallId, params, signal, onUpdate) => {
-        try {
-          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'read', (params as any) || {}, { appId: app.meta.id });
-          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
-        } catch (error) {
-          return { content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }], details: null };
-        }
-      },
-    });
-    // mcp.skill.exec — 执行技能脚本（绑定会话工作目录）
-    tools.push({
-      name: 'mcp_skill_exec',
-      label: 'mcp.skill - exec',
-      description: 'exec - Execute a script in a skill by skill ID and script name. The script runs in the conversation workspace directory.',
-      parameters: Type.Object({
-        skillId: Type.String({ description: '技能 ID' }),
-        script: Type.String({ description: '脚本文件名（必须在 scripts/ 目录下）' }),
-        args: Type.Optional(Type.Array(Type.String(), { description: '脚本参数列表' })),
-      }, { additionalProperties: false }),
-      execute: async (toolCallId, params, signal, onUpdate) => {
-        try {
-          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'exec', (params as any) || {}, { appId: app.meta.id, convId: _currentConvId });
-          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
-        } catch (error) {
-          return { content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }], details: null };
-        }
-      },
-    });
-  }
 
   return tools;
 }
@@ -441,6 +385,110 @@ export function buildWorkspaceTools(app: App, convId: string): AgentTool[] {
         },
       });
     }
+  }
+
+  return tools;
+}
+/**
+ * 构建动态配置工具列表（2026-07 新增）
+ *
+ * 这些工具不由 meta.tools 控制，而是条件满足时自动注入到 AI 工具列表：
+ *   技能工具 — 当 app 配置有技能时注入 mcp_skill_list/read/exec
+ *   应用访问工具 — 当 app 配置有可见应用时注入 mcp_app_list/call
+ */
+export function buildDynamicConfigTools(app: App): AgentTool[] {
+  const tools: AgentTool[] = [];
+  const appSkillIds = [...(app.config.skills || [])];
+
+  // 技能工具：当 app 有授权的技能时自动注入
+  if (appSkillIds.length > 0) {
+    tools.push({
+      name: 'mcp_skill_list',
+      label: 'mcp.skill - list',
+      description: 'list - 获取当前应用已授权的技能列表，包括技能中的文件列表和可执行脚本',
+      parameters: Type.Object({}, { additionalProperties: false, description: '获取可用的技能列表' }),
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        try {
+          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'list', {}, { appId: app.meta.id });
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }], details: result };
+        } catch (error) {
+          return { content: [{ type: 'text' as const, text: 'Error: ' + (error instanceof Error ? error.message : String(error)) }], details: null };
+        }
+      },
+    });
+    tools.push({
+      name: 'mcp_skill_read',
+      label: 'mcp.skill - read',
+      description: 'read - 读取技能中的任意文件内容，需要指定技能 ID 和文件路径',
+      parameters: Type.Object({
+        skillId: Type.String({ description: '技能 ID' }),
+        path: Type.String({ description: '文件相对于技能目录的路径' }),
+      }, { additionalProperties: false }),
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        try {
+          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'read', (params as any) || {}, { appId: app.meta.id });
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }], details: result };
+        } catch (error) {
+          return { content: [{ type: 'text' as const, text: 'Error: ' + (error instanceof Error ? error.message : String(error)) }], details: null };
+        }
+      },
+    });
+    tools.push({
+      name: 'mcp_skill_exec',
+      label: 'mcp.skill - exec',
+      description: 'exec - 执行技能中的脚本，可指定 cwd 工作目录（默认使用会话工作目录或 apps_data 目录）',
+      parameters: Type.Object({
+        skillId: Type.String({ description: '技能 ID' }),
+        script: Type.String({ description: '脚本文件名（必须在 scripts/ 目录下）' }),
+        args: Type.Optional(Type.Array(Type.String(), { description: '脚本参数列表' })),
+        cwd: Type.Optional(Type.String({ description: '脚本工作目录（绝对路径），默认使用会话工作目录或 apps_data/appId 目录' })),
+      }, { additionalProperties: false }),
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        try {
+          const result = await mcpServiceRegistry.callMethod('mcp.skill', 'exec', (params as any) || {}, { appId: app.meta.id, convId: _currentConvId });
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }], details: result };
+        } catch (error) {
+          return { content: [{ type: 'text' as const, text: 'Error: ' + (error instanceof Error ? error.message : String(error)) }], details: null };
+        }
+      },
+    });
+  }
+
+  // 应用访问工具：当 app 有可见应用时自动注入
+  const visibleApps = [...new Set([...(app.config.visibleApps || []), ...(app.meta.visibleApps || [])])];
+  if (visibleApps.length > 0) {
+    tools.push({
+      name: 'mcp_app_list',
+      label: 'mcp.app - list',
+      description: 'list - 获取当前应用可见的应用列表（可调用的其他应用）',
+      parameters: Type.Object({}, { additionalProperties: false, description: '获取可用的应用列表' }),
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        try {
+          const result = await mcpServiceRegistry.callMethod('mcp.app', 'list', {}, { appId: app.meta.id });
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }], details: result };
+        } catch (error) {
+          return { content: [{ type: 'text' as const, text: 'Error: ' + (error instanceof Error ? error.message : String(error)) }], details: null };
+        }
+      },
+    });
+    tools.push({
+      name: 'mcp_app_call',
+      label: 'mcp.app - call',
+      description: 'call - 调用另一个应用完成任务，需要指定目标应用 ID 和消息内容。被调用应用会继承调用方的工作目录',
+      parameters: Type.Object({
+        appId: Type.String({ description: '目标应用 ID' }),
+        message: Type.String({ description: '发送给应用的文本消息' }),
+        conversationId: Type.Optional(Type.String({ description: '调用方的会话 ID（可选）' })),
+      }, { additionalProperties: false }),
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        try {
+          const result = await mcpServiceRegistry.callMethod('mcp.app', 'call', (params as any) || {}, { appId: app.meta.id, convId: _currentConvId });
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }], details: result };
+        } catch (error) {
+          return { content: [{ type: 'text' as const, text: 'Error: ' + (error instanceof Error ? error.message : String(error)) }], details: null };
+        }
+      },
+    });
   }
 
   return tools;

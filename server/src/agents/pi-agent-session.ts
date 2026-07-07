@@ -14,7 +14,7 @@ import {
 import type { App, Message as AdMsg, Content, ToolResultMeta } from "../types/index.js";
 import { appState } from "../services/appState.js";
 import { findModel } from "../models/pi-adapter.js";
-import { buildPiToolsForApp, buildWorkspaceTools, setCurrentConvId } from "./pi-tools.js";
+import { buildPiToolsForApp, buildWorkspaceTools, buildDynamicConfigTools, setCurrentConvId } from "./pi-tools.js";
 import { serverLogger } from "../utils/logger.js";
 import { DATA_DIR, APPS_DATA_DIR } from "../utils/file.js";
 import { conversationService } from "../services/conversation.js";
@@ -102,37 +102,30 @@ function adMsgToPiMsg(m: AdMsg, appId: string, provider: string, modelId: string
 
 async function buildSystemPrompt(app: App): Promise<string> {
   let prompt = app.appMd || "";
-  const visibleApps = app.config.visibleApps || app.meta.visibleApps || [];
-  if (visibleApps.length > 0) {
-    const names = visibleApps.map((id: string) => {
+
+  // 注入可调用的 Agent（通过动态配置工具的 agent_list 获取）
+  const visibleApps = [...new Set([...(app.config.visibleApps || []), ...(app.meta.visibleApps || [])])];
+  const visibleServices = [...new Set([...(app.config.visibleServices || []), ...(app.meta.visibleServices || [])])];
+  if (visibleApps.length > 0 || visibleServices.length > 0) {
+    const names = [...visibleApps, ...visibleServices].map((id: string) => {
       const a = appState.getApp(id);
       return a ? `${a.meta.name} (${id})` : id;
     });
-    prompt += `\n\n## 可调用的 Agent\n你可以通过 mcp.agent.call 调用以下 Agent：${names.join("、")}`;
+    prompt += `\n\n## 可调用的应用\n你可以使用 mcp_app_list 查看可调用的应用，使用 mcp_app_call 调用其他应用完成任务。可见的应用：${names.join("、")}`;
   }
 
-  // 注入应用关联的技能（只注入名称和描述，内容按需读取）
+  // 注入技能信息（名称和描述）
   const skillIds = app.skills || [];
   if (skillIds.length > 0) {
     try {
       const { skillService } = await import('../services/skillService.js');
       const enabledSkills = await skillService.getEnabledSkillsForApp(skillIds);
       if (enabledSkills.length > 0) {
-        prompt += `\n\n## 已加载的技能\n此应用已启用以下技能，你可以在需要时使用 mcp.skill 工具读取完整的技能文档或执行脚本：\n`;
+        prompt += `\n\n## 已加载的技能\n此应用已启用以下技能：\n`;
         for (const skill of enabledSkills) {
           prompt += `\n- **${skill.name}**: ${skill.description}`;
         }
-        // 提示可以用 mcp.skill 工具
-        const appTools = [...(app.config.tools || []), ...(app.meta.tools || [])];
-        if (appTools.includes('mcp.skill')) {
-          prompt += `\n\n你可以使用 mcp.skill 工具来：\n`;
-          prompt += `- list - 列出可用的技能\n`;
-          prompt += `- readEntry - 读取技能的入口文档（roadmap.md）\n`;
-          prompt += `- read - 读取技能中任意文件的内容\n`;
-          prompt += `- listFiles - 列出技能目录下的所有文件\n`;
-          prompt += `- listScripts - 列出技能可用的脚本\n`;
-          prompt += `- exec - 执行技能脚本\n`;
-        }
+        prompt += `\n\n你可以使用 mcp_skill_list 工具获取可用的技能列表。`;
       }
     } catch {
       // skills 加载失败不影响主流程
@@ -335,6 +328,16 @@ export class PiAgentSession {
     const wsNames = new Set(wsTools.map((t: any) => t.name));
     const filtered = existingTools.filter((t: any) => !wsNames.has(t.name));
     this.agent.state.tools = [...filtered, ...wsTools] as any;
+  }
+
+  /** 注入动态配置工具（技能/应用访问 — 条件触发） */
+  injectDynamicConfigTools(app: App): void {
+    const dynTools = buildDynamicConfigTools(app);
+    if (dynTools.length === 0) return;
+    const existingTools = this.agent.state.tools || [];
+    const dynNames = new Set(dynTools.map((t: any) => t.name));
+    const filtered = existingTools.filter((t: any) => !dynNames.has(t.name));
+    this.agent.state.tools = [...filtered, ...dynTools] as any;
   }
 
   syncHistory(msgs: AdMsg[]): void {
@@ -607,6 +610,8 @@ export async function runAgentAsync(
     setCurrentConvId(convId);
     // 注入 workspace 工具（需要 convId 上下文）
     session.injectWorkspaceTools(app, convId);
+    // 注入动态配置工具（技能/应用访问 — 条件触发）
+    session.injectDynamicConfigTools(app);
     // 每次 prompt 前从最新 app 配置刷新 system prompt（支持 appMd 运行时修改）
     try {
       const fs = await import('fs/promises');

@@ -8,59 +8,31 @@ import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
 import * as os from 'os';
 
-// 内置MCP服务定义
+/**
+ * 内置MCP服务定义（2026-07 重构版）
+ *
+ * 按功能分为四层：
+ *   系统维护工具 (admin) — 需要用户在应用设置中勾选
+ *   系统通用工具 (builtin) — 需要用户在应用设置中勾选
+ *   工作区工具 (workspace) — 需要勾选，且操作受工作目录+授权限制
+ *   内置动态配置工具 — 不由 meta.tools 控制，条件满足时自动注入
+ */
 const builtInServices: Record<string, MCPService> = {
-  // ===== 内置管理工具（admin）=====
-  'mcp.window': {
-    name: 'mcp.window',
-    description: '窗口管理服务 - 打开、关闭、列出、聚焦、最小化、最大化窗口',
-    methods: ['open', 'close', 'list', 'focus', 'minimize', 'maximize'],
-    category: 'admin',
-  },
+  // ===== 系统维护工具（admin）=====
   'mcp.filesystem': {
     name: 'mcp.filesystem',
-    description: '文件系统服务 - 读取、写入、搜索、替换、列出、创建、删除文件（相对路径相对于 desktop_data 目录）',
-    methods: ['read', 'write', 'patch', 'search', 'list', 'mkdir', 'delete'],
+    description: '文件系统 - 读取、写入、搜索、替换、移动、复制、列出、创建、删除文件（相对路径相对于 desktop_data 目录）',
+    methods: ['read', 'write', 'patch', 'search', 'list', 'move', 'copy', 'mkdir', 'delete'],
     category: 'admin',
   },
   'mcp.settings': {
     name: 'mcp.settings',
-    description: '系统设置与技能管理服务 - 获取更新设置、从会话生成技能、管理应用技能配置',
-    methods: ['get', 'update', 'generateSkill', 'addSkillToApp', 'getApps', 'getConversations', 'getConversation'],
+    description: '系统设置 - 获取/更新系统设置、应用列表、应用设置、可用技能列表',
+    methods: ['get', 'update', 'getApps', 'getAppSettings', 'setAppSettings', 'getSkillsList'],
     category: 'admin',
   },
 
-  // ===== 内置通用工具（builtin）=====
-  'mcp.agent': {
-    name: 'mcp.agent',
-    description: 'Agent 管理服务 - 列出、调用、获取其他 Agent 的信息',
-    methods: ['list', 'call', 'getInfo'],
-    category: 'builtin',
-  },
-  'mcp.sleep': {
-    name: 'mcp.sleep',
-    description: '等待一段时间 - 暂停执行指定秒数（最长 600 秒/10 分钟）',
-    methods: ['sleep'],
-    category: 'builtin',
-  },
-  'mcp.exec': {
-    name: 'mcp.exec',
-    description: `执行 shell 命令 - 运行一条命令并返回输出。当前系统: ${os.platform()} ${os.release()}`,
-    methods: ['exec'],
-    category: 'builtin',
-  },
-  'mcp.http': {
-    name: 'mcp.http',
-    description: 'HTTP 请求 - 发送 HTTP 请求，完全控制 URL、方法、请求头和请求体',
-    methods: ['request'],
-    category: 'builtin',
-  },
-  'mcp.browser': {
-    name: 'mcp.browser',
-    description: '浏览器控制 - 导航、点击、输入、截图、执行 JS',
-    methods: ['navigate', 'snapshot', 'click', 'type', 'scroll', 'back', 'vision', 'console', 'press'],
-    category: 'builtin',
-  },
+  // ===== 系统通用工具（builtin）=====
   'mcp.form': {
     name: 'mcp.form',
     description: '表单交互 - 向用户展示结构化输入表单，收集用户填写的数据后返回',
@@ -77,12 +49,36 @@ const builtInServices: Record<string, MCPService> = {
     ],
     category: 'builtin',
   },
+  'mcp.browser': {
+    name: 'mcp.browser',
+    description: '浏览器控制 - 导航、点击、输入、截图、执行 JS',
+    methods: ['navigate', 'snapshot', 'click', 'type', 'scroll', 'back', 'vision', 'console', 'press'],
+    category: 'builtin',
+  },
+  'mcp.exec': {
+    name: 'mcp.exec',
+    description: '执行 shell 命令 - 运行一条命令并返回输出，支持设置超时时间和工作目录。当前系统: ' + os.platform() + ' ' + os.release(),
+    methods: ['exec'],
+    category: 'builtin',
+  },
+  'mcp.sleep': {
+    name: 'mcp.sleep',
+    description: '等待一段时间 - 暂停执行指定秒数（最长 600 秒/10 分钟），可用于等待外部操作完成或模拟延时',
+    methods: ['sleep'],
+    category: 'builtin',
+  },
+  'mcp.http': {
+    name: 'mcp.http',
+    description: 'HTTP 请求 - 发送 HTTP 请求，完全控制 URL、方法、请求头和请求体',
+    methods: ['request'],
+    category: 'builtin',
+  },
 
-  // ===== 工作工具（workspace）=====
+  // ===== 工作区工具（workspace）=====
   'workspace.code': {
     name: 'workspace.code',
-    description: '工作区文件编辑 - 读取、写入、替换、搜索、列出文件（路径相对于会话工作目录，支持绝对路径）',
-    methods: ['read', 'write', 'patch', 'search', 'list'],
+    description: '工作区文件编辑 - 读取、写入、替换、搜索、移动、复制、列出、创建、删除文件（路径相对于会话工作目录，支持绝对路径）',
+    methods: ['read', 'write', 'patch', 'search', 'list', 'move', 'copy'],
     category: 'workspace',
     workspaceFields: {
       read: ['path'],
@@ -90,13 +86,31 @@ const builtInServices: Record<string, MCPService> = {
       patch: ['path'],
       search: ['pattern'],
       list: ['path'],
+      move: ['source', 'dest'],
+      copy: ['source', 'dest'],
     },
   },
+  'workspace.shell': {
+    name: 'workspace.shell',
+    description: '工作区命令行 - 在工作目录下执行 shell 命令，每次执行需用户授权',
+    methods: ['exec'],
+    category: 'workspace',
+  },
+
+  // ===== 内置动态配置服务（dynamic）=====
+  // 不由 meta.tools 控制，有技能时自动注入 skill 工具到 AI 上下文
   'mcp.skill': {
     name: 'mcp.skill',
-    description: '技能服务 - 列出可用技能、读取技能文档（入口/详情文件）、列出和执行脚本',
-    methods: ['list', 'read', 'readEntry', 'listFiles', 'listScripts', 'exec'],
-    category: 'admin',
+    description: '技能服务 - 列出可用的技能、读取技能文件、执行技能脚本',
+    methods: ['list', 'read', 'exec'],
+    category: 'dynamic',
+  },
+  // 有可见应用时自动注入 app 工具到 AI 上下文
+  'mcp.app': {
+    name: 'mcp.app',
+    description: '应用访问 - 列出可调用的应用、调用应用完成任务',
+    methods: ['list', 'call'],
+    category: 'dynamic',
   },
 };
 
@@ -160,10 +174,6 @@ class MCPServiceRegistry {
 
     // 根据服务名路由到对应的处理函数
     switch (serviceName) {
-      case 'mcp.agent':
-        return this.handleAgentMethod(method, args, context);
-      case 'mcp.window':
-        return this.handleWindowMethod(method, args, context);
       case 'mcp.filesystem':
         return this.handleFilesystemMethod(method, args, context);
       case 'mcp.settings':
@@ -182,308 +192,14 @@ class MCPServiceRegistry {
         return this.handleMemoryMethod(method, args, context);
       case 'workspace.code':
         return this.handleWorkspaceCodeMethod(method, args, context);
-      case 'workspace.dir':
-        return this.handleWorkspaceDirMethod(method, args, context);
+      case 'workspace.shell':
+        return this.handleWorkspaceShellMethod(method, args, context);
       case 'mcp.skill':
         return this.handleSkillMethod(method, args, context);
+      case 'mcp.app':
+        return this.handleAppMethod(method, args, context);
       default:
         throw new Error(`Service ${serviceName} not implemented`);
-    }
-  }
-
-  private async handleAgentMethod(
-    method: string,
-    args: Record<string, unknown>,
-    context: { appId?: string; convId?: string }
-  ): Promise<unknown> {
-    const { appState } = await import('../services/appState.js');
-    const { conversationService } = await import('../services/conversation.js');
-    const { agentEngine } = await import('../agents/engine.js');
-
-    switch (method) {
-      case 'list': {
-        // 获取调用者的信息，用于过滤可见的agent列表
-        const callerApp = context.appId ? appState.getApp(context.appId) : null;
-        const visibleApps = [...new Set([
-          ...(callerApp?.config.visibleApps || []),
-          ...(callerApp?.meta.visibleApps || [])
-        ])];
-        const visibleServices = [...new Set([
-          ...(callerApp?.config.visibleServices || []),
-          ...(callerApp?.meta.visibleServices || [])
-        ])];
-
-        return {
-          agents: appState.getAllApps()
-            .filter(a => {
-              // 只返回 desktop 和 background 类型的应用
-              if (a.meta.type !== 'desktop' && a.meta.type !== 'background') return false;
-              if (a.meta.type === 'desktop') {
-                // 桌面应用：用 visibleApps 控制
-                if (visibleApps.length > 0) {
-                  if (!visibleApps.includes(a.meta.id) && a.meta.id !== context.appId) return false;
-                } else {
-                  // 没有配置可见应用，只返回自己
-                  if (a.meta.id !== context.appId) return false;
-                }
-              } else if (a.meta.type === 'background') {
-                // 后台服务：用 visibleServices 控制
-                if (visibleServices.length > 0) {
-                  if (!visibleServices.includes(a.meta.id)) return false;
-                } else {
-                  // 没有配置可见后台服务，不返回任何后台服务
-                  return false;
-                }
-              }
-              return true;
-            })
-            .map(a => ({
-              id: a.meta.id,
-              name: a.meta.name,
-              description: a.meta.description,
-              type: a.meta.type,
-              icon: a.meta.icon,
-              supportedInputs: a.meta.supportedInputs
-            }))
-        };
-      }
-      case 'getInfo': {
-        const app = appState.getApp(args.id as string);
-        if (!app) {
-          return { error: 'Agent not found' };
-        }
-        // 可见性检查
-        if (context.appId && args.id !== context.appId) {
-          const callerApp = appState.getApp(context.appId);
-          if (app.meta.type === 'desktop') {
-            const callerVisibleApps = [...new Set([
-              ...(callerApp?.config.visibleApps || []),
-              ...(callerApp?.meta.visibleApps || [])
-            ])];
-            if (callerVisibleApps.length > 0 && !callerVisibleApps.includes(args.id as string)) {
-              return { error: 'Agent not visible' };
-            } else if (callerVisibleApps.length === 0) {
-              return { error: 'Agent not visible' };
-            }
-          } else if (app.meta.type === 'background') {
-            const callerVisibleServices = [...new Set([
-              ...(callerApp?.config.visibleServices || []),
-              ...(callerApp?.meta.visibleServices || [])
-            ])];
-            if (callerVisibleServices.length > 0 && !callerVisibleServices.includes(args.id as string)) {
-              return { error: 'Agent not visible' };
-            } else if (callerVisibleServices.length === 0) {
-              return { error: 'Agent not visible' };
-            }
-          }
-        }
-        return {
-          id: app.meta.id,
-          name: app.meta.name,
-          description: app.meta.description,
-          type: app.meta.type,
-          icon: app.meta.icon,
-          supportedInputs: (app.config.supportedInputs || app.meta.supportedInputs),
-          tools: (app.config.tools || app.meta.tools)
-        };
-      }
-      case 'call': {
-        // args: { agentId: string, message: Content[] | string, convId?: string, callerConvId?: string }
-        const agentId = args.agentId as string;
-        let message = args.message as Content[] | string;
-        const convId = args.convId as string | undefined;
-        const callerConvId = args.callerConvId as string | undefined;
-
-        if (!agentId) throw new Error('agentId is required');
-        if (!message) throw new Error('message is required');
-
-        // 兼容字符串 message → 自动转为 Content[]
-        if (typeof message === 'string') {
-          message = [{ type: 'text', text: message }];
-        }
-        if (!Array.isArray(message) || message.length === 0) throw new Error('message is required');
-
-        const targetApp = appState.getApp(agentId);
-        if (!targetApp) throw new Error(`Agent ${agentId} not found`);
-        if (targetApp.meta.type !== 'desktop' && targetApp.meta.type !== 'background') {
-          throw new Error(`Agent ${agentId} is not callable`);
-        }
-        // 可见性检查
-        if (context.appId) {
-          const callerApp = appState.getApp(context.appId);
-          const targetApp_check = appState.getApp(agentId);
-          if (!targetApp_check) throw new Error(`Agent ${agentId} not found`);
-
-          if (targetApp_check.meta.type === 'desktop') {
-            const callerVisibleApps = [...new Set([
-              ...(callerApp?.config.visibleApps || []),
-              ...(callerApp?.meta.visibleApps || [])
-            ])];
-            if (callerVisibleApps.length > 0) {
-              if (!callerVisibleApps.includes(agentId)) {
-                throw new Error(`Agent ${agentId} is not visible`);
-              }
-            } else {
-              // 没有配置可见应用，只能调用自己
-              if (agentId !== context.appId) {
-                throw new Error(`Agent ${agentId} is not visible`);
-              }
-            }
-          } else if (targetApp_check.meta.type === 'background') {
-            const callerVisibleServices = [...new Set([
-              ...(callerApp?.config.visibleServices || []),
-              ...(callerApp?.meta.visibleServices || [])
-            ])];
-            if (callerVisibleServices.length > 0) {
-              if (!callerVisibleServices.includes(agentId)) {
-                throw new Error(`Agent ${agentId} is not visible`);
-              }
-            } else {
-              throw new Error(`Agent ${agentId} is not visible`);
-            }
-          }
-        }
-
-        // 获取或创建会话（标记 source=agent + 记录调用链）
-        let targetConvId = convId;
-        let conversation;
-        const callId = uuidv4();
-        if (!targetConvId) {
-          const callChain = context.appId ? [{ callerAppId: context.appId, callerConvId: callerConvId, callId, timestamp: new Date().toISOString() }] : undefined;
-          // 继承调用者的工作目录
-          let workspaceDir: string | undefined;
-          if (context.appId && callerConvId) {
-            const callerConv = await conversationService.getConversation(context.appId, callerConvId);
-            workspaceDir = callerConv?.workspaceDir || undefined;
-          }
-          const newConv = await conversationService.createConversation(agentId, `来自 ${context.appId || '未知'} 的调用`, 'agent', callChain);
-          if (workspaceDir) {
-            await conversationService.updateConversation(agentId, newConv.id, { workspaceDir } as any);
-            newConv.workspaceDir = workspaceDir;
-          }
-          targetConvId = newConv.id;
-          conversation = newConv;
-        } else {
-          conversation = await conversationService.getConversation(agentId, targetConvId);
-          if (!conversation) throw new Error(`Conversation ${targetConvId} not found`);
-          // 追加调用链
-          if (context.appId) {
-            const callChainEntry = { callerAppId: context.appId, callerConvId: callerConvId, callId, timestamp: new Date().toISOString() };
-            conversation.callChain = [...(conversation.callChain || []), callChainEntry];
-            await conversationService.updateConversation(agentId, targetConvId, { callChain: conversation.callChain } as any);
-          }
-        }
-
-        // 通知前端：agent 调用开始
-        eventBus.emit({ type: 'agent_call_start', appId: agentId, convId: targetConvId, data: {
-          callerAppId: context.appId,
-          callerConvId,
-          callId,
-          message: JSON.stringify(message),
-          timestamp: new Date().toISOString(),
-        }});
-
-        // 保存 user 消息（标记来源为调用方）
-        const savedUserMsg = await conversationService.addMessage(agentId, targetConvId, 'user', message);
-        if (!savedUserMsg) throw new Error('Failed to save message');
-
-        // 等待被调 agent 完成并返回最终结果
-        const callResult = await new Promise<string>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            unsubAgentEnd();
-            unsubAgentError();
-            reject(new Error('Agent call timed out'));
-          }, 120000); // 2 分钟超时
-
-          const unsubAgentEnd = eventBus.subscribe(targetConvId, (event) => {
-            if (event.type === 'agent_call_end_auto' && event.data.callId === callId) {
-              clearTimeout(timeout);
-              unsubAgentEnd();
-              unsubAgentError();
-              resolve(event.data.result as string || '(no output)');
-            }
-          });
-
-          const unsubAgentError = eventBus.subscribe(targetConvId, (event) => {
-            if (event.type === 'error') {
-              clearTimeout(timeout);
-              unsubAgentEnd();
-              unsubAgentError();
-              reject(new Error((event.data.message as string) || 'Agent error'));
-            }
-          });
-
-          // 异步处理 agent
-          runAgentAsync(agentId, targetConvId, targetApp, conversation.messages, message)
-            .catch(err => {
-              clearTimeout(timeout);
-              unsubAgentEnd();
-              unsubAgentError();
-              reject(err);
-            });
-        });
-
-        return {
-          success: true,
-          result: callResult,
-          conversationId: targetConvId,
-        };
-      }
-
-      case 'requestInput': {
-        // args: { prompt: string, inputType: 'text'|'choice'|'confirm'|'file', choices?: string[] }
-        const prompt = args.prompt as string;
-        const inputType = (args.inputType as string) || 'text';
-        const choices = args.choices as string[] | undefined;
-        const requestConvId = args.conversationId as string || context.appId;
-
-        if (!prompt) throw new Error('prompt is required');
-
-        const requestId = `input-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-        // 更新会话状态为等待输入
-        if (context.appId && requestConvId) {
-          try {
-            const conv = await conversationService.getConversation(context.appId, requestConvId);
-            if (conv) {
-              (conv as any).pendingUserInput = requestId;
-            }
-          } catch {}
-        }
-
-        eventBus.emit({ type: 'user_input_request', appId: context.appId || '', convId: requestConvId || '', data: {
-          requestId,
-          prompt,
-          inputType,
-          choices,
-        }});
-
-        return { success: true, requestId, message: '等待用户输入...' };
-      }
-      default:
-        throw new Error(`Unknown method: ${method}`);
-    }
-  }
-
-  private async handleWindowMethod(
-    method: string,
-    args: Record<string, unknown>,
-    context: { appId?: string; convId?: string }
-  ): Promise<unknown> {
-    // Window management is primarily client-side
-    // Server just validates the request
-    switch (method) {
-      case 'list':
-        // This would need to be extended with actual window state
-        return { windows: [] };
-      case 'open':
-      case 'close':
-      case 'focus':
-      case 'minimize':
-      case 'maximize':
-        return { success: true };
-      default:
-        throw new Error(`Unknown method: ${method}`);
     }
   }
 
@@ -496,20 +212,9 @@ class MCPServiceRegistry {
     const path = await import('path');
     const { DATA_DIR } = await import('../utils/file.js');
 
-    // mcp.filesystem 只操作 apps_data 目录，不支持绝对路径
+    // mcp.filesystem 是通用文件工具，相对路径以 desktop_data 为基准，绝对路径直接使用
     const rawPath = args.path as string || '';
-    const rawBaseDir = args.baseDir as string | undefined;
-    if (path.isAbsolute(rawPath)) {
-      throw new Error('mcp.filesystem does not support absolute paths. Use workspace.code for project files.');
-    }
-    const fullPath = rawBaseDir
-      ? path.join(DATA_DIR, rawBaseDir, rawPath)
-      : path.join(DATA_DIR, rawPath);
-
-    // 安全检查：防止路径穿越
-    if (path.relative(DATA_DIR, fullPath).startsWith('..')) {
-      throw new Error('Path traversal denied: path must be within desktop_data directory');
-    }
+    const fullPath = path.isAbsolute(rawPath) ? rawPath : path.join(DATA_DIR, rawPath);
 
     switch (method) {
       case 'read':
@@ -565,8 +270,12 @@ class MCPServiceRegistry {
         if (!pattern) throw new Error('pattern is required');
         const fileGlob = args.file_glob as string | undefined;
         const maxResults = (args.max_results as number) || 50;
-        // search 在 apps_data 下执行
-        const searchDir = rawBaseDir ? path.join(DATA_DIR, rawBaseDir) : DATA_DIR;
+        // search 必须指定 baseDir，不允许默认搜索整个 desktop_data
+        const rawBaseDir = args.baseDir as string | undefined;
+        const searchDir = rawBaseDir && path.isAbsolute(rawBaseDir)
+          ? rawBaseDir
+          : (rawBaseDir ? path.join(DATA_DIR, rawBaseDir) : '');
+        if (!searchDir) throw new Error('baseDir is required for search. Specify the directory to search in.');
         try {
           const { execSync } = await import('child_process');
           let cmd = `rg -n --no-heading -m 5 '${pattern.replace(/'/g, "'\\''")}'`;
@@ -607,17 +316,37 @@ class MCPServiceRegistry {
       case 'mkdir':
         try {
           await fs.mkdir(fullPath, { recursive: true });
-          return { success: true };
+          return { success: true, path: rawPath };
         } catch {
           throw new Error(`Failed to create directory: ${args.path}`);
         }
       case 'delete':
         try {
           await fs.rm(fullPath, { recursive: true });
-          return { success: true };
+          return { success: true, path: rawPath };
         } catch {
           throw new Error(`Failed to delete: ${args.path}`);
         }
+      case 'move': {
+        const src = args.source as string;
+        const dst = args.dest as string;
+        if (!src || !dst) throw new Error('source and dest are required');
+        const srcPath = path.isAbsolute(src) ? src : path.join(DATA_DIR, src);
+        const dstPath = path.isAbsolute(dst) ? dst : path.join(DATA_DIR, dst);
+        await fs.mkdir(path.dirname(dstPath), { recursive: true });
+        await fs.rename(srcPath, dstPath);
+        return { success: true, source: src, dest: dst };
+      }
+      case 'copy': {
+        const src = args.source as string;
+        const dst = args.dest as string;
+        if (!src || !dst) throw new Error('source and dest are required');
+        const srcPath = path.isAbsolute(src) ? src : path.join(DATA_DIR, src);
+        const dstPath = path.isAbsolute(dst) ? dst : path.join(DATA_DIR, dst);
+        await fs.mkdir(path.dirname(dstPath), { recursive: true });
+        await fs.cp(srcPath, dstPath, { recursive: true, errorOnExist: false });
+        return { success: true, source: src, dest: dst };
+      }
       default:
         throw new Error(`Unknown method: ${method}`);
     }
@@ -637,127 +366,43 @@ class MCPServiceRegistry {
         return appState.updateSettings(args as Record<string, unknown>);
       case 'getApps': {
         const apps = appState.getAllApps();
-        return { apps: apps.map(a => ({ id: a.meta.id, name: a.meta.name, skills: a.skills || [] })) };
+        return { apps: apps.map(a => ({ id: a.meta.id, name: a.meta.name, type: a.meta.type, source: a.meta.source })) };
       }
-      case 'getConversations': {
-        // args: { appId: string }
-        const { conversationService } = await import('../services/conversation.js');
+      case 'getAppSettings': {
         const targetAppId = args.appId as string;
         if (!targetAppId) throw new Error('appId is required');
-        const convs = await conversationService.getConversations(targetAppId);
-        return { conversations: convs.map((c: any) => ({ id: c.id, title: c.title, messageCount: c.messages?.length || 0 })) };
-      }
-      case 'getConversation': {
-        // args: { appId: string, conversationId: string }
-        const { conversationService: convSvc } = await import('../services/conversation.js');
-        const appId = args.appId as string;
-        const convId = args.conversationId as string;
-        if (!appId || !convId) throw new Error('appId and conversationId are required');
-        const conv = await convSvc.getConversation(appId, convId);
-        if (!conv) throw new Error('Conversation not found');
-        return {
-          id: conv.id,
-          title: conv.title,
-          messages: conv.messages?.map((m: any) => ({
-            role: m.role,
-            content: m.content?.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(' '),
-            timestamp: m.timestamp,
-          })) || [],
-        };
-      }
-      case 'generateSkill': {
-        // args: { conversations: [{ appId, conversationId, title, messages }] }
-        const conversations = args.conversations as any[];
-        if (!conversations || !Array.isArray(conversations) || conversations.length === 0) {
-          throw new Error('conversations array is required');
-        }
-        // 调用 POST /settings/skills/generate 的相同逻辑
-        const modes = await appState.getModes();
-        const defaultModelConfig = await appState.getDefaultModel();
-        let providerId = defaultModelConfig.providerId;
-        let modelId = defaultModelConfig.modelId;
-        if (!providerId || !modelId) throw new Error('No default model configured');
-
-        const { randomUUID } = await import('crypto');
-        const { streamSimple } = await import('@earendil-works/pi-ai');
-        const { findModel } = await import('../models/pi-adapter.js');
-        const providerConfig = modes.providers.find((p: any) => p.id === providerId);
-        if (!providerConfig) throw new Error(`Provider "${providerId}" not found.`);
-        const modelObj = findModel(modes.providers, providerId, modelId);
-        if (!modelObj) throw new Error(`Model "${modelId}" not found.`);
-
-        const conversationText = conversations.map((conv: any, i: number) => {
-          const msgs = (conv.messages || []).map((m: any) =>
-            `[${m.role}] ${m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(' ')}`
-          ).join('\n');
-          return `=== 会话 ${i + 1}: ${conv.title || conv.conversationId} ===\n${msgs}`;
-        }).join('\n\n');
-
-        const systemPrompt = `你是一个技能制作助手。...`;
-        const userMessage = `请根据以下对话记录制作一个技能：\n\n${conversationText}`;
-
-        const aiContext: any[] = [
-          { role: 'system', content: [{ type: 'text', text: systemPrompt + `\n\n输出格式：\n---skill-name\n技能名称\n---skill-description\n技能描述\n---skill-prompt\n技能提示词内容` }] },
-          { role: 'user', content: [{ type: 'text', text: userMessage }] },
-        ];
-
-        const streamOptions: any = {};
-        if (providerConfig.baseUrl) streamOptions.baseUrl = providerConfig.baseUrl;
-        const headers: Record<string, string> = {};
-        if (providerConfig.apiKey) {
-          if (providerConfig.apiType === 'anthropic') headers['x-api-key'] = providerConfig.apiKey;
-          else headers['authorization'] = `Bearer ${providerConfig.apiKey}`;
-        }
-        streamOptions.headers = headers;
-
-        let fullText = '';
-        const stream = streamSimple(modelObj, aiContext as any, streamOptions);
-        for await (const chunk of stream as any) {
-          if (chunk.type === 'text_delta' && chunk.text) fullText += chunk.text;
-        }
-
-        const nameMatch = fullText.match(/---skill-name\s*\n([\s\S]*?)(?:\n---|$)/);
-        const descMatch = fullText.match(/---skill-description\s*\n([\s\S]*?)(?:\n---|$)/);
-        const promptMatch = fullText.match(/---skill-prompt\s*\n([\s\S]*)$/);
-
-        const skillName = nameMatch ? nameMatch[1].trim() : '未命名技能';
-        const skillDesc = descMatch ? descMatch[1].trim() : '';
-        const skillPrompt = promptMatch ? promptMatch[1].trim() : fullText;
-
-        const newSkill = { name: skillName, description: skillDesc, prompt: skillPrompt };
-        const { skillService } = await import('../services/skillService.js');
-        const result = await skillService.saveGeneratedSkill(newSkill);
-        return { skill: newSkill, id: result.id };
-      }
-      case 'addSkillToApp': {
-        // args: { appId: string, skillId: string }
-        const targetAppId = args.appId as string;
-        const skillId = args.skillId as string;
-        if (!targetAppId || !skillId) throw new Error('appId and skillId are required');
         const app = appState.getApp(targetAppId);
         if (!app) throw new Error(`App "${targetAppId}" not found`);
-        const currentSkills = app.skills || [];
-        if (!currentSkills.includes(skillId)) {
-          currentSkills.push(skillId);
-        }
-        // 写回磁盘
-        const path = await import('path');
-        const { writeJsonFile, APPS_DIR } = await import('../utils/file.js');
-        const includePath = path.default.join(APPS_DIR, app.meta.source, targetAppId, 'skills', 'include.json');
-        await writeJsonFile(includePath, { skills: currentSkills });
-        // 刷新内存中该应用的 skills
-        const apps = appState.getAllApps();
-        const target = apps.find((a: any) => a.meta.id === targetAppId);
-        if (target) {
-          try {
-            const { readJsonFile } = await import('../utils/file.js');
-            const includeData = await readJsonFile<{ skills: string[] }>(path.default.join(APPS_DIR, app.meta.source, targetAppId, 'skills', 'include.json'));
-            if (includeData) {
-              target.skills = includeData.skills;
-            }
-          } catch {}
-        }
-        return { success: true, appId: targetAppId, skills: currentSkills };
+        return {
+          id: app.meta.id,
+          name: app.meta.name,
+          description: app.meta.description,
+          icon: app.meta.icon,
+          enabled: app.config.enabled ?? true,
+          models: app.config.models || app.meta.models,
+          tools: [...new Set([...(app.config.tools || []), ...(app.meta.tools || [])])],
+          skills: app.skills || [],
+          visibleApps: app.config.visibleApps || app.meta.visibleApps,
+          visibleServices: app.config.visibleServices || app.meta.visibleServices,
+        };
+      }
+      case 'setAppSettings': {
+        const targetAppId = args.appId as string;
+        if (!targetAppId) throw new Error('appId is required');
+        // 只更新 config 中允许覆盖的字段
+        const updates: Record<string, unknown> = {};
+        if (args.enabled !== undefined) updates.enabled = args.enabled;
+        if (args.tools !== undefined) updates.tools = args.tools;
+        if (args.visibleApps !== undefined) updates.visibleApps = args.visibleApps;
+        if (args.visibleServices !== undefined) updates.visibleServices = args.visibleServices;
+        if (args.models !== undefined) updates.models = args.models;
+        await appState.updateApp(targetAppId, updates);
+        return { success: true, appId: targetAppId };
+      }
+      case 'getSkillsList': {
+        const { skillService } = await import('../services/skillService.js');
+        const allSkills = await skillService.getSkills();
+        return { skills: allSkills.map((s: any) => ({ id: s.id, name: s.name, description: s.description })) };
       }
       default:
         throw new Error(`Unknown method: ${method}`);
@@ -792,14 +437,17 @@ class MCPServiceRegistry {
         if (!command) throw new Error('command is required');
         const { execSync } = await import('child_process');
         const timeout = (args.timeout as number) || 30000;
+        const cwd = args.cwd as string | undefined;
         try {
-          const output = execSync(command, {
+          const execOptions: any = {
             timeout,
             encoding: 'utf-8',
             maxBuffer: 10 * 1024 * 1024,
             windowsHide: true,
-          });
-          return { success: true, output, exitCode: 0 };
+          };
+          if (cwd) execOptions.cwd = cwd;
+          const output = execSync(command, execOptions);
+          return { success: true, output, exitCode: 0, cwd: cwd || undefined };
         } catch (error: any) {
           return {
             success: false,
@@ -1022,123 +670,6 @@ class MCPServiceRegistry {
     }
   }
 
-  private async handleCodeMethod(
-    method: string,
-    args: Record<string, unknown>,
-    context: { appId?: string; convId?: string }
-  ): Promise<unknown> {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const { APPS_DATA_DIR } = await import('../utils/file.js');
-
-    // 路径安全：限制在 apps_data 目录下
-    const baseDir = args.baseDir as string || '';
-    const rawPath = args.path as string || '';
-    const fullDir = path.join(APPS_DATA_DIR, baseDir);
-    const fullPath = path.join(APPS_DATA_DIR, baseDir, rawPath);
-
-    // 安全检查：防止路径穿越
-    if (path.relative(APPS_DATA_DIR, fullPath).startsWith('..') || path.relative(APPS_DATA_DIR, fullDir).startsWith('..')) {
-      throw new Error('Path traversal denied');
-    }
-
-    switch (method) {
-      case 'read': {
-        if (!rawPath) throw new Error('path is required');
-        try {
-          const content = await fs.readFile(fullPath, 'utf-8');
-          const stat = await fs.stat(fullPath);
-          return { content, size: stat.size, path: rawPath };
-        } catch (err: any) {
-          throw new Error(`Failed to read file: ${err.message}`);
-        }
-      }
-
-      case 'write': {
-        if (!rawPath) throw new Error('path is required');
-        const content = args.content as string;
-        if (content === undefined) throw new Error('content is required');
-        try {
-          await fs.mkdir(path.dirname(fullPath), { recursive: true });
-          await fs.writeFile(fullPath, content, 'utf-8');
-          return { success: true, path: rawPath };
-        } catch (err: any) {
-          throw new Error(`Failed to write file: ${err.message}`);
-        }
-      }
-
-      case 'patch': {
-        if (!rawPath) throw new Error('path is required');
-        const oldStr = args.old_string as string;
-        const newStr = args.new_string as string;
-        if (!oldStr) throw new Error('old_string is required');
-        if (newStr === undefined) throw new Error('new_string is required');
-        const replaceAll = !!args.replace_all;
-        try {
-          let content = await fs.readFile(fullPath, 'utf-8');
-          const occurrences = content.split(oldStr).length - 1;
-          if (occurrences === 0) throw new Error(`String not found in file`);
-          if (occurrences > 1 && !replaceAll) throw new Error(`Found ${occurrences} occurrences; use replace_all=true to replace all`);
-          content = replaceAll ? content.replaceAll(oldStr, newStr) : content.replace(oldStr, newStr);
-          await fs.writeFile(fullPath, content, 'utf-8');
-          return { success: true, path: rawPath, replacements: occurrences > 1 ? occurrences : 1 };
-        } catch (err: any) {
-          if (err.message.startsWith('String not found') || err.message.startsWith('Found')) throw err;
-          throw new Error(`Failed to patch file: ${err.message}`);
-        }
-      }
-
-      case 'search': {
-        const pattern = args.pattern as string;
-        if (!pattern) throw new Error('pattern is required');
-        const fileGlob = args.file_glob as string | undefined;
-        const maxResults = (args.max_results as number) || 50;
-        try {
-          // 用 ripgrep 搜索文件内容
-          const { execSync } = await import('child_process');
-          let cmd = `rg -n --no-heading -m 5 '${pattern.replace(/'/g, "'\\''")}'`;
-          if (fileGlob) cmd += ` -g '${fileGlob.replace(/'/g, "'\\''")}'`;
-          cmd += ` '${fullDir.replace(/'/g, "'\\''")}' 2>/dev/null | head -${maxResults}`;
-          const output = execSync(cmd, { encoding: 'utf-8', maxBuffer: 1024 * 1024 });
-          const lines = output.trim().split('\n').filter(Boolean);
-          const results = lines.map(line => {
-            const sepIdx = line.indexOf(':');
-            const lineSep = line.indexOf(':', sepIdx + 1);
-            return {
-              file: line.slice(0, sepIdx),
-              line: parseInt(line.slice(sepIdx + 1, lineSep), 10) || 0,
-              content: line.slice(lineSep + 1),
-            };
-          });
-          return { results, total: results.length, path: baseDir || '.' };
-        } catch {
-          return { results: [], total: 0, path: baseDir || '.' };
-        }
-      }
-
-      case 'list': {
-        const dirPath = rawPath || '.';
-        try {
-          const entries = await fs.readdir(fullPath, { withFileTypes: true });
-          const items = await Promise.all(entries.map(async e => {
-            const stat = e.isFile() ? await fs.stat(path.join(fullPath, e.name)).catch(() => null) : null;
-            return {
-              name: e.name,
-              type: e.isDirectory() ? 'directory' : 'file',
-              size: stat?.size || 0,
-              modified: stat?.mtime?.toISOString() || '',
-            };
-          }));
-          return { items, path: dirPath };
-        } catch (err: any) {
-          throw new Error(`Failed to list directory: ${err.message}`);
-        }
-      }
-
-      default:
-        throw new Error(`Unknown method: ${method}`);
-    }
-  }
 
   private async handleWorkspaceCodeMethod(
     method: string,
@@ -1268,6 +799,26 @@ class MCPServiceRegistry {
         }));
         return { items, path: dirPath, workspaceDir: workspaceDirVal };
       }
+      case 'move': {
+        const src = args.source as string;
+        const dst = args.dest as string;
+        if (!src || !dst) throw new Error('source and dest are required');
+        const srcPath = pathModule.isAbsolute(src) ? src : pathModule.join(workspaceDirVal, src);
+        const dstPath = pathModule.isAbsolute(dst) ? dst : pathModule.join(workspaceDirVal, dst);
+        await fs.mkdir(path.dirname(dstPath), { recursive: true });
+        await fs.rename(srcPath, dstPath);
+        return { success: true, source: src, dest: dst, workspaceDir: workspaceDirVal };
+      }
+      case 'copy': {
+        const src = args.source as string;
+        const dst = args.dest as string;
+        if (!src || !dst) throw new Error('source and dest are required');
+        const srcPath = pathModule.isAbsolute(src) ? src : pathModule.join(workspaceDirVal, src);
+        const dstPath = pathModule.isAbsolute(dst) ? dst : pathModule.join(workspaceDirVal, dst);
+        await fs.mkdir(path.dirname(dstPath), { recursive: true });
+        await fs.cp(srcPath, dstPath, { recursive: true, errorOnExist: false });
+        return { success: true, source: src, dest: dst, workspaceDir: workspaceDirVal };
+      }
       default:
         throw new Error(`Unknown method: ${method}`);
     }
@@ -1357,83 +908,6 @@ class MCPServiceRegistry {
     }
   }
 
-  private async handleWorkspaceFormMethod(
-    method: string,
-    args: Record<string, unknown>,
-    context: { appId?: string; convId?: string }
-  ): Promise<unknown> {
-    // workspace.form 复用 mcp.form 的逻辑，但检查工作目录
-    const { conversationService } = await import('../services/conversation.js');
-    const conv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
-    if (conv && !conv.workspaceDir) {
-      throw new Error('Workspace directory not set. Use workspace.dir.set first.');
-    }
-    return this.handleFormMethod(method, args, context);
-  }
-
-  private async handleWorkspaceDirMethod(
-    method: string,
-    args: Record<string, unknown>,
-    context: { appId?: string; convId?: string }
-  ): Promise<unknown> {
-    const { conversationService } = await import('../services/conversation.js');
-    const fs = await import('fs');
-    const path = await import('path');
-
-    switch (method) {
-      case 'get': {
-        if (!context.appId || !context.convId) return { workspaceDir: null };
-        const conv = await conversationService.getConversation(context.appId, context.convId);
-        return { workspaceDir: conv?.workspaceDir || null };
-      }
-      case 'set': {
-        if (!context.appId || !context.convId) throw new Error('Conversation context required');
-        const dir = args.path as string;
-        if (!dir) throw new Error('path is required');
-        // 解析为绝对路径
-        const absDir = path.resolve(dir);
-        // 验证目录存在
-        if (!fs.existsSync(absDir)) throw new Error(`Directory does not exist: ${absDir}`);
-        if (!fs.statSync(absDir).isDirectory()) throw new Error(`Not a directory: ${absDir}`);
-        await conversationService.updateConversation(context.appId, context.convId, { workspaceDir: absDir } as any);
-        return { success: true, workspaceDir: absDir };
-      }
-      case 'requestAccess': {
-        // 弹出目录选择表单（通过 mcp.form 机制）
-        const toolCallId = args._toolCallId as string || 'direct';
-        const formResult = await this.handleFormMethod('requestInput', {
-          title: '工作目录选择',
-          description: '请选择一个会话工作目录。该目录下的所有文件操作将不再受限。',
-          fields: [
-            {
-              id: 'path',
-              label: '目录路径',
-              type: 'text',
-              placeholder: '例如: /mnt/c/apps/my-project',
-              required: true,
-              description: '工作目录的绝对路径',
-            },
-          ],
-          schema: {
-            type: 'object',
-            properties: {
-              path: { type: 'string', description: '工作目录的绝对路径' },
-            },
-            required: ['path'],
-          },
-        } as any, { ...context as any, _toolCallId: toolCallId });
-        return { _skip: true };
-      }
-      default:
-        throw new Error(`Unknown method: ${method}`);
-    }
-  }
-
-  private resolvePath(targetPath: string, baseDir: string): string | null {
-    if (!targetPath || !targetPath.trim()) return null;
-    return path.isAbsolute(targetPath) ? targetPath : path.join(baseDir, targetPath);
-  }
-
   /**
    * 请求设置工作目录（中断式：用户取消后不执行）
    * 首次使用 workspace 工具时调用
@@ -1508,6 +982,11 @@ class MCPServiceRegistry {
       },
     };
     return this.handleFormMethod('requestInput', args as any, { ...context, _toolCallId: toolCallId } as any);
+  }
+
+  private resolvePath(targetPath: string, baseDir: string): string | null {
+    if (!targetPath || !targetPath.trim()) return null;
+    return path.isAbsolute(targetPath) ? targetPath : path.join(baseDir, targetPath);
   }
 
   private async handleMemoryMethod(
@@ -1601,6 +1080,64 @@ class MCPServiceRegistry {
     }
   }
 
+  private async handleWorkspaceShellMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    switch (method) {
+      case 'exec': {
+        const command = args.command as string;
+        if (!command) throw new Error('command is required');
+        const timeout = (args.timeout as number) || 30000;
+        const customCwd = args.cwd as string | undefined;
+
+        // 从会话获取工作目录（优先使用用户传入的 cwd）
+        let cwd: string | undefined = customCwd;
+        if (!cwd && context.appId && context.convId) {
+          const { conversationService } = await import('../services/conversation.js');
+          const conv = await conversationService.getConversation(context.appId, context.convId);
+          cwd = conv?.workspaceDir || undefined;
+        }
+
+        // 每次执行需要用户授权（通过表单确认）
+        const toolCallId = (context as any)._toolCallId || 'direct';
+        await this.handleFormMethod('requestInput', {
+          title: '执行命令确认',
+          description: `Agent 请求在工作目录执行命令，是否允许？`,
+          fields: [
+            {
+              name: 'command',
+              label: '即将执行的命令',
+              type: 'text',
+              placeholder: command,
+              required: true,
+              description: `${cwd ? '工作目录: ' + cwd : '工作目录未设置'}`,
+            },
+            {
+              name: 'confirm',
+              label: '允许执行',
+              type: 'checkbox',
+              required: true,
+              options: ['我确认执行此命令'],
+            },
+          ],
+          schema: {
+            type: 'object',
+            properties: {
+              command: { type: 'string' },
+              confirm: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['command', 'confirm'],
+          },
+        } as any, { ...context, _toolCallId: toolCallId } as any);
+        return { _skip: true };
+      }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
   private async handleSkillMethod(
     method: string,
     args: Record<string, unknown>,
@@ -1610,76 +1147,159 @@ class MCPServiceRegistry {
 
     switch (method) {
       case 'list': {
-        // 只返回当前应用被授权的技能（含文件列表）
         const { appState } = await import('../services/appState.js');
         const app = context.appId ? appState.getApp(context.appId) : null;
         const appSkillIds = app?.skills || [];
-        const skills = await skillService.getEnabledSkillsForApp(appSkillIds);
-        // 获取完整信息（含文件列表）
         const allSkills = await skillService.getSkills();
-        const filtered = allSkills.filter(s => appSkillIds.includes(s.id));
-        return { skills: filtered };
+        const allowedSkills = allSkills.filter((s: any) => appSkillIds.includes(s.id));
+        const skillsWithFiles = await Promise.all(allowedSkills.map(async (s: any) => {
+          const files = await skillService.listSkillFiles(s.id).catch(() => []);
+          const scripts = await skillService.listSkillScripts(s.id).catch(() => []);
+          return { ...s, files, scripts };
+        }));
+        return { skills: skillsWithFiles };
       }
       case 'read': {
-        // 读取技能中的任意文件
         const skillId = args.skillId as string;
-        const rawPath = args.path as string;
-        if (!skillId || !rawPath) throw new Error('skillId and path are required');
-        const content = await skillService.readSkillFile(skillId, rawPath);
-        if (content === null) throw new Error(`File "${rawPath}" not found in skill "${skillId}"`);
-        return { skillId, path: rawPath, content };
-      }
-      case 'readEntry': {
-        // 读取技能入口文档（roadmap.md）
-        const skillId = args.skillId as string;
-        if (!skillId) throw new Error('skillId is required');
-        const content = await skillService.getSkillEntry(skillId);
-        if (content === null) throw new Error(`Skill "${skillId}" not found or has no entry document`);
-        return { skillId, content };
-      }
-      case 'listFiles': {
-        // 列出技能目录下的所有文件
-        const skillId = args.skillId as string;
-        if (!skillId) throw new Error('skillId is required');
-        const files = await skillService.listSkillFiles(skillId);
-        return { skillId, files };
-      }
-      case 'listScripts': {
-        // 列出技能可用的脚本
-        const skillId = args.skillId as string;
-        if (!skillId) throw new Error('skillId is required');
-        const scripts = await skillService.listSkillScripts(skillId);
-        return { skillId, scripts };
+        const filePath = args.path as string;
+        if (!skillId || !filePath) throw new Error('skillId and path are required');
+        const content = await skillService.readSkillFile(skillId, filePath);
+        return { skillId, path: filePath, content };
       }
       case 'exec': {
         const skillId = args.skillId as string;
         const scriptName = args.script as string;
         const scriptArgs = (args.args as string[]) || [];
         if (!skillId || !scriptName) throw new Error('skillId and script are required');
-
-        // 安全检查：只允许纯文件名（不能包含路径分隔符）
         if (scriptName.includes('/') || scriptName.includes('\\') || scriptName.includes('..')) {
           throw new Error('Path traversal denied: script must be a filename within scripts/ directory');
         }
-
-        const path_mod = await import('path');
-
-        // 确定工作目录
-        let cwd: string | undefined;
-        if (context.convId) {
+        const customCwd = args.cwd as string | undefined;
+        let cwd: string | undefined = customCwd;
+        if (!cwd && context.convId) {
           const { conversationService } = await import('../services/conversation.js');
           const conv = await conversationService.getConversation(context.appId || '', context.convId);
           if (conv?.workspaceDir) {
             cwd = conv.workspaceDir;
           } else if (context.appId) {
-            // 没有 workspaceDir，用 APPS_DATA_DIR/appId 作为工作目录（不自动创建新目录）
             const { APPS_DATA_DIR } = await import('../utils/file.js');
+            const path_mod = await import('path');
             cwd = path_mod.join(APPS_DATA_DIR, context.appId || '');
           }
         }
-
         const output = await skillService.execSkillScript(skillId, scriptName, scriptArgs, cwd);
         return { skillId, script: scriptName, output, cwd };
+      }
+      default:
+        throw new Error(`Unknown method: ${method}`);
+    }
+  }
+
+  private async handleAppMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    const { appState } = await import('../services/appState.js');
+    const { conversationService } = await import('../services/conversation.js');
+
+    switch (method) {
+      case 'list': {
+        const visibleApps = [...new Set([
+          ...(context.appId ? (appState.getApp(context.appId)?.config.visibleApps || []) : []),
+          ...(context.appId ? (appState.getApp(context.appId)?.meta.visibleApps || []) : []),
+        ])];
+        const apps = appState.getAllApps().filter(a => a.meta.id === context.appId || visibleApps.includes(a.meta.id));
+        return {
+          apps: apps.map(a => ({
+            id: a.meta.id,
+            name: a.meta.name,
+            description: a.meta.description,
+            type: a.meta.type,
+            icon: a.meta.icon,
+            supportedInputs: a.meta.supportedInputs,
+          })),
+        };
+      }
+      case 'call': {
+        const targetId = args.appId as string;
+        const message = args.message as string;
+        const callerConvId = args.conversationId as string || context.convId;
+        if (!targetId || !message) throw new Error('appId and message are required');
+
+        const targetApp = appState.getApp(targetId);
+        if (!targetApp) throw new Error(`App ${targetId} not found`);
+        if (targetApp.meta.type !== 'desktop' && targetApp.meta.type !== 'background') {
+          throw new Error(`App ${targetId} is not callable`);
+        }
+
+        const callId = uuidv4();
+        const targetConvId = uuidv4();
+        const callChain = context.appId ? [{ callerAppId: context.appId, callerConvId, callId, timestamp: new Date().toISOString() }] : undefined;
+
+        // 继承调用者的工作目录
+        let workspaceDir: string | undefined;
+        if (context.appId && callerConvId) {
+          const callerConv = await conversationService.getConversation(context.appId, callerConvId);
+          workspaceDir = callerConv?.workspaceDir || undefined;
+        }
+
+        const newConv = await conversationService.createConversation(
+          targetId, `来自 ${context.appId || '未知'} 的调用`, 'agent', callChain
+        );
+        if (workspaceDir) {
+          await conversationService.updateConversation(targetId, newConv.id, { workspaceDir } as any);
+        }
+
+        eventBus.emit({ type: 'agent_call_start', appId: targetId, convId: targetConvId, data: {
+          callerAppId: context.appId,
+          callerConvId,
+          callId,
+          message,
+          timestamp: new Date().toISOString(),
+        }});
+
+        const savedUserMsg = await conversationService.addMessage(
+          targetId, newConv.id, 'user', [{ type: 'text', text: message }]
+        );
+        if (!savedUserMsg) throw new Error('Failed to save message');
+
+        const { runAgentAsync } = await import('../agents/pi-agent-session.js');
+        const callResult = await new Promise<string>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            unsubAgentEnd();
+            unsubAgentError();
+            reject(new Error('App call timed out'));
+          }, 120000);
+
+          const unsubAgentEnd = eventBus.subscribe(newConv.id, (event) => {
+            if (event.type === 'agent_call_end_auto' && event.data.callId === callId) {
+              clearTimeout(timeout);
+              unsubAgentEnd();
+              unsubAgentError();
+              resolve(event.data.result as string || '(no output)');
+            }
+          });
+
+          const unsubAgentError = eventBus.subscribe(newConv.id, (event) => {
+            if (event.type === 'error') {
+              clearTimeout(timeout);
+              unsubAgentEnd();
+              unsubAgentError();
+              reject(new Error((event.data.message as string) || 'App error'));
+            }
+          });
+
+          runAgentAsync(targetId, newConv.id, targetApp, [], [{ type: 'text', text: message } as any])
+            .catch(err => {
+              clearTimeout(timeout);
+              unsubAgentEnd();
+              unsubAgentError();
+              reject(err);
+            });
+        });
+
+        return { success: true, result: callResult, conversationId: newConv.id };
       }
       default:
         throw new Error(`Unknown method: ${method}`);
