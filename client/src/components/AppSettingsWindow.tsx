@@ -26,7 +26,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   const [app, setApp] = useState<App | null>(null);
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
-  const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
+  const [availableTools, setAvailableTools] = useState<any[]>([]);
   // 技能列表
   const [allSkills, setAllSkills] = useState<Array<{ id: string; name: string; description: string }>>([]);
   // 已连接的外部 MCP 服务器信息，用于在工具列表中显示 "mcp.external"
@@ -63,6 +63,10 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
     headerParams: [] as { key: string; value: string; enabled: boolean }[],
     bodyParams: [] as { key: string; value: string; enabled: boolean }[],
   });
+
+  // 内置工具的展开状态：按服务名展开方法列表，再按方法名展开参数 schema
+  const [expandedServices, setExpandedServices] = useState<Record<string, boolean>>({});
+  const [expandedMethods, setExpandedMethods] = useState<Record<string, boolean>>({});
 
   const windowState = state.windows.find(w =>
     w.appId === 'app-settings:' + appId
@@ -319,60 +323,202 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
     const builtinServices = allServices.filter((s: any) => s.category === 'builtin');
     const workspaceServices = allServices.filter((s: any) => s.category === 'workspace');
     const fallbackServices = allServices.length === 0 ? [
-      { name: 'mcp.filesystem', description: '文件系统服务', category: 'admin' },
-      { name: 'mcp.window', description: '窗口管理服务', category: 'admin' },
-      { name: 'mcp.settings', description: '设置服务', category: 'admin' },
-      { name: 'mcp.agent', description: 'Agent 管理服务', category: 'builtin' },
-      { name: 'mcp.sleep', description: '等待一段时间（最多600秒）', category: 'builtin' },
-      { name: 'mcp.exec', description: '执行 shell 命令', category: 'builtin' },
-      { name: 'mcp.http', description: '发送 HTTP 请求', category: 'builtin' },
-      { name: 'mcp.browser', description: '浏览器控制', category: 'builtin' },
-      { name: 'mcp.form', description: '表单交互', category: 'builtin' },
+      { name: 'mcp.filesystem', description: '系统维护 - 文件系统', category: 'admin' },
+      { name: 'mcp.settings', description: '系统维护 - 设置', category: 'admin' },
+      { name: 'mcp.sleep', description: '通用 - 等待', category: 'builtin' },
+      { name: 'mcp.exec', description: '通用 - 执行命令', category: 'builtin' },
+      { name: 'mcp.http', description: '通用 - HTTP 请求', category: 'builtin' },
+      { name: 'mcp.browser', description: '通用 - 浏览器控制', category: 'builtin' },
+      { name: 'mcp.form', description: '通用 - 表单交互', category: 'builtin' },
+      { name: 'mcp.memory', description: '通用 - 记忆', category: 'builtin' },
     ] : [];
 
     const adminList = adminServices.length > 0 ? adminServices : fallbackServices.filter(s => s.category === 'admin');
     const builtinList = builtinServices.length > 0 ? builtinServices : fallbackServices.filter(s => s.category === 'builtin');
     const workspaceList = workspaceServices.length > 0 ? workspaceServices : [];
 
-    // checkbox + 名称 + 说明同一行
+    // 内置服务：checkbox + 展开列表，再点展开方法参数 def
     const renderServiceItem = (s: any) => {
+      const methods = s.methods || [];
+      const isExpanded = expandedServices[s.name] ?? false;
+
       return (
-        <div key={s.name} className="app-settings-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
-          <input
-            type="checkbox"
-            checked={formData.tools.includes(s.name)}
-            onChange={() => canModifyAll && toggleTool(s.name)}
-            disabled={!canModifyAll}
-          />
-          <label style={{ cursor: 'pointer', fontWeight: 500, fontSize: 12, userSelect: 'none' }}
-            onClick={() => canModifyAll && toggleTool(s.name)}>
-            {s.name}
-          </label>
-          <span style={{ flex: 1, textAlign: 'right', color: 'var(--text-secondary)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', userSelect: 'text', cursor: 'default' }}>
-            {s.description || ''}
-          </span>
+        <div key={s.name} style={{ marginBottom: 8, border: '1px solid var(--border-primary)', borderRadius: 6, overflow: 'hidden' }}>
+          {/* 服务名行 */}
+          <div
+            onClick={() => setExpandedServices(prev => ({ ...prev, [s.name]: !isExpanded }))}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+              cursor: 'pointer', userSelect: 'none', fontSize: 13,
+              background: 'var(--bg-secondary)',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={formData.tools.includes(s.name)}
+              onChange={(e) => { e.stopPropagation(); canModifyAll && toggleTool(s.name); }}
+              disabled={!canModifyAll}
+              style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
+              // 动态工具不显示 checkbox
+              {...(s.category === 'dynamic' ? { type: 'hidden' as any, style: { display: 'none' } } : {})}
+            />
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 14, textAlign: 'center' }}>
+              {isExpanded ? '▼' : '▶'}
+            </span>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{s.name}</span>
+            <span style={{ flex: 1, textAlign: 'right', color: 'var(--text-secondary)', fontSize: 12 }}>
+              {s.description || ''}
+            </span>
+          </div>
+
+          {/* 方法列表 */}
+          {isExpanded && (
+            <div style={{ padding: '6px 12px 8px 42px', background: 'var(--bg-primary)' }}>
+              {methods.length === 0 && (
+                <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>无方法</span>
+              )}
+              {methods.map((method: string) => {
+                const methodKey = `${s.name}:${method}`;
+                const isMethodExpanded = expandedMethods[methodKey] ?? false;
+                return (
+                  <div key={method} style={{ marginBottom: 4 }}>
+                    <div
+                      onClick={() => setExpandedMethods(prev => ({ ...prev, [methodKey]: !isMethodExpanded }))}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px',
+                        cursor: 'pointer', userSelect: 'none', borderRadius: 4, fontSize: 13,
+                      }}
+                    >
+                      <span style={{ fontSize: 10, color: 'var(--text-tertiary)', width: 12, textAlign: 'center' }}>
+                        {isMethodExpanded ? '▼' : '▶'}
+                      </span>
+                      <code style={{ fontSize: 13, color: 'var(--accent-color)' }}>{method}</code>
+                    </div>
+                    {/* 方法参数 schema（第二级展开） */}
+                    {isMethodExpanded && (
+                      <div style={{
+                        padding: '10px 12px', margin: '4px 0 4px 16px',
+                        background: 'var(--bg-tertiary)', borderRadius: 4,
+                        fontSize: 13, color: 'var(--text-secondary)',
+                        fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.6,
+                        maxHeight: 220, overflowY: 'auto',
+                      }}>
+                        {renderMethodParams(s, method)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       );
     };
 
+    // 渲染方法参数 def（根据服务名和方法名生成对应参数描述）
+    function renderMethodParams(service: any, method: string): string {
+      // 从内置的 schema 映射生成参数说明
+      const paramHints: Record<string, Record<string, string>> = {
+        'mcp.form': {
+          requestInput: 'title: 表单标题 (字符串)\ndescription: 表单描述 (字符串)\nfields: 表单项数组，每项包含 name(字段名), label(标签), type(类型: text/textarea/number/tags/radio/checkbox), required(是否必填), options(选项列表)',
+        },
+        'mcp.filesystem': {
+          read: 'path: 文件路径 (相对 apps_data 目录)\noffset: 起始行号 (数字，1-indexed)\nlimit: 最大读取行数 (数字)\nbaseDir: 基础目录 (字符串)',
+          write: 'path: 文件路径\ncontent: 写入内容 (字符串)\nbaseDir: 基础目录 (字符串)',
+          patch: 'path: 文件路径\nold_string: 要替换的旧文本\nnew_string: 替换的新文本\nreplace_all: 是否替换所有 (布尔)\nbaseDir: 基础目录 (字符串)',
+          search: 'pattern: 正则表达式 (字符串)\nfile_glob: 文件过滤 glob (字符串)\nmax_results: 最大结果数 (数字)\nbaseDir: 基础目录 (字符串，必填)',
+          list: 'path: 目录路径 (字符串)\nbaseDir: 基础目录 (字符串)',
+          mkdir: 'path: 目录路径 (字符串)',
+          delete: 'path: 文件/目录路径 (字符串)',
+          move: 'source: 源文件路径 (字符串)\ndest: 目标文件路径 (字符串)',
+          copy: 'source: 源文件路径 (字符串)\ndest: 目标文件路径 (字符串)',
+        },
+        'mcp.settings': {
+          get: '无参数 — 返回系统设置',
+          update: '…settings: 要更新的设置字段',
+          getApps: '无参数 — 返回所有应用列表',
+          getAppSettings: 'appId: 应用 ID (字符串，必填)',
+          setAppSettings: 'appId: 应用 ID (字符串，必填)\nenabled: 启用状态 (布尔)\ntools: 工具列表 (数组)\nvisibleApps: 可见应用列表 (数组)\nvisibleServices: 可见服务列表 (数组)\nmodels: 模型配置 (数组)',
+          getSkillsList: '无参数 — 返回所有可用技能列表',
+        },
+        'mcp.memory': {
+          remember: 'scope: "app"|"conversation"\nkey: 记忆键名 (字符串)\nvalue: 记忆值 (字符串)\nimportance: "low"|"normal"|"high"\ntags: 标签数组',
+          recall: 'key: 键名 (字符串)\nkeyPrefix: 键名前缀 (字符串)\ntype: 记忆类型\nsearch: 搜索文本\nlimit: 最大条数',
+          recallByPrefix: 'keyPrefix: 键名前缀 (字符串)',
+          forget: 'id: 记忆条目 ID\n 或 tag: 标签值',
+          setGoal: 'level: 1|2|3\nvalue: 目标描述 (字符串)',
+          completeGoal: 'level: 1|2|3',
+          getActiveGoals: '无参数',
+          getArchivedGoals: '无参数',
+          list: '无参数',
+          listTags: '无参数',
+          stats: '无参数',
+        },
+        'mcp.browser': {
+          navigate: 'url: 页面 URL (字符串，必填)',
+          snapshot: 'full: 是否完整快照 (布尔)',
+          click: 'ref: 元素引用 ID (字符串)',
+          type: 'ref: 元素引用 ID (字符串)\ntext: 要输入的文字 (字符串)',
+          scroll: 'direction: "up"|"down" (字符串)',
+          back: '无参数 — 返回上一页',
+          vision: 'question: 视觉问题 (字符串)\nannotate: 是否标注元素 (布尔)',
+          console: 'clear: 是否清空 (布尔)\nexpression: JS 表达式 (字符串)',
+          press: 'key: 按键名 (字符串)',
+        },
+        'mcp.exec': {
+          exec: 'command: shell 命令 (字符串，必填)\ntimeout: 超时毫秒数 (数字，默认 30000)\ncwd: 工作目录 (字符串)',
+        },
+        'mcp.sleep': {
+          sleep: 'seconds: 等待秒数 (数字，最长 600)',
+        },
+        'mcp.http': {
+          request: 'url: 请求 URL (字符串，必填)\nmethod: HTTP 方法 (字符串)\nheaders: 请求头 (对象)\nbody: 请求体 (字符串)\ntimeout: 超时毫秒数 (数字)',
+        },
+        'workspace.code': {
+          read: 'path: 文件路径 (相对工作目录或绝对路径)\noffset: 起始行号 (数字)\nlimit: 最大读取行数 (数字)',
+          write: 'path: 文件路径\ncontent: 写入内容 (字符串)',
+          patch: 'path: 文件路径\nold_string: 要替换的旧文本\nnew_string: 替换的新文本\nreplace_all: 是否替换所有 (布尔)',
+          search: 'pattern: 正则表达式 (字符串，必填)\nfile_glob: 文件过滤 glob\nmax_results: 最大结果数 (数字)\nbaseDir: 基础目录 (字符串，必填)',
+          list: 'path: 目录路径 (字符串)\nbaseDir: 基础目录 (字符串)',
+          move: 'source: 源文件路径 (字符串)\ndest: 目标文件路径 (字符串)',
+          copy: 'source: 源文件路径 (字符串)\ndest: 目标文件路径 (字符串)',
+        },
+        'workspace.shell': {
+          exec: 'command: shell 命令 (字符串，必填)\ntimeout: 超时毫秒数 (数字，默认 30000)\ncwd: 工作目录 (字符串，默认使用会话工作目录)\n每次执行需要用户授权',
+        },
+      };
+      return paramHints[service.name]?.[method] || '(无详细参数定义)';
+    }
+
+    // 内置动态工具：分组展示，和服务一样
+    const dynamicSkillService = { name: 'mcp.skill', description: '技能服务 — 列出可用的技能、读取技能文件、执行技能脚本', category: 'dynamic', methods: ['list', 'read', 'exec'], condition: '应用配置有技能时自动注入' };
+    const dynamicAppService = { name: 'mcp.app', description: '应用访问 — 列出可调用的应用、调用应用完成任务', category: 'dynamic', methods: ['list', 'call'], condition: '应用配置有可见应用时自动注入' };
+
     return (
       <div className="app-settings-section">
-        <h4>内置管理工具</h4>
-        <p className="app-settings-hint">系统管理和维护工具，用于控制桌面环境。</p>
+        <h4>系统维护工具</h4>
+        <p className="app-settings-hint">文件系统和系统设置管理。需要勾选才能使用。</p>
         <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
           {adminList.map(renderServiceItem)}
         </div>
 
-        <h4>内置通用工具</h4>
-        <p className="app-settings-hint">通用的辅助工具，可供所有应用调用。</p>
+        <h4>系统通用工具</h4>
+        <p className="app-settings-hint">表单、记忆、浏览器、命令行、等待、HTTP 等通用辅助工具。需要勾选才能使用。</p>
         <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
           {builtinList.map(renderServiceItem)}
         </div>
 
-        <h4>工作工具</h4>
-        <p className="app-settings-hint">需要授权的工作区工具，首次使用时会弹出确认。</p>
-        <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
+        <h4>工作区工具</h4>
+        <p className="app-settings-hint">在工作目录下操作文件和执行命令，需要先设置工作目录，操作受权限控制。</p>
+        <div className="app-settings-checklist">
           {workspaceList.map(renderServiceItem)}
+        </div>
+
+        <h4>内置动态工具</h4>
+        <p className="app-settings-hint">当满足对应条件时系统会自动注入到 AI 的工具上下文。</p>
+        <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
+          {renderServiceItem({ ...dynamicSkillService, description: '技能服务 — 列出可用的技能、读取技能文件、执行技能脚本。应用配置有技能时自动生效' })}
+          {renderServiceItem({ ...dynamicAppService, description: '应用访问 — 列出可调用的应用、调用应用完成任务。应用配置有可见应用时自动生效' })}
         </div>
 
         {(mcpExternals || []).filter(c => c.isConnected).length > 0 && (
