@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useDesktop } from '../contexts/DesktopContext';
-import { Window, ChatApp, SettingsApp } from './Window';
+import { Window } from './Window';
+import { ChatApp } from './ChatApp';
+import { SettingsApp } from './SettingsApp';
 import { AppManagerWindow } from './AppManagerWindow';
 import { SettingsMainWindow } from './SettingsMainWindow';
 import { AppDetailWindow } from './AppDetailWindow';
