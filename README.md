@@ -2,7 +2,8 @@
 
 智能桌面操作系统 —— 一个基于 AI Agent 的桌面环境，支持多应用并行运行、Agent 间互相调用、MCP 工具扩展和技能系统。
 
-> **📖 开发维护指南**: `docs/开发维护指南.md` — 架构说明、业务流程、常见开发任务。
+> **📖 开发文档**: [`docs/README.md`](docs/README.md) — 完整文档索引（架构、API、数据模型、MCP、组件）
+> **开发指南**: [`docs/dev/DEV_GUIDE.md`](docs/dev/DEV_GUIDE.md) — 项目结构、数据架构、Agent/MCP/工具系统
 
 ---
 
