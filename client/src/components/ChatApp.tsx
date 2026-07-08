@@ -1197,17 +1197,3 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
     </div>
   );
 }
-
-// 设置应用属性接口
-interface SettingsAppProps {
-  appId?: string;
-}
-
-// 设置标签页类型
-type SettingsTab = 'desktop' | 'model' | 'app' | 'mcp' | 'skill';
-
-/**
- * 设置应用组件 - 提供系统设置界面
- * 支持桌面、模型、应用、MCP、技能等配置
- */
-export function SettingsApp(_props: SettingsAppProps) {

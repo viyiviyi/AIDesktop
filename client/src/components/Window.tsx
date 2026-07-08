@@ -249,16 +249,3 @@ export function Window({ windowState, children }: WindowProps) {
     </div>
   );
 }
-
-// 应用内容组件 - 聊天应用
-interface ChatAppProps {
-  appId: string;
-  windowId: string;
-  conversationId?: string;
-}
-
-/**
- * 聊天应用组件 - 完整的会话管理
- * 支持：多会话切换、新建、删除、重命名、消息发送与接收
- */
-export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
