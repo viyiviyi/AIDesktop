@@ -1,17 +1,14 @@
 import { useState, useEffect } from 'react';
-
-interface MemoryEntry {
-  id: string;
-  type: string;
-  key: string;
-  value: string;
-  content?: string;
-  tags?: string[];
-  source?: string;
-  importance?: 'low' | 'normal' | 'high';
-  createdAt: string;
-  updatedAt: string;
-}
+import {
+  listMemories,
+  rememberMemory,
+  forgetMemory,
+  getActiveGoals,
+  getArchivedGoals,
+  setGoal,
+  completeGoal,
+  type MemoryEntry,
+} from '../services/api';
 
 interface MemoryPanelProps {
   appId: string;
@@ -41,32 +38,18 @@ export function MemoryPanel({ appId, convId, scope, showGoals, onClose: _onClose
     loadData();
   }, [appId, convId, scope]);
 
-  const apiBase = `/api/apps/${appId}/memory${scope === 'conversation' && convId ? `?convId=${convId}` : ''}`;
-
   async function loadData() {
     setIsLoading(true);
     try {
-      const entriesData = await fetch(apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: 'list', args: { scope } }),
-      }).then(r => r.json());
+      const entriesData = await listMemories(appId, scope, convId || undefined);
       setEntries(Array.isArray(entriesData) ? entriesData : []);
 
       if (showGoals && convId) {
         const [activeGoals, archived] = await Promise.all([
-          fetch(`${apiBase}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method: 'getActiveGoals', args: { scope } }),
-          }).then(r => r.json()),
-          fetch(`${apiBase}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method: 'getArchivedGoals', args: { scope } }),
-          }).then(r => r.json()),
+          getActiveGoals(appId, convId),
+          getArchivedGoals(appId, convId),
         ]);
-        setGoals(activeGoals);
+        setGoals(activeGoals || {});
         setArchivedGoals(Array.isArray(archived) ? archived : []);
       }
     } catch (e) {
@@ -79,22 +62,14 @@ export function MemoryPanel({ appId, convId, scope, showGoals, onClose: _onClose
   async function handleAddMemory() {
     if (!newKey.trim() || !newValue.trim()) return;
     try {
-      await fetch(apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          method: 'remember',
-          args: {
-            scope,
-            type: 'fact',
-            key: newKey.trim(),
-            value: newValue.trim(),
-            content: newContent.trim() || undefined,
-            importance: newImportance,
-            source: 'user',
-          },
-        }),
-      });
+      await rememberMemory(appId, scope, {
+        type: 'fact',
+        key: newKey.trim(),
+        value: newValue.trim(),
+        content: newContent.trim() || undefined,
+        importance: newImportance,
+        source: 'user',
+      }, convId || undefined);
       setNewKey('');
       setNewValue('');
       setNewContent('');
@@ -108,11 +83,7 @@ export function MemoryPanel({ appId, convId, scope, showGoals, onClose: _onClose
 
   async function handleDeleteMemory(id: string) {
     try {
-      await fetch(apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: 'forget', args: { scope, id } }),
-      });
+      await forgetMemory(appId, scope, id, convId || undefined);
       await loadData();
     } catch (e) {
       console.error('Failed to delete memory:', e);
@@ -122,11 +93,7 @@ export function MemoryPanel({ appId, convId, scope, showGoals, onClose: _onClose
   async function handleSetGoal() {
     if (!newGoalValue.trim() || !convId) return;
     try {
-      await fetch(apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: 'setGoal', args: { scope, level: newGoalLevel, value: newGoalValue.trim(), source: 'user' } }),
-      });
+      await setGoal(appId, convId, newGoalLevel, newGoalValue.trim(), 'user');
       setNewGoalValue('');
       setShowGoalForm(false);
       await loadData();
@@ -138,11 +105,7 @@ export function MemoryPanel({ appId, convId, scope, showGoals, onClose: _onClose
   async function handleCompleteGoal(level: number) {
     if (!convId) return;
     try {
-      await fetch(apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: 'completeGoal', args: { scope, level } }),
-      });
+      await completeGoal(appId, convId, level as 1|2|3);
       await loadData();
     } catch (e) {
       console.error('Failed to complete goal:', e);

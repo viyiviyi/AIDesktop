@@ -591,6 +591,62 @@ export async function submitFormResponse(
   });
 }
 
+// ============ 记忆相关API ============
+
+export interface MemoryEntry {
+  id: string;
+  type: string;
+  key: string;
+  value: string;
+  content?: string;
+  tags?: string[];
+  source?: string;
+  importance?: 'low' | 'normal' | 'high';
+  createdAt: string;
+  updatedAt: string;
+}
+
+type MemoryMethod = 'list' | 'remember' | 'forget' | 'getActiveGoals' | 'getArchivedGoals' | 'setGoal' | 'completeGoal';
+
+async function callMemory(appId: string, method: MemoryMethod, args: Record<string, unknown>, convId?: string): Promise<any> {
+  const params = convId ? `?convId=${convId}` : '';
+  return fetchJson(`/apps/${appId}/memory${params}`, {
+    method: 'POST',
+    body: JSON.stringify({ method, args }),
+  });
+}
+
+export async function listMemories(appId: string, scope: 'app' | 'conversation', convId?: string): Promise<MemoryEntry[]> {
+  return callMemory(appId, 'list', { scope, convId }, convId);
+}
+
+export async function rememberMemory(appId: string, scope: 'app' | 'conversation', data: {
+  type?: string; key: string; value: string; content?: string;
+  tags?: string[]; importance?: 'low' | 'normal' | 'high'; source?: string; ttl?: number;
+}, convId?: string): Promise<MemoryEntry> {
+  return callMemory(appId, 'remember', { scope, ...data }, convId);
+}
+
+export async function forgetMemory(appId: string, scope: 'app' | 'conversation', id: string, convId?: string): Promise<{ success: boolean }> {
+  return callMemory(appId, 'forget', { scope, id }, convId);
+}
+
+export async function getActiveGoals(appId: string, convId: string): Promise<{ level1?: { value: string }; level2?: { value: string }; level3?: { value: string } }> {
+  return callMemory(appId, 'getActiveGoals', { scope: 'conversation' }, convId);
+}
+
+export async function getArchivedGoals(appId: string, convId: string): Promise<any[]> {
+  return callMemory(appId, 'getArchivedGoals', { scope: 'conversation' }, convId);
+}
+
+export async function setGoal(appId: string, convId: string, level: 1 | 2 | 3, value: string, source?: string): Promise<{ success: boolean }> {
+  return callMemory(appId, 'setGoal', { scope: 'conversation', level, value, source: source || 'user' }, convId);
+}
+
+export async function completeGoal(appId: string, convId: string, level: 1 | 2 | 3): Promise<{ success: boolean }> {
+  return callMemory(appId, 'completeGoal', { scope: 'conversation', level }, convId);
+}
+
 // ============ 其他API ============
 
 // 获取 MCP 服务列表
