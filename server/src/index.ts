@@ -17,6 +17,7 @@ import injectionsRouter from './routes/injections.js';
 import memoryRouter from './routes/memory.js';
 import { ensureDir, BASE_DIR, DATA_DIR, APPS_DIR, APPS_DATA_DIR, CONFIGS_DIR } from './utils/file.js';
 import { appLoader } from './services/appLoader.js';
+import { piAgentManager } from './agents/pi-agent-session.js';
 import { setupWebSocket } from './services/wsServer.js';
 
 // __filename / __dirname — 兼容 ESM (tsx) 和 CJS (esbuild bundle)
@@ -60,6 +61,9 @@ async function init() {
 
   // Initialize MCP clients from config
   await mcpClientRegistry.initializeFromConfig();
+
+  // 启动 Agent 空闲会话清理（每分钟检查一次，30分钟超时）
+  piAgentManager.startCleanupTimer(60_000);
 
   console.log('Server initialized');
   console.log(`Base directory: ${BASE_DIR}`);

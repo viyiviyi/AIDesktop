@@ -165,6 +165,12 @@ export class PiAgentSession {
   private textStreamCbs: TextStreamCallback[] = [];
   /** 当前运行的会话 ID，由 runAgentAsync 设置 */
   currentConvId: string = '';
+  /** 创建时间戳 */
+  readonly createdAt: number = Date.now();
+  /** 上次访问时间戳 */
+  lastAccessedAt: number = Date.now();
+  /** 上次活动结束时间戳 */
+  lastActiveEndAt: number = Date.now();
 
   constructor(appId: string) {
     this.appId = appId;
@@ -383,10 +389,13 @@ export class PiAgentSession {
 
 export class PiAgentManager {
   private sessions = new Map<string, PiAgentSession>();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private idleTimeout = 30 * 60 * 1000; // 30 minutes
 
   async getOrCreate(appId: string, app: App): Promise<PiAgentSession> {
     let s = this.sessions.get(appId);
     if (!s) { s = new PiAgentSession(appId); await s.init(app); this.sessions.set(appId, s); }
+    s.lastAccessedAt = Date.now(); this.evictLRU();
     return s;
   }
 
@@ -432,8 +441,56 @@ export class PiAgentManager {
     session.agent.state.systemPrompt = systemPrompt;
   }
   get(appId: string): PiAgentSession | undefined { return this.sessions.get(appId); }
-  destroy(appId: string): void { this.sessions.delete(appId); }
-  destroyAll(): void { this.sessions.clear(); }
+  destroy(appId: string): void {
+    const session = this.sessions.get(appId);
+    if (session && session.agent && session.agent.signal !== undefined) {
+      try { session.agent.abort(); } catch {}
+    }
+    this.sessions.delete(appId);
+    serverLogger.info('agent', `Session destroyed for app ${appId}`);
+  }
+  destroyAll(): void {
+    for (const appId of this.sessions.keys()) this.destroy(appId);
+  }
+
+  /** 启动定时清理循环 */
+  startCleanupTimer(intervalMs: number = 60_000): void {
+    if (this.cleanupTimer) return;
+    this.cleanupTimer = setInterval(() => this.evictIdleSessions(), intervalMs);
+    serverLogger.info('agent', 'Session cleanup timer started (interval=' + intervalMs + 'ms)');
+  }
+
+  /** 停止定时清理循环 */
+  stopCleanupTimer(): void {
+    if (this.cleanupTimer) { clearInterval(this.cleanupTimer); this.cleanupTimer = null; }
+  }
+
+  /** 驱逐所有空闲超时的会话 */
+  evictIdleSessions(): number {
+    const now = Date.now();
+    const toEvict: string[] = [];
+    for (const [appId, session] of this.sessions) {
+      const isRunning = session.agent && session.agent.signal !== undefined;
+      if (isRunning) continue;
+      if (now - session.lastActiveEndAt > this.idleTimeout) toEvict.push(appId);
+    }
+    for (const appId of toEvict) this.destroy(appId);
+    if (toEvict.length > 0) serverLogger.info('agent', 'Evicted ' + toEvict.length + ' idle sessions');
+    return toEvict.length;
+  }
+
+  /** 超出容量时驱逐最近最少使用的会话 */
+  private evictLRU(): number {
+    const maxSessions = 50;
+    if (this.sessions.size <= maxSessions) return 0;
+    const sorted = [...this.sessions.entries()]
+      .filter(([_, s]) => !(s.agent && s.agent.signal !== undefined))
+      .sort(([, a], [, b]) => a.lastAccessedAt - b.lastAccessedAt);
+    const toEvict = this.sessions.size - maxSessions;
+    for (let i = 0; i < Math.min(toEvict, sorted.length); i++) this.destroy(sorted[i][0]);
+    return Math.min(toEvict, sorted.length);
+  }
+
 }
 
 export const piAgentManager = new PiAgentManager();
@@ -684,6 +741,7 @@ export async function runAgentAsync(
           }
         }
         // 发送 done 事件
+        session.lastActiveEndAt = Date.now();
         eventBus.emit({ type: 'done', appId, convId, data: {} });
         return;
       }
@@ -697,6 +755,7 @@ export async function runAgentAsync(
   } catch (error: any) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     serverLogger.error('agent', `Agent error for ${appId}/${convId}: ${msg}`);
+    session.lastActiveEndAt = Date.now();
     eventBus.emit({ type: 'error', appId, convId, data: { message: msg } });
     unsub();
     unsub2();
