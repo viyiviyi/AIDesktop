@@ -13,15 +13,26 @@ import { serverLogger } from '../utils/logger.js';
 interface WsClient {
   ws: WebSocket;
   subscribedConvs: Set<string>;
+  subscribedLogs: boolean;
 }
 
 const clients = new Set<WsClient>();
+
+/** 向所有日志订阅者广播日志条目 */
+export function emitLogEntry(entry: Record<string, unknown>): void {
+  const msg = JSON.stringify({ type: 'log_entry', data: entry });
+  for (const client of clients) {
+    if (client.ws.readyState === WebSocket.OPEN && client.subscribedLogs) {
+      try { client.ws.send(msg); } catch {}
+    }
+  }
+}
 
 export function setupWebSocket(httpServer: Server): void {
   const wss = new WebSocketServer({ server: httpServer, path: '/api/ws' });
 
   wss.on('connection', (ws: WebSocket) => {
-    const client: WsClient = { ws, subscribedConvs: new Set() };
+    const client: WsClient = { ws, subscribedConvs: new Set(), subscribedLogs: false };
     clients.add(client);
 
     serverLogger.info('system', 'WebSocket client connected');

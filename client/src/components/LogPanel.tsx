@@ -42,10 +42,16 @@ export function LogPanel({ onClose }: LogPanelProps) {
   const [connected, setConnected] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // 连接后端日志 SSE
+  // WebSocket URL（与 useAgentEventStream 一致）
+  const WS_URL = import.meta.env.DEV
+    ? `ws://${window.location.hostname}:27135/api/ws`
+    : `ws://${window.location.hostname}:${window.location.port}/api/ws`;
+
+  // 连接后端日志 WebSocket
   useEffect(() => {
-    let eventSource: EventSource | null = null;
+    let ws: WebSocket | null = null;
     let mounted = true;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     async function connect() {
       // 先拉取现有日志
@@ -53,26 +59,33 @@ export function LogPanel({ onClose }: LogPanelProps) {
         const res = await fetch('/api/logs?limit=500');
         const data = await res.json();
         if (mounted && data.logs) {
-          setServerLogs(data.logs.reverse()); // 最新的在前面
+          setServerLogs(data.logs.reverse());
         }
       } catch {}
 
-      // SSE 实时推送
+      // WebSocket 实时推送
       try {
-        eventSource = new EventSource('/api/logs/stream');
-        eventSource.onmessage = (event) => {
+        ws = new WebSocket(WS_URL);
+        ws.onopen = () => {
+          if (mounted) {
+            ws!.send(JSON.stringify({ type: 'subscribe_logs' }));
+            setConnected(true);
+          }
+        };
+        ws.onmessage = (event) => {
+          if (!mounted) return;
           try {
             const msg = JSON.parse(event.data);
-            if (msg.type === 'batch' && mounted) {
-              setServerLogs(msg.logs.reverse());
-              setConnected(true);
-            } else if (msg.type === 'entry' && mounted) {
-              setServerLogs(prev => [msg.entry, ...prev].slice(0, 2000));
+            if (msg.type === 'log_entry' && msg.data) {
+              setServerLogs(prev => [msg.data, ...prev].slice(0, 2000));
             }
           } catch {}
         };
-        eventSource.onopen = () => { if (mounted) setConnected(true); };
-        eventSource.onerror = () => { if (mounted) setConnected(false); };
+        ws.onclose = () => {
+          setConnected(false);
+          if (mounted) reconnectTimer = setTimeout(connect, 3000);
+        };
+        ws.onerror = () => { ws?.close(); };
       } catch {}
     }
 
@@ -80,9 +93,14 @@ export function LogPanel({ onClose }: LogPanelProps) {
 
     return () => {
       mounted = false;
-      eventSource?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'unsubscribe_logs' }));
+        ws.close();
+      }
     };
   }, []);
+
 
   // 订阅前端日志
   useEffect(() => {

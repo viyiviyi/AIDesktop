@@ -1,3 +1,4 @@
+import { emitLogEntry } from '../services/wsServer.js';
 /**
  * 后端日志系统
  * 支持内存缓存、分类、分级，提供 API 接口供前端查询和 SSE 实时推送。
