@@ -79,12 +79,13 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [fullApp, modesData, appsData, servicesRes, mcpConnectionsRes, skillsData] = await Promise.all([
+      const [fullApp, modesData, appsData, servicesRes, mcpConnectionsRes, mcpSettingsRes, skillsData] = await Promise.all([
         api.getApp(appId),
         api.getModes(),
         api.getApps(),
         api.getMcpServices ? api.getMcpServices() : fetch('/api/mcp/services').then(r => r.json()).catch(() => ({ services: [] })),
         api.getMcpConnections().catch(() => []),
+        api.getMcpSettings().catch(() => ({ connections: [] })),
         api.getAllSkills().catch(() => []),
       ]);
 
@@ -521,11 +522,11 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
           {renderServiceItem({ ...dynamicAppService, description: '应用访问 — 列出可调用的应用、调用应用完成任务。应用配置有可见应用时自动生效' })}
         </div>
 
-        {(mcpExternals || []).filter(c => c.isConnected).length > 0 && (
+        {(mcpExternals || []).length > 0 && (
           <>
             <h4>外部 MCP 服务</h4>
-            <p className="app-settings-hint">已连接的 MCP 服务器提供的工具，可单独勾选。</p>
-            {mcpExternals.filter(c => c.isConnected).map(conn => {
+             <p className="app-settings-hint">外部 MCP 服务器提供的工具，可单独勾选。未连接的服务器请先在 MCP 设置中配置。</p>
+            {mcpExternals.map(conn => {
               const connName = conn.serverInfo?.name || conn.connectionId;
               const safeConnName = connName.replace(/[^a-zA-Z0-9_-]/g, '_');
               const tools = conn.tools || [];
@@ -600,7 +601,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
           </>
         )}
 
-        {(mcpExternals || []).filter(c => c.isConnected).length === 0 && builtinServices.length === 0 && (
+        {(mcpExternals || []).length === 0 && builtinServices.length === 0 && (
           <span className="app-settings-empty">暂无可用工具，请先在 MCP 设置中配置</span>
         )}
       </div>

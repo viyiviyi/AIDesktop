@@ -630,7 +630,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                         placeholder="Value"
                         style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 6px', color: 'var(--text-primary)', fontSize: 12 }} />
                       <button onClick={() => setEditConnForm(p => ({ ...p, headers: p.headers.filter((_, j) => j !== i) }))}
-                        style={{ padding: '2px 6px', fontSize: 11, background: 'transparent', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer' }}>×</button>
+                        style={{ padding: '2px 6px', fontSize: 11, background: 'transparent', border: '1px solid var(--error-text)', borderRadius: 4, color: 'var(--error-text)', cursor: 'pointer' }}>×</button>
                     </div>
                   ))}
                   <button onClick={() => setEditConnForm(p => ({ ...p, headers: [...p.headers, { key: '', value: '' }] }))}
@@ -681,7 +681,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                 启用
               </label>
               <button onClick={() => handleConnectServer(conn)}
-                style={{ padding: '3px 10px', fontSize: 11, background: isConnected ? 'var(--danger)' : 'var(--accent-color)', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>
+                style={{ padding: '3px 10px', fontSize: 11, background: isConnected ? 'var(--error-text)' : 'var(--accent-color)', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>
                 {isConnected ? '重连' : '连接'}
               </button>
               <button onClick={() => handleStartEditing(conn)}
@@ -689,11 +689,11 @@ export function SettingsApp(_props: SettingsAppProps) {
                 编辑
               </button>
               <button onClick={() => handleDeleteConnection(conn.id)}
-                style={{ padding: '3px 10px', fontSize: 11, background: 'transparent', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer' }}>
+                style={{ padding: '3px 10px', fontSize: 11, background: 'transparent', border: '1px solid var(--error-text)', borderRadius: 4, color: 'var(--error-text)', cursor: 'pointer' }}>
                 删除
               </button>
               {connMsg && connMsg.id === conn.id && (
-                <span style={{ fontSize: 11, color: connMsg.isError ? 'var(--danger)' : 'var(--success-color)', marginLeft: 4 }}>
+                <span style={{ fontSize: 11, color: connMsg.isError ? 'var(--error-text)' : 'var(--success-color)', marginLeft: 4 }}>
                   {connMsg.text}
                 </span>
               )}
@@ -1943,7 +1943,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                             placeholder="Value"
                             style={{ flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border-primary)', borderRadius: 4, padding: '4px 6px', color: 'var(--text-primary)', fontSize: 12 }} />
                           <button onClick={() => setNewConnForm(p => ({ ...p, headers: p.headers.filter((_, j) => j !== i) }))}
-                            style={{ padding: '2px 6px', fontSize: 11, background: 'transparent', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer' }}>×</button>
+                            style={{ padding: '2px 6px', fontSize: 11, background: 'transparent', border: '1px solid var(--error-text)', borderRadius: 4, color: 'var(--error-text)', cursor: 'pointer' }}>×</button>
                         </div>
                       ))}
                       <button onClick={() => setNewConnForm(p => ({ ...p, headers: [...p.headers, { key: '', value: '' }] }))}
