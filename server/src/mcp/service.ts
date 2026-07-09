@@ -37,7 +37,7 @@ const builtInServices: Record<string, MCPService> = {
     name: 'mcp.form',
     description: '表单交互 - 向用户展示结构化输入表单，收集用户填写的数据后返回',
     methods: ['requestInput'],
-    category: 'builtin',
+    category: 'feature',
   },
   'mcp.memory': {
     name: 'mcp.memory',
@@ -47,7 +47,7 @@ const builtInServices: Record<string, MCPService> = {
       'setGoal', 'completeGoal', 'getActiveGoals', 'getArchivedGoals',
       'list', 'listTags', 'stats',
     ],
-    category: 'builtin',
+    category: 'feature',
   },
   'mcp.browser': {
     name: 'mcp.browser',

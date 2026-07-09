@@ -75,6 +75,8 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   // 判断当前应用是否支持图片输入
   const currentAppInfo = state.installedApps.find(a => a.id === appId);
   const appSupportsImage = currentAppInfo?.supportedInputs?.includes('image') ?? false;
+  const hasMemoryTool = currentAppInfo?.tools?.includes('mcp.memory') ?? false;
+  const hasFormTool = currentAppInfo?.tools?.includes('mcp.form') ?? false;
 
   // 压缩图片到指定最大尺寸
   const compressImage = (dataUrl: string, maxDimension: number): Promise<string> => {
@@ -974,7 +976,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
               <button className="conv-settings-close" onClick={() => setShowConvSettings(false)}>×</button>
             </div>
             <div className="conv-settings-body">
-              <MemoryPanel appId={appId} convId={currentConvId} scope="conversation" showGoals />
+              {hasMemoryTool && <MemoryPanel appId={appId} convId={currentConvId} scope="conversation" showGoals />}
             </div>
           </div>
         </div>

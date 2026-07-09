@@ -330,12 +330,13 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
       { name: 'mcp.exec', description: '通用 - 执行命令', category: 'builtin' },
       { name: 'mcp.http', description: '通用 - HTTP 请求', category: 'builtin' },
       { name: 'mcp.browser', description: '通用 - 浏览器控制', category: 'builtin' },
-      { name: 'mcp.form', description: '通用 - 表单交互', category: 'builtin' },
-      { name: 'mcp.memory', description: '通用 - 记忆', category: 'builtin' },
+      { name: 'mcp.form', description: '功能 - 表单交互', category: 'feature' },
+      { name: 'mcp.memory', description: '功能 - 记忆', category: 'feature' },
     ] : [];
 
     const adminList = adminServices.length > 0 ? adminServices : fallbackServices.filter(s => s.category === 'admin');
     const builtinList = builtinServices.length > 0 ? builtinServices : fallbackServices.filter(s => s.category === 'builtin');
+    const featureList = featureServices.length > 0 ? featureServices : fallbackServices.filter(s => s.category === 'feature');
     const workspaceList = workspaceServices.length > 0 ? workspaceServices : [];
 
     // 内置服务：checkbox + 展开列表，再点展开方法参数 def
@@ -503,8 +504,14 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
           {adminList.map(renderServiceItem)}
         </div>
 
+        <h4>功能工具</h4>
+        <p className="app-settings-hint">记忆和表单功能。启用对应工具后功能生效，并在应用对话界面显示相关内容。</p>
+        <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
+          {featureList.map(renderServiceItem)}
+        </div>
+
         <h4>系统通用工具</h4>
-        <p className="app-settings-hint">表单、记忆、浏览器、命令行、等待、HTTP 等通用辅助工具。需要勾选才能使用。</p>
+        <p className="app-settings-hint">浏览器、命令行、等待、HTTP 等通用辅助工具。需要勾选才能使用。</p>
         <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
           {builtinList.map(renderServiceItem)}
         </div>

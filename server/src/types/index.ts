@@ -230,7 +230,7 @@ export interface MCPService {
   name: string;
   description: string;
   methods: string[];
-  category?: 'admin' | 'builtin' | 'workspace' | 'dynamic';
+  category?: 'admin' | 'feature' | 'builtin' | 'workspace' | 'dynamic';
   /** 需要工作目录的工具，标记哪些字段名是路径参数（相对路径拼接工作目录） */
   workspaceFields?: Record<string, string[]>;
 }
