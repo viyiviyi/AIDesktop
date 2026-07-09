@@ -1190,7 +1190,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                   <div style={{ marginTop: 12 }}>
                     <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }}>选择要启用的模型：</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 150, overflowY: 'auto' }}>
-                      {fetchedModels.map((model) => (
+                      {[...fetchedModels].sort((a, b) => a.name.localeCompare(b.name)).map((model) => (
                         <label
                           key={model.id}
                           style={{
@@ -1376,7 +1376,7 @@ export function SettingsApp(_props: SettingsAppProps) {
             )}
 
             {/* Provider List */}
-            {modes.providers.map((provider) => (
+            {[...modes.providers].sort((a, b) => a.name.localeCompare(b.name)).map((provider) => (
               <div key={provider.id} style={{ marginBottom: 20, padding: 16, background: editingProvider === provider.id ? 'var(--bg-primary)' : 'var(--bg-secondary)', borderRadius: 8, border: editingProvider === provider.id ? '1px solid var(--accent-color)' : '1px solid transparent' }}>
                 {editingProvider === provider.id ? (
                   // Edit Mode
@@ -1496,7 +1496,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                           选择要启用的模型：
                         </label>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 150, overflowY: 'auto' }}>
-                          {editFetchedModels.map((model) => (
+                          {[...editFetchedModels].sort((a, b) => a.name.localeCompare(b.name)).map((model) => (
                             <label
                               key={model.id}
                               style={{
@@ -1779,7 +1779,7 @@ export function SettingsApp(_props: SettingsAppProps) {
                       </label>
                       {provider.models?.length > 0 ? (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {provider.models.map((model) => (
+                          {[...provider.models].sort((a, b) => a.name.localeCompare(b.name)).map((model) => (
                             <span
                               key={model.id}
                               style={{
