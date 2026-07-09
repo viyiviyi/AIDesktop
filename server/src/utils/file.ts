@@ -19,6 +19,7 @@ export const APPS_DIR = path.join(DATA_DIR, 'apps');
 export const USER_APPS_DIR = path.join(APPS_DIR, 'user');
 export const MARKETPLACE_APPS_DIR = path.join(APPS_DIR, 'marketplace');
 export const APPS_DATA_DIR = path.join(DATA_DIR, 'apps_data');
+export const WORKSPACES_DIR = path.join(DATA_DIR, 'workspaces');
 export const PUBLIC_DATA_DIR = path.join(DATA_DIR, 'public_data');
 export const CONFIGS_DIR = path.join(DATA_DIR, 'configs');
 

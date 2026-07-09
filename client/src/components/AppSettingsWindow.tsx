@@ -321,6 +321,7 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
 
     // 按分类分组
     const adminServices = allServices.filter((s: any) => s.category === 'admin');
+    const featureServices = allServices.filter((s: any) => s.category === 'feature');
     const builtinServices = allServices.filter((s: any) => s.category === 'builtin');
     const workspaceServices = allServices.filter((s: any) => s.category === 'workspace');
     const fallbackServices = allServices.length === 0 ? [

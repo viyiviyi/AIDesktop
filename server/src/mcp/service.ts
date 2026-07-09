@@ -685,14 +685,15 @@ class MCPServiceRegistry {
 
     // 没有工作目录时，根据路径类型决定行为
     if (!workspaceDirVal) {
-      // 相对路径：直接用 APPS_DATA_DIR/appId 作为基础目录
+      const { WORKSPACES_DIR } = await import('../utils/file.js');
+      const defaultWorkspace = pathModule.join(WORKSPACES_DIR, context.appId || '');
+
+      // 相对路径：直接用 WORKSPACES_DIR/appId 作为工作目录
       if (requestedPath && !pathModule.isAbsolute(requestedPath)) {
-        const { APPS_DATA_DIR } = await import('../utils/file.js');
-        const dataDir = pathModule.join(APPS_DATA_DIR, context.appId || '');
-        return this.handleWorkspaceCodeWithBase(method, args, dataDir);
+        return this.handleWorkspaceCodeWithBase(method, args, defaultWorkspace);
       }
-      // 绝对路径或空路径：弹出授权框要求用户设置工作目录
-      const authResult = await this.requestWorkspaceAuthorization(context, '首次使用需要设置工作目录', requestedPath);
+      // 绝对路径或空路径：弹出授权框，推荐使用 APPS_DATA_DIR/appId 作为默认工作目录
+      const authResult = await this.requestWorkspaceAuthorization(context, '首次使用需要设置工作目录。推荐使用应用数据目录作为工作目录。', defaultWorkspace);
       // 授权成功后，重新获取会话（包含了新设置的工作目录）
       const updatedConv = context.appId && context.convId ? await conversationService.getConversation(context.appId, context.convId) : null;
       if (!updatedConv?.workspaceDir) {

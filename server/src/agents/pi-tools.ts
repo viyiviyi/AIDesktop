@@ -79,13 +79,13 @@ const codeReadSchema_w = Type.Object({
   offset: Type.Optional(Type.Number({ description: '从第几行开始读取（1-indexed），用于分页' })),
   limit: Type.Optional(Type.Number({ description: '最多读取多少行，用于分页' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '[工作目录] 读取项目文件内容（支持 offset/limit）' });
+}, { additionalProperties: false, description: '[必需参数: path] [工作目录] 读取项目文件内容（支持 offset/limit）。path是文件路径，baseDir可选' });
 
 const codeWriteSchema_w = Type.Object({
   path: Type.String({ description: '文件路径（相对工作目录或绝对路径如 /mnt/c/apps/...）' }),
   content: Type.String({ description: '写入的内容' }),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '[工作目录] 写入项目文件（自动创建父目录）' });
+}, { additionalProperties: false, description: '[必需参数: path, content] [工作目录] 写入项目文件（自动创建父目录）。path是文件路径' });
 
 const codePatchSchema_w = Type.Object({
   path: Type.String({ description: '文件路径（相对工作目录或绝对路径如 /mnt/c/apps/...）' }),
@@ -93,19 +93,19 @@ const codePatchSchema_w = Type.Object({
   new_string: Type.String({ description: '替换的新文本' }),
   replace_all: Type.Optional(Type.Boolean({ description: '替换所有匹配项而非仅第一个' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '[工作目录] 在项目文件中查找替换文本' });
+}, { additionalProperties: false, description: '[必需参数: path, old_string, new_string] [工作目录] 在项目文件中查找替换文本' });
 
 const codeSearchSchema_w = Type.Object({
   pattern: Type.String({ description: '搜索的正则表达式' }),
   file_glob: Type.Optional(Type.String({ description: '文件过滤 glob，如 "*.ts"' })),
   max_results: Type.Optional(Type.Number({ description: '最大结果数，默认 50' })),
   baseDir: Type.String({ description: '【必填】搜索的基础目录（绝对路径或相对工作目录的路径）' }),
-}, { additionalProperties: false, description: '[工作目录] 在指定目录中搜索文本' });
+}, { additionalProperties: false, description: '[必需参数: pattern, baseDir] [工作目录] 在指定目录中搜索文本。baseDir是搜索目录路径' });
 
 const codeListSchema_w = Type.Object({
   path: Type.Optional(Type.String({ description: '目录路径（相对工作目录或绝对路径如 /mnt/c/apps/...），默认为工作目录根' })),
   baseDir: Type.Optional(Type.String({ description: '基础目录（相对工作目录），默认为空' })),
-}, { additionalProperties: false, description: '[工作目录] 列出项目目录内容' });
+}, { additionalProperties: false, description: '[可选参数: path] [工作目录] 列出项目目录内容。不传path则列出工作目录根' });
 
 /** 将 service.name.method 转为 LLM 兼容的 tool name（. → _） */
 function safeToolName(serviceName: string, method: string): string {

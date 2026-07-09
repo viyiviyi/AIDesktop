@@ -41,6 +41,8 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // AI 回复期间用户排队发送的消息（在 done 后自动重发）
+  const pendingMessagesRef = useRef<Content[][]>([]);
   const [showConvList, setShowConvList] = useState(false);
   const [showConvSettings, setShowConvSettings] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -679,7 +681,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
 
   // 发送消息 — WebSocket 事件驱动模式
   const sendMessage = async (replyTo?: string) => {
-    if ((!input.trim() && attachments.length === 0) || !currentConvId || isLoading) return;
+    if ((!input.trim() && attachments.length === 0) || !currentConvId) return;
 
     const messageContent = input;
     const content: Content[] = [];
