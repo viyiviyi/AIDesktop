@@ -331,8 +331,8 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
       { name: 'mcp.exec', description: '通用 - 执行命令', category: 'builtin' },
       { name: 'mcp.http', description: '通用 - HTTP 请求', category: 'builtin' },
       { name: 'mcp.browser', description: '通用 - 浏览器控制', category: 'builtin' },
-      { name: 'mcp.form', description: '功能 - 表单交互', category: 'feature' },
       { name: 'mcp.memory', description: '功能 - 记忆', category: 'feature' },
+      { name: 'mcp.goal', description: '功能 - 会话目标', category: 'feature' },
     ] : [];
 
     const adminList = adminServices.length > 0 ? adminServices : fallbackServices.filter(s => s.category === 'admin');
@@ -359,7 +359,8 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
             <input
               type="checkbox"
               checked={formData.tools.includes(s.name)}
-              onChange={(e) => { e.stopPropagation(); canModifyAll && toggleTool(s.name); }}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => { canModifyAll && toggleTool(s.name); }}
               disabled={!canModifyAll}
               style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
               // 动态工具不显示 checkbox
@@ -505,12 +506,6 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
           {adminList.map(renderServiceItem)}
         </div>
 
-        <h4>功能工具</h4>
-        <p className="app-settings-hint">记忆和表单功能。启用对应工具后功能生效，并在应用对话界面显示相关内容。</p>
-        <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
-          {featureList.map(renderServiceItem)}
-        </div>
-
         <h4>系统通用工具</h4>
         <p className="app-settings-hint">浏览器、命令行、等待、HTTP 等通用辅助工具。需要勾选才能使用。</p>
         <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
@@ -521,6 +516,12 @@ export function AppSettingsWindow({ appId }: AppSettingsWindowProps) {
         <p className="app-settings-hint">在工作目录下操作文件和执行命令，需要先设置工作目录，操作受权限控制。</p>
         <div className="app-settings-checklist">
           {workspaceList.map(renderServiceItem)}
+        </div>
+
+        <h4>功能工具</h4>
+        <p className="app-settings-hint">记忆和会话目标功能。启用后可在对话界面查看和编辑相关内容。</p>
+        <div className="app-settings-checklist" style={{ marginBottom: 16 }}>
+          {featureList.map(renderServiceItem)}
         </div>
 
         <h4>内置动态工具</h4>

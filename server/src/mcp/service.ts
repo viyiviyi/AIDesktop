@@ -37,7 +37,7 @@ const builtInServices: Record<string, MCPService> = {
     name: 'mcp.form',
     description: '表单交互 - 向用户展示结构化输入表单，收集用户填写的数据后返回',
     methods: ['requestInput'],
-    category: 'feature',
+    category: 'builtin',
   },
   'mcp.memory': {
     name: 'mcp.memory',
@@ -47,6 +47,12 @@ const builtInServices: Record<string, MCPService> = {
       'setGoal', 'completeGoal', 'getActiveGoals', 'getArchivedGoals',
       'list', 'listTags', 'stats',
     ],
+    category: 'feature',
+  },
+  'mcp.goal': {
+    name: 'mcp.goal',
+    description: '会话目标管理 - 设置、查看、完成会话目标（独立于记忆服务）',
+    methods: ['setGoal', 'completeGoal', 'getActiveGoals', 'getArchivedGoals'],
     category: 'feature',
   },
   'mcp.browser': {
@@ -190,6 +196,8 @@ class MCPServiceRegistry {
         return this.handleFormMethod(method, args, context);
       case 'mcp.memory':
         return this.handleMemoryMethod(method, args, context);
+      case 'mcp.goal':
+        return this.handleGoalMethod(method, args, context);
       case 'workspace.code':
         return this.handleWorkspaceCodeMethod(method, args, context);
       case 'workspace.shell':
@@ -988,6 +996,49 @@ class MCPServiceRegistry {
   private resolvePath(targetPath: string, baseDir: string): string | null {
     if (!targetPath || !targetPath.trim()) return null;
     return path.isAbsolute(targetPath) ? targetPath : path.join(baseDir, targetPath);
+  }
+
+  private async handleGoalMethod(
+    method: string,
+    args: Record<string, unknown>,
+    context: { appId?: string; convId?: string }
+  ): Promise<unknown> {
+    const { memoryService } = await import('../services/memory.js');
+    const scope = args.scope as string || 'conversation';
+    const convId = context.convId || (args.convId as string);
+
+    switch (method) {
+      case 'setGoal': {
+        const level = args.level as 1|2|3;
+        const value = args.value as string;
+        if (!convId) throw new Error('convId required for goal operations');
+        const source = (args.source as any) || 'user';
+        if (level === 1) await memoryService.setLevel1Goal(context.appId || '', convId, value, source);
+        else if (level === 2) await memoryService.setLevel2Goal(context.appId || '', convId, value, source);
+        else if (level === 3) await memoryService.setLevel3Goal(context.appId || '', convId, value, source);
+        return { success: true };
+      }
+      case 'completeGoal': {
+        const level2 = args.level as 1|2|3;
+        if (!convId) throw new Error('convId required for goal operations');
+        await memoryService.completeGoal(context.appId || '', convId, level2);
+        return { success: true };
+      }
+      case 'getActiveGoals': {
+        if (!convId) return {};
+        try {
+          return await memoryService.getActiveGoals(context.appId || '', convId);
+        } catch { return {}; }
+      }
+      case 'getArchivedGoals': {
+        if (!convId) return [];
+        try {
+          return await memoryService.getArchivedGoals(context.appId || '', convId);
+        } catch { return []; }
+      }
+      default:
+        throw new Error('Unknown method: ' + method);
+    }
   }
 
   private async handleMemoryMethod(

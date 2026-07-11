@@ -78,7 +78,7 @@ export function ChatApp({ appId, windowId, conversationId }: ChatAppProps) {
   const currentAppInfo = state.installedApps.find(a => a.id === appId);
   const appSupportsImage = currentAppInfo?.supportedInputs?.includes('image') ?? false;
   const hasMemoryTool = currentAppInfo?.tools?.includes('mcp.memory') ?? false;
-  const hasFormTool = currentAppInfo?.tools?.includes('mcp.form') ?? false;
+  const hasGoalTool = currentAppInfo?.tools?.includes('mcp.goal') ?? false;
 
   // 压缩图片到指定最大尺寸
   const compressImage = (dataUrl: string, maxDimension: number): Promise<string> => {
